@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>PlotForge</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,600;1,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;1,9..144,300&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="style.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="shell">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo"><em>Plot</em>Forge</div>
+    <div class="hdiv"></div>
+    <span class="htag">matplotlib · chart.js · python/flask</span>
+    <div class="hright">
+      <div class="cdot" id="cdot"></div>
+      <span id="cmsg">connecting…</span>
+    </div>
+  </header>
+
+  <!-- LEFT SIDEBAR: template picker + params -->
+  <aside class="sidebar">
+    <div>
+      <div class="slbl">Templates</div>
+      <div id="catBlocks" class="cat-blocks"></div>
+    </div>
+    <div>
+      <div class="slbl">Parameters</div>
+      <div class="params-area" id="paramsArea">
+        <div style="font-size:.65rem;color:var(--muted);font-style:italic">Select a template.</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN: scrollable plot list -->
+  <main class="main" id="plotList"></main>
+
+  <!-- RIGHT CFG PANEL -->
+  <aside class="cfg" id="cfgPanel">
+    <div class="cfg-empty" id="cfgEmpty">
+      <div style="font-size:1.5rem;opacity:.15">⊞</div>
+      <div>Select a plot card<br>to configure view</div>
+    </div>
+    <div id="cfgContent" style="display:none;flex-direction:column;gap:14px">
+
+      <div>
+        <div class="slbl">Domain</div>
+        <div class="cfg-sec">
+          <div class="crow">
+            <label>X range</label>
+            <div class="drow">
+              <input type="number" id="c_xn" placeholder="auto" step="0.5"/>
+              <input type="number" id="c_xx" placeholder="auto" step="0.5"/>
+            </div>
+            <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
+          </div>
+          <div class="crow">
+            <label>Y range</label>
+            <div class="drow">
+              <input type="number" id="c_yn" placeholder="auto" step="0.5"/>
+              <input type="number" id="c_yx" placeholder="auto" step="0.5"/>
+            </div>
+            <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cdivider"></div>
+
+      <div>
+        <div class="slbl">Line Style</div>
+        <div class="cfg-sec">
+          <div class="crow">
+            <label>Color</label>
+            <div class="color-row">
+              <div class="cswatch"><input type="color" id="c_lc" value="#5affce"/></div>
+              <input class="chex" type="text" id="c_lchex" value="#5affce" maxlength="7"/>
+            </div>
+          </div>
+          <div class="crow">
+            <label>Width — <span id="c_lw_val" style="color:var(--acc2)">2.0</span></label>
+            <input type="range" id="c_lw" min="0.5" max="6" step="0.5" value="2"/>
+          </div>
+          <div class="crow">
+            <label>Style</label>
+            <select id="c_ls">
+              <option value="solid">── Solid</option>
+              <option value="dashed">- - Dashed</option>
+              <option value="dotted">··· Dotted</option>
+              <option value="dashdot">-·- Dash-dot</option>
+            </select>
+          </div>
+          <div class="crow">
+            <label>Marker</label>
+            <select id="c_mk">
+              <option value="none">None</option>
+              <option value="o">● Circle</option>
+              <option value="s">■ Square</option>
+              <option value="^">▲ Triangle</option>
+              <option value="D">◆ Diamond</option>
+              <option value="+">+ Cross</option>
+              <option value="x">× X</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="cdivider"></div>
+
+      <div>
+        <div class="slbl">Fill &amp; Grid</div>
+        <div class="cfg-sec">
+          <div class="trow">
+            <label>Fill under curve</label>
+            <label class="tog"><input type="checkbox" id="c_fill"><span class="tslider"></span></label>
+          </div>
+          <div class="trow">
+            <label>Show grid</label>
+            <label class="tog"><input type="checkbox" id="c_grid" checked><span class="tslider"></span></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="cdivider"></div>
+
+      <div>
+        <div class="slbl">Typography (matplotlib)</div>
+        <div class="cfg-sec">
+          <div class="crow">
+            <label>Title size (pt)</label>
+            <input type="number" id="c_ts" value="13" min="7" max="22" step="1"/>
+          </div>
+          <div class="crow">
+            <label>Axis label size (pt)</label>
+            <input type="number" id="c_ls2" value="10" min="6" max="18" step="1"/>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- #cfgContent -->
+  </aside>
+
+</div><!-- .shell -->
+
+<script src="app.js"></script>
+</body>
+</html>
