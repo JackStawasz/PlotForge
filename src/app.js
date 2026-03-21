@@ -242,7 +242,48 @@ function setConn(s, msg){
   document.getElementById('cmsg').textContent = msg;
 }
 
-// ═══ CATEGORIES ══════════════════════════════════════════════════════════
+// ═══ SIDEBAR REFRESH ═════════════════════════════════════════════════════
+// Shows the correct template selected and params for the currently active plot.
+// If no plot is active (or plot has no template), shows empty/placeholder state.
+function refreshSidebar(){
+  const noPlot=document.getElementById('sidebarNoPlot');
+  const plotContent=document.getElementById('sidebarPlotContent');
+  const p=activePid!==null?gp(activePid):null;
+
+  if(!p){
+    if(noPlot) noPlot.style.display='flex';
+    if(plotContent) plotContent.style.display='none';
+    return;
+  }
+  if(noPlot) noPlot.style.display='none';
+  if(plotContent) plotContent.style.display='flex';
+
+  // Highlight the correct template in the list
+  const tkey=p.template||null;
+  document.querySelectorAll('.tpl-item').forEach(b=>b.classList.toggle('sel',b.dataset.key===tkey));
+
+  // Open the correct category accordion
+  if(tkey){
+    const cat=TEMPLATES[tkey]?.category;
+    document.querySelectorAll('.cat-body').forEach(b=>b.classList.remove('open'));
+    document.querySelectorAll('.cat-hdr').forEach(h=>h.classList.remove('open'));
+    // Find and open the right category
+    const catHdrs=document.querySelectorAll('.cat-hdr');
+    catHdrs.forEach(hdr=>{
+      const body=hdr.nextElementSibling;
+      // Check if this category body contains the selected tpl
+      const hasTpl=body?.querySelector(`[data-key="${tkey}"]`);
+      if(hasTpl){ hdr.classList.add('open'); body.classList.add('open'); }
+    });
+    // Rebuild params for this plot's template with its current param values
+    selTpl=tkey;
+    buildParamsForTemplate(tkey, p.params);
+  }else{
+    selTpl=null;
+    const pa=document.getElementById('paramsArea');
+    if(pa) pa.innerHTML='<div style="font-size:.65rem;color:var(--muted);font-style:italic">Select a template.</div>';
+  }
+}
 function buildCategories(){
   const container = document.getElementById('catBlocks');
   container.innerHTML = '';
@@ -254,51 +295,81 @@ function buildCategories(){
   for(const [cat, items] of Object.entries(grouped)){
     const meta = CAT_META[cat]||{label:cat,dotClass:''};
     const wrap = document.createElement('div');
-    wrap.style.marginBottom='4px';
+    wrap.className='cat-wrap';
+
     const hdr = document.createElement('button');
     hdr.className='cat-hdr';
     hdr.innerHTML=`<div class="cat-dot ${meta.dotClass}"></div><span>${meta.label}</span><span class="cat-arrow">›</span>`;
+
     const body = document.createElement('div');
     body.className='cat-body';
+
     const list = document.createElement('div');
     list.className='tpl-list';
-    for(const {key,tpl} of items){
+    items.forEach(({key,tpl}, idx) => {
+      const isLast = idx === items.length - 1;
       const btn=document.createElement('button');
       btn.className='tpl-item'; btn.dataset.key=key;
-      btn.innerHTML=`<span>${tpl.label}</span><span class="tpl-eq">${tpl.equation}</span>`;
+      // Tree connector: ├ for all but last, └ for last
+      const connector = isLast ? '└' : '├';
+      btn.innerHTML=`<span class="tree-connector">${connector}</span><span class="tpl-label">${tpl.label}</span><span class="tpl-eq">${tpl.equation}</span>`;
       btn.addEventListener('click',()=>selectTemplate(key));
       list.appendChild(btn);
-    }
+    });
+
     body.appendChild(list);
+
     hdr.addEventListener('click',()=>{
       const wasOpen=body.classList.contains('open');
       document.querySelectorAll('.cat-body').forEach(b=>b.classList.remove('open'));
       document.querySelectorAll('.cat-hdr').forEach(h=>h.classList.remove('open'));
       if(!wasOpen){body.classList.add('open');hdr.classList.add('open');}
     });
-    wrap.appendChild(hdr); wrap.appendChild(body);
+
+    wrap.appendChild(hdr);
+    wrap.appendChild(body);
     container.appendChild(wrap);
   }
 }
 
 // ═══ SELECT TEMPLATE ═════════════════════════════════════════════════════
 function selectTemplate(key){
-  selTpl=key;
-  document.querySelectorAll('.tpl-item').forEach(b=>b.classList.toggle('sel',b.dataset.key===key));
+  if(activePid!==null){
+    const p=gp(activePid);
+    if(p){
+      const isNewTemplate = p.template !== key;
+      p.template=key;
+      if(!p.labels.title) p.labels.title=TEMPLATES[key].label;
+      selTpl=key;
+      document.querySelectorAll('.tpl-item').forEach(b=>b.classList.toggle('sel',b.dataset.key===key));
+      buildParamsForTemplate(key);
+      // New template: reset view bounds and trigger rise animation
+      if(isNewTemplate){
+        p.view.x_min=null; p.view.x_max=null; p.view.y_min=null; p.view.y_max=null;
+      }
+      applyAndRender(activePid, isNewTemplate);
+    }
+  }
+}
+
+function buildParamsForTemplate(key, existingParams){
   const pa=document.getElementById('paramsArea');
   pa.innerHTML='';
   for(const [pk,p] of Object.entries(TEMPLATES[key].params)){
     const row=document.createElement('div');
     row.className='p-row'; row.dataset.pkey=pk;
+    const val = existingParams?.[pk] ?? p.default;
     const fmt=v=>p.step<1?parseFloat(v).toFixed(2):parseInt(v);
     row.innerHTML=`
-      <label><span>${p.label}</span><span class="pval" id="pv_${pk}">${fmt(p.default)}</span></label>
-      <input type="range" id="ps_${pk}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.default}"
+      <label><span>${p.label}</span><span class="pval" id="pv_${pk}">${fmt(val)}</span></label>
+      <input type="range" id="ps_${pk}" min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
         oninput="onParamChange('${pk}',this.value)"/>`;
     pa.appendChild(row);
   }
-  if(key==='poly_custom') updatePolyCoeffVisibility(TEMPLATES.poly_custom.params.degree.default);
-  triggerAutoRender();
+  if(key==='poly_custom'){
+    const deg=existingParams?.degree ?? TEMPLATES.poly_custom.params.degree.default;
+    updatePolyCoeffVisibility(deg);
+  }
 }
 
 function onParamChange(pk, val){
@@ -308,7 +379,8 @@ function onParamChange(pk, val){
     if(el) el.textContent=tpl.params[pk].step<1?parseFloat(val).toFixed(2):parseInt(val);
   }
   if(selTpl==='poly_custom'&&pk==='degree') updatePolyCoeffVisibility(parseInt(val));
-  triggerAutoRender();
+  // Param change: immediate render, no animation, no view reset
+  if(activePid!==null) applyAndRender(activePid, false);
 }
 
 function updatePolyCoeffVisibility(deg){
@@ -319,14 +391,7 @@ function updatePolyCoeffVisibility(deg){
   });
 }
 
-// ═══ AUTO-RENDER (pure JS, no backend) ═══════════════════════════════════
-function triggerAutoRender(){
-  if(activePid===null||!selTpl) return;
-  clearTimeout(renderTimers[activePid]);
-  renderTimers[activePid]=setTimeout(()=>applyAndRender(activePid),180);
-}
-
-function applyAndRender(pid){
+function applyAndRender(pid, isNewTemplate=false){
   const p=gp(pid);
   if(!p||!selTpl) return;
   const params={};
@@ -337,14 +402,8 @@ function applyAndRender(pid){
   p.template=selTpl;
   p.params=params;
   if(!p.labels.title) p.labels.title=TEMPLATES[selTpl].label;
-  // If in matplotlib mode, stay in mpl mode but flag that params changed
-  // so next convertToMpl call is fresh. Don't auto-revert here — user chose mpl.
-  if(p.mode==='mpl'){
-    // just update params so next mpl render uses new values
-    // do nothing else — mpl image stays until user explicitly re-renders
-    return;
-  }
-  renderJS(pid, true);
+  if(p.mode==='mpl') return;
+  renderJS(pid, isNewTemplate);
 }
 
 // Core JS render — compute data, update chart, no network
@@ -358,29 +417,35 @@ function renderJS(pid, firstRender=false){
   p.jsData={x:result.x, y:result.y, discrete:result.discrete};
   p.equation=result.equation;
 
-  if(firstRender) chartFirstRender[pid]=true;
+  // Pin view bounds on new template only; preserve on param updates
+  if(firstRender || p.view.x_min==null){
+    p.view.x_min = result.autoXMin;
+    p.view.x_max = result.autoXMax;
+    const yPad = (result.autoYMax - result.autoYMin) * 0.08 || 0.1;
+    p.view.y_min = result.autoYMin - yPad;
+    p.view.y_max = result.autoYMax + yPad;
+    if(firstRender) chartFirstRender[pid]=true; // animation only for new template
+  }
 
   setConn('ok',`${TEMPLATES[p.template].label} · ${result.x.length} pts`);
 
   const innerEl=document.getElementById(`cinner_${pid}`);
-  if(!innerEl){
-    // Card not in DOM yet — will be drawn by renderDOM
-    return;
-  }
+  if(!innerEl) return;
 
-  // If no canvas exists yet, build the content
   if(!document.getElementById(`chart_${pid}`)){
     innerEl.innerHTML=buildInnerHTML(p);
     setTimeout(()=>{
       drawChart(p);
       wireInteraction(p);
       wireAxisLabelInputs(p);
+      syncCfgDomain();
+      updateTopbar(pid); // refresh mpl button enabled state
     },0);
     return;
   }
 
-  // Canvas exists — update chart in-place
   drawChart(p);
+  syncCfgDomain();
 }
 
 // ═══ CONVERT TO MATPLOTLIB ═══════════════════════════════════════════════
@@ -433,7 +498,6 @@ function buildInnerHTML(p){
       <div class="canvas-wrap" id="cwrap_${pid}" data-mode="${plotModes[pid]||'move'}">
         <canvas id="chart_${pid}" style="display:block;width:100%"></canvas>
         <div class="cursor-coords" id="coords_${pid}">x=— y=—</div>
-        <div class="sel-rect" id="selrect_${pid}"></div>
       </div>
       <div class="ax-xlabel">
         <input class="lbl-inp" id="xlabel_${pid}" type="text"
@@ -493,11 +557,25 @@ function renderDOM(){
     const np=mkPlot(); plots.push(np);
     plotModes[np.id]='move';
     activePid=np.id;
-    renderDOM(); refreshCfg();
+    renderDOM(); refreshCfg(); refreshSidebar();
   });
   list.appendChild(ghost);
 
+  // Click on empty space in the plot list to deselect
+  list.addEventListener('click',(e)=>{
+    // Deselect if click lands directly on list or add-card or empty padding
+    const onCard = e.target.closest('.plot-card');
+    const onGhost = e.target.closest('.add-card');
+    if(!onCard && !onGhost){
+      activePid=null;
+      syncActiveHighlight();
+      refreshCfg();
+      refreshSidebar();
+    }
+  });
+
   refreshCfg();
+  refreshSidebar();
   setTimeout(()=>{
     for(const p of plots){
       if(p.mode==='js'&&p.jsData){ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); }
@@ -524,8 +602,8 @@ function buildCard(p, i){
   card.addEventListener('click',(e)=>{
     const btn=e.target.closest('[data-action]');
     if(btn){handleAction(btn.dataset.action,parseInt(btn.dataset.pid));return;}
-    if(e.target.closest('.lbl-inp')||e.target.closest('.ctitle')||e.target.closest('.mode-btn')) return;
-    if(activePid!==p.id){activePid=p.id;syncActiveHighlight();refreshCfg();}
+    if(e.target.closest('.lbl-inp')||e.target.closest('.ctitle')) return;
+    if(activePid!==p.id){activePid=p.id;syncActiveHighlight();refreshCfg();refreshSidebar();}
   });
   setTimeout(()=>wireTopbarTitle(p),0);
   return card;
@@ -534,32 +612,20 @@ function buildCard(p, i){
 function buildTopbarInner(p, i){
   const tplName=p.template?TEMPLATES[p.template]?.label||p.template:'—';
   const editable=p.mode==='js';
-  const mode=plotModes[p.id]||'move';
 
-  // Mode toolbar — always shown (move / select)
-  const modeToolbar = `
-    <div class="mode-toolbar">
-      <button class="mode-btn${mode==='move'?' active':''}" data-pid="${p.id}" data-action="mode-move"
-              title="Pan &amp; zoom">⤢</button>
-      <button class="mode-btn${mode==='select'?' active':''}" data-pid="${p.id}" data-action="mode-select"
-              title="Select region to zoom">⬚</button>
-    </div>`;
-
-  // mpl button shown when template is set
-  let modeBtn='';
-  if(p.template){
-    modeBtn = p.mode==='js'
-      ? `<button class="cbtn mpl-btn" data-pid="${p.id}" data-action="mpl">⚗ mpl</button>`
-      : `<button class="cbtn revert-btn" data-pid="${p.id}" data-action="revert">⟲ js</button>`;
-  }
+  // mpl/revert button — always shown, enabled when plot has a template
+  const canMpl = !!p.template;
+  const mplBtn = p.mode==='js'
+    ? `<button class="cbtn mpl-btn${!canMpl?' mpl-disabled':''}" data-pid="${p.id}" data-action="mpl"
+              ${!canMpl?'disabled':''}>▨ matplotlib</button>`
+    : `<button class="cbtn revert-btn" data-pid="${p.id}" data-action="revert">⟲ interactive</button>`;
 
   return `
     <span class="cnum">PLOT ${String(i+1).padStart(2,'0')}</span>
     <span class="ctitle ${editable?'editable':'readonly'}" id="ctitle_${p.id}"
           title="${editable?'Click to edit title':''}">${p.labels.title||tplName}</span>
     <div class="cactions">
-      ${modeToolbar}
-      ${modeBtn}
+      ${mplBtn}
       <button class="cbtn" data-pid="${p.id}" data-action="del">✕</button>
     </div>`;
 }
@@ -628,8 +694,12 @@ function drawChart(p){
   // Update in-place if chart exists and no first-render animation needed
   if(chartInstances[p.id]&&!shouldAnimate){
     const ch=chartInstances[p.id];
-    ch.data.labels=data.x.map(n=>+(n.toFixed ? n.toFixed(3) : n));
-    ch.data.datasets[0].data            =data.y;
+    if(data.discrete){
+      ch.data.labels=data.x.map(n=>n);
+      ch.data.datasets[0].data=data.y;
+    }else{
+      ch.data.datasets[0].data=data.x.map((xv,i)=>({x:xv, y:data.y[i]}));
+    }
     ch.data.datasets[0].borderColor     =lc;
     ch.data.datasets[0].borderWidth     =v.line_width||2;
     ch.data.datasets[0].fill            =v.fill_under;
@@ -652,6 +722,7 @@ function drawChart(p){
   const animOpts=shouldAnimate?{duration:500,easing:'easeOutQuart'}:{duration:0};
 
   if(data.discrete){
+    // Discrete (bar): use category x labels as before
     chartInstances[p.id]=new Chart(ctx,{
       type:'bar',
       data:{
@@ -662,21 +733,32 @@ function drawChart(p){
         plugins:{legend:{display:false},tooltip:tooltipOpts()},scales}
     });
   }else{
+    // Continuous: use {x,y} point objects with a proper linear x-axis
+    // so panning into negative x works correctly
+    const xyData = data.x.map((xv,i)=>({x:xv, y:data.y[i]}));
+    // Override x scale to linear (not category)
+    scales.x.type = 'linear';
     chartInstances[p.id]=new Chart(ctx,{
       type:'line',
       data:{
-        labels:data.x.map(n=>parseFloat(n.toFixed(3))),
         datasets:[{
-          data:data.y, borderColor:lc, borderWidth:v.line_width||2,
+          data:xyData, borderColor:lc, borderWidth:v.line_width||2,
           borderDash:dashFor(v.line_style),
           pointRadius:v.marker!=='none'?v.marker_size||4:0,
           pointBackgroundColor:lc,
           fill:v.fill_under, backgroundColor:hexAlpha(lc,v.fill_alpha||.15),
           tension:0.35, spanGaps:true,
+          parsing:false,
         }]
       },
       options:{responsive:true,maintainAspectRatio:true,animation:animOpts,
-        plugins:{legend:{display:false},tooltip:tooltipOpts()},scales}
+        plugins:{legend:{display:false},tooltip:{
+          ...tooltipOpts(),
+          callbacks:{
+            title:items=>`x = ${Number(items[0].parsed.x).toFixed(4)}`,
+            label:item =>`y = ${Number(item.parsed.y)?.toFixed(5)??'—'}`,
+          }
+        }},scales}
     });
   }
 }
@@ -719,21 +801,21 @@ function buildScales(v){
   const s={
     x:{
       ticks:{
-        color:'#6060a0',
-        font:{family:"'IBM Plex Mono'",size:9},
+        color:'#b0b0e0',
+        font:{family:"'IBM Plex Mono'",size:10},
         maxTicksLimit:12,
         callback: makeTickCb('x'),
       },
-      grid:{color:'rgba(37,37,64,.8)',display:v.show_grid}
+      grid:{color:'rgba(60,60,100,.7)',display:v.show_grid}
     },
     y:{
       ticks:{
-        color:'#6060a0',
-        font:{family:"'IBM Plex Mono'",size:9},
+        color:'#b0b0e0',
+        font:{family:"'IBM Plex Mono'",size:10},
         maxTicksLimit:10,
         callback: makeTickCb('y'),
       },
-      grid:{color:'rgba(37,37,64,.8)',display:v.show_grid}
+      grid:{color:'rgba(60,60,100,.7)',display:v.show_grid}
     },
   };
   applyScaleLimits(s,v);
@@ -787,7 +869,7 @@ function pixelToData(ch, clientX, clientY){
   return {dataX,dataY,px:cssPx,py:cssPy};
 }
 
-// ═══ INTERACTIONS (pan, zoom, select, cursor) ════════════════════════════
+// ═══ INTERACTIONS (pan, zoom, cursor) ════════════════════════════════════
 function wireInteraction(p){
   const wrap=document.getElementById(`cwrap_${p.id}`);
   if(!wrap) return;
@@ -798,9 +880,6 @@ function wireInteraction(p){
     const {dataX,dataY}=pixelToData(ch,e.clientX,e.clientY);
     const coordEl=document.getElementById(`coords_${p.id}`);
     if(coordEl) coordEl.textContent=`x=${dataX.toFixed(3)}  y=${dataY.toFixed(3)}`;
-    // also drive selection drag
-    if(selState[p.id]?.dragging) onSelMove(e,p);
-    // drive pan
     if(panState[p.id]?.dragging) onPanMove(e,p);
   });
   wrap.addEventListener('mouseleave',()=>{
@@ -813,19 +892,16 @@ function wireInteraction(p){
     e.preventDefault();
     const ch=chartInstances[p.id]; if(!ch) return;
     const {dataX,dataY}=pixelToData(ch,e.clientX,e.clientY);
-    const factor=e.deltaY>0?1.15:1/1.15; // scroll down = zoom out
+    const factor=e.deltaY>0?1.15:1/1.15;
 
-    const sx=ch.scales.x, sy=ch.scales.y;
-    const xMin=sx.min, xMax=sx.max, yMin=sy.min, yMax=sy.max;
+    const xMin=p.view.x_min, xMax=p.view.x_max;
+    const yMin=p.view.y_min, yMax=p.view.y_max;
 
-    // Zoom keeping the data-point under cursor fixed
-    // newMin = cursor + (oldMin - cursor)*factor
     const newXMin=dataX+(xMin-dataX)*factor;
     const newXMax=dataX+(xMax-dataX)*factor;
-    // For y we want to maintain the same y aspect ratio (same span ratio as x)
     const xSpanOld=xMax-xMin, xSpanNew=newXMax-newXMin;
     const ySpanOld=yMax-yMin;
-    const ySpanNew=ySpanOld*(xSpanNew/xSpanOld); // keep aspect ratio
+    const ySpanNew=ySpanOld*(xSpanNew/xSpanOld);
     const newYMin=dataY+(yMin-dataY)*(ySpanNew/ySpanOld);
     const newYMax=dataY+(yMax-dataY)*(ySpanNew/ySpanOld);
 
@@ -835,22 +911,16 @@ function wireInteraction(p){
     applyScaleLimits(ch.options.scales,p.view);
     ch.update('none');
     syncCfgDomain();
-    // Recompute data for new domain
     renderJS(p.id,false);
   },{passive:false});
 
-  // ── mousedown: route to move or select ──
+  // ── mousedown: always pan ──
   wrap.addEventListener('mousedown',(e)=>{
     if(e.button!==0) return;
-    const mode=plotModes[p.id]||'move';
-    if(mode==='move') startPan(e,p);
-    else              startSelect(e,p);
+    startPan(e,p);
   });
 
-  window.addEventListener('mouseup',()=>{
-    endPan(p);
-    endSelect(p);
-  });
+  window.addEventListener('mouseup',()=>endPan(p));
 }
 
 // ─── PAN ─────────────────────────────────────────────────────────────────
@@ -868,7 +938,6 @@ function onPanMove(e,p){
   const ch=chartInstances[p.id]; if(!ch) return;
   const canvas=ch.canvas;
   const rect=canvas.getBoundingClientRect();
-  // Convert mouse delta from CSS pixels to chart natural pixels
   const scaleX=rect.width/canvas.width;
   const scaleY=rect.height/canvas.height;
   const dx=(e.clientX-st.startX)/scaleX;
@@ -876,15 +945,18 @@ function onPanMove(e,p){
   st.startX=e.clientX; st.startY=e.clientY;
 
   const sx=ch.scales.x, sy=ch.scales.y;
-  const xSpan=sx.max-sx.min, ySpan=sy.max-sy.min;
   const xPx=sx.right-sx.left, yPx=sy.bottom-sy.top;
   if(xPx===0||yPx===0) return;
+
+  // Use p.view as source of truth for span
+  const xSpan=p.view.x_max-p.view.x_min;
+  const ySpan=p.view.y_max-p.view.y_min;
 
   const dxData=(dx/xPx)*xSpan;
   const dyData=(dy/yPx)*ySpan;
 
-  p.view.x_min=sx.min-dxData; p.view.x_max=sx.max-dxData;
-  p.view.y_min=sy.min+dyData; p.view.y_max=sy.max+dyData;
+  p.view.x_min-=dxData; p.view.x_max-=dxData;
+  p.view.y_min+=dyData; p.view.y_max+=dyData;
 
   applyScaleLimits(ch.options.scales,p.view);
   ch.update('none');
@@ -899,105 +971,48 @@ function endPan(p){
   if(wrap) wrap.classList.remove('panning');
 }
 
-// ─── SELECT ───────────────────────────────────────────────────────────────
-const selState={};
-
-function startSelect(e,p){
-  const wrap=document.getElementById(`cwrap_${p.id}`);
-  const ch=chartInstances[p.id]; if(!ch||!wrap) return;
-  const wrapRect=wrap.getBoundingClientRect();
-  const cssPx=e.clientX-wrapRect.left;
-  const cssPy=e.clientY-wrapRect.top;
-  const {dataX,dataY}=pixelToData(ch,e.clientX,e.clientY);
-  selState[p.id]={dragging:true,
-    startPx:cssPx,startPy:cssPy,
-    startDataX:dataX,startDataY:dataY,
-    curPx:cssPx,curPy:cssPy};
-  const rect=document.getElementById(`selrect_${p.id}`);
-  if(rect){
-    rect.style.display='block';
-    rect.style.left=cssPx+'px'; rect.style.top=cssPy+'px';
-    rect.style.width='0'; rect.style.height='0';
-  }
-  e.preventDefault();
-}
-
-function onSelMove(e,p){
-  const st=selState[p.id]; if(!st?.dragging) return;
-  const ch=chartInstances[p.id]; if(!ch) return;
-  const wrap=document.getElementById(`cwrap_${p.id}`);
-  if(!wrap) return;
-  const wrapRect=wrap.getBoundingClientRect();
-  const px=e.clientX-wrapRect.left;
-  const py=e.clientY-wrapRect.top;
-  st.curPx=px; st.curPy=py;
-
-  const x0=Math.min(st.startPx,px), y0=Math.min(st.startPy,py);
-  const w=Math.abs(px-st.startPx), h=Math.abs(py-st.startPy);
-  const rect=document.getElementById(`selrect_${p.id}`);
-  if(rect){
-    rect.style.left=x0+'px'; rect.style.top=y0+'px';
-    rect.style.width=w+'px'; rect.style.height=h+'px';
-  }
-}
-
-function endSelect(p){
-  const st=selState[p.id]; if(!st?.dragging) return;
-  st.dragging=false;
-  const rect=document.getElementById(`selrect_${p.id}`);
-  if(rect) rect.style.display='none';
-
-  const ch=chartInstances[p.id]; if(!ch) return;
-  const wrap=document.getElementById(`cwrap_${p.id}`);
-  if(!wrap) return;
-  const wrapRect=wrap.getBoundingClientRect();
-
-  // Convert both corners (in client coords) to data coords
-  const {dataX:x0d,dataY:y0d}=pixelToData(ch,
-    wrapRect.left+st.startPx, wrapRect.top+st.startPy);
-  const {dataX:x1d,dataY:y1d}=pixelToData(ch,
-    wrapRect.left+st.curPx, wrapRect.top+st.curPy);
-
-  // Only zoom if selection is large enough (>10px in each dim)
-  if(Math.abs(st.curPx-st.startPx)<10||Math.abs(st.curPy-st.startPy)<10) return;
-
-  p.view.x_min=Math.min(x0d,x1d); p.view.x_max=Math.max(x0d,x1d);
-  p.view.y_min=Math.min(y0d,y1d); p.view.y_max=Math.max(y0d,y1d);
-
-  applyScaleLimits(ch.options.scales,p.view);
-  ch.update('none');
-  syncCfgDomain();
-  renderJS(p.id,false);
-}
-
 // ═══ ACTIONS ═════════════════════════════════════════════════════════════
 function handleAction(action,pid){
   if(action==='del'){
     destroyChart(pid);
     plots=plots.filter(p=>p.id!==pid);
     if(activePid===pid) activePid=plots[0]?.id||null;
-    if(plots.length===0){const np=mkPlot();plots.push(np);plotModes[np.id]='move';activePid=np.id;}
+    if(plots.length===0){const np=mkPlot();plots.push(np);activePid=np.id;}
     renderDOM(); return;
   }
   if(action==='mpl')    {convertToMpl(pid); return;}
   if(action==='revert') {revertToJS(pid);   return;}
-  if(action==='mode-move'){
-    plotModes[pid]='move';
-    const wrap=document.getElementById(`cwrap_${pid}`);
-    if(wrap) wrap.dataset.mode='move';
-    updateTopbar(pid);
-    return;
-  }
-  if(action==='mode-select'){
-    plotModes[pid]='select';
-    const wrap=document.getElementById(`cwrap_${pid}`);
-    if(wrap) wrap.dataset.mode='select';
-    updateTopbar(pid);
-    return;
-  }
 }
 
 // ═══ CFG PANEL ═══════════════════════════════════════════════════════════
+
+// Format a domain value for display: up to 4 sig figs, no trailing zeros
+function fmtDomain(v){
+  if(v==null||!isFinite(v)) return '';
+  // Use toPrecision(5) then strip trailing zeros
+  return parseFloat(v.toPrecision(5)).toString();
+}
+
+// Get the current effective axis limits — p.view is always the source of truth
+// (we pin it on first render and on every pan/zoom).
+function getEffectiveDomain(pid){
+  const p=gp(pid); if(!p) return {xMin:0,xMax:1,yMin:0,yMax:1};
+  const v=p.view;
+  if(v.x_min!=null && v.x_max!=null && v.y_min!=null && v.y_max!=null){
+    return {xMin:v.x_min, xMax:v.x_max, yMin:v.y_min, yMax:v.y_max};
+  }
+  // Pre-render fallback: compute from template defaults
+  if(p.template){
+    const res=evalTemplate(p.template, p.params, {});
+    if(res){
+      const yPad=(res.autoYMax-res.autoYMin)*0.08||0.1;
+      return {xMin:res.autoXMin,xMax:res.autoXMax,
+              yMin:res.autoYMin-yPad, yMax:res.autoYMax+yPad};
+    }
+  }
+  return {xMin:0,xMax:1,yMin:0,yMax:1};
+}
+
 function refreshCfg(){
   const empty=document.getElementById('cfgEmpty');
   const content=document.getElementById('cfgContent');
@@ -1005,8 +1020,8 @@ function refreshCfg(){
   if(!p){empty.style.display='flex';content.style.display='none';return;}
   empty.style.display='none'; content.style.display='flex';
   const v=p.view;
-  sv('c_xn',v.x_min??''); sv('c_xx',v.x_max??'');
-  sv('c_yn',v.y_min??''); sv('c_yx',v.y_max??'');
+  // Always show real current domain values
+  syncCfgDomain();
   document.getElementById('c_lc').value=v.line_color;
   document.getElementById('c_lchex').value=v.line_color;
   sv('c_lw',v.line_width);
@@ -1025,9 +1040,7 @@ function readCfgIntoActive(){
   const p=activePid!==null?gp(activePid):null;
   if(!p) return;
   const v=p.view;
-  const xn=pf('c_xn'),xx=pf('c_xx'),yn=pf('c_yn'),yx=pf('c_yx');
-  v.x_min=isNaN(xn)?null:xn; v.x_max=isNaN(xx)?null:xx;
-  v.y_min=isNaN(yn)?null:yn; v.y_max=isNaN(yx)?null:yx;
+  // Domain is handled separately via commitDomain — skip x/y here
   v.line_color =document.getElementById('c_lc').value;
   v.line_width =parseFloat(document.getElementById('c_lw').value);
   v.line_style =document.getElementById('c_ls').value;
@@ -1038,14 +1051,43 @@ function readCfgIntoActive(){
   v.label_size =parseInt(document.getElementById('c_ls2').value)||10;
 }
 
+// Commit a domain input: apply value or reset to current if empty/invalid
+function commitDomainInput(id, axis, minMax){
+  const p=activePid!==null?gp(activePid):null; if(!p) return;
+  const el=document.getElementById(id); if(!el) return;
+  const raw=el.value.trim();
+  if(raw===''){
+    // Reset to current effective value
+    const dom=getEffectiveDomain(activePid);
+    const cur=axis==='x'?(minMax==='min'?dom.xMin:dom.xMax):(minMax==='min'?dom.yMin:dom.yMax);
+    el.value=fmtDomain(cur);
+    // Clear the pinned view value so chart is free
+    p.view[axis+'_'+minMax]=null;
+    if(p.template) renderJS(activePid,false);
+    return;
+  }
+  const val=parseFloat(raw);
+  if(isNaN(val)){
+    // Invalid — reset
+    const dom=getEffectiveDomain(activePid);
+    const cur=axis==='x'?(minMax==='min'?dom.xMin:dom.xMax):(minMax==='min'?dom.yMin:dom.yMax);
+    el.value=fmtDomain(cur);
+    return;
+  }
+  p.view[axis+'_'+minMax]=val;
+  el.value=fmtDomain(val);
+  if(p.template){
+    if(p.mode==='js') renderJS(activePid,false);
+    else{ clearTimeout(window._cfgDebounce); window._cfgDebounce=setTimeout(()=>convertToMpl(activePid),400); }
+  }
+}
+
 function triggerCfgRender(){
   if(activePid===null) return;
   readCfgIntoActive();
   const p=gp(activePid);
   if(!p||!p.template) return;
-  // For JS mode: update view and redraw immediately (no backend)
   if(p.mode==='js') renderJS(activePid, false);
-  // For mpl mode: re-convert on debounce
   else{
     clearTimeout(window._cfgDebounce);
     window._cfgDebounce=setTimeout(()=>convertToMpl(activePid),400);
@@ -1055,16 +1097,37 @@ function triggerCfgRender(){
 function syncCfgDomain(){
   if(activePid===null) return;
   const p=gp(activePid); if(!p) return;
-  const v=p.view;
-  const set=(id,val)=>{const el=document.getElementById(id);if(el)el.value=val??'';};
-  set('c_xn',v.x_min!=null?v.x_min.toFixed(3):'');
-  set('c_xx',v.x_max!=null?v.x_max.toFixed(3):'');
-  set('c_yn',v.y_min!=null?v.y_min.toFixed(3):'');
-  set('c_yx',v.y_max!=null?v.y_max.toFixed(3):'');
+  const dom=getEffectiveDomain(activePid);
+  // Don't clobber an input the user is actively typing in
+  const focused=document.activeElement?.id;
+  const set=(id,val)=>{
+    const el=document.getElementById(id);
+    if(el && el.id!==focused) el.value=fmtDomain(val);
+  };
+  set('c_xn',dom.xMin);
+  set('c_xx',dom.xMax);
+  set('c_yn',dom.yMin);
+  set('c_yx',dom.yMax);
 }
 
 function wireAllCfgInputs(){
-  const ids=['c_xn','c_xx','c_yn','c_yx','c_lw','c_ls','c_mk','c_ts','c_ls2'];
+  // Domain inputs: commit only on Enter or blur
+  const domainMap=[
+    {id:'c_xn',axis:'x',mm:'min'},{id:'c_xx',axis:'x',mm:'max'},
+    {id:'c_yn',axis:'y',mm:'min'},{id:'c_yx',axis:'y',mm:'max'},
+  ];
+  for(const {id,axis,mm} of domainMap){
+    const el=document.getElementById(id);
+    if(!el) continue;
+    el.addEventListener('keydown',(e)=>{
+      if(e.key==='Enter'){ e.preventDefault(); commitDomainInput(id,axis,mm); el.blur(); }
+      if(e.key==='Escape'){ syncCfgDomain(); el.blur(); }
+    });
+    el.addEventListener('blur',()=>commitDomainInput(id,axis,mm));
+  }
+
+  // Non-domain inputs: immediate
+  const ids=['c_lw','c_ls','c_mk','c_ts','c_ls2'];
   for(const id of ids){
     const el=document.getElementById(id);
     if(el) el.addEventListener('input', triggerCfgRender);
