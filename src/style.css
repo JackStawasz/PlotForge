@@ -93,14 +93,20 @@ input[type=range]::-webkit-slider-thumb{
 }
 input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 
-/* ═══ MAIN ════════════════════════════════════════════════════════ */
+/* ═══ MAIN — scrollable plot list ═════════════════════════════════ */
 .main{
-  overflow-y:auto;padding:20px 18px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding:20px 18px;
   display:flex;flex-direction:column;gap:14px;
   background:var(--bg);position:relative;
+  /* explicit scroll behaviour */
+  scroll-behavior:smooth;
 }
-.main::-webkit-scrollbar{width:4px}
-.main::-webkit-scrollbar-thumb{background:var(--border2)}
+.main::-webkit-scrollbar{width:6px}
+.main::-webkit-scrollbar-track{background:var(--bg)}
+.main::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+.main::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 .main::before{
   content:'';position:fixed;
   top:var(--header);left:var(--sidebar);right:var(--cfg);bottom:0;
@@ -113,7 +119,6 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
   position:relative;z-index:1;flex-shrink:0;
   background:var(--s1);border:1px solid var(--border);border-radius:10px;overflow:hidden;
   cursor:pointer;
-  /* No transition on border-color — prevents jitter when class toggled programmatically */
 }
 .plot-card:hover{border-color:var(--border2)}
 .plot-card.active{
@@ -132,29 +137,20 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
   background:var(--s2);border:1px solid var(--border2);
   border-radius:3px;padding:1px 5px;letter-spacing:.1em;flex-shrink:0;
 }
-
-/* editable title — only in JS mode */
 .ctitle{
-  font-size:.75rem;font-weight:600;flex:1;
+  font-size:.88rem;font-weight:600;flex:1;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   border-radius:3px;padding:1px 4px;
-  border:1px solid transparent;
-  cursor:text;max-width:160px;
+  border:1px solid transparent;cursor:text;max-width:200px;
 }
 .ctitle.editable:hover{border-color:var(--acc2);background:rgba(90,255,206,.05);color:var(--acc2)}
 .ctitle.readonly{cursor:default}
-
-/* floating title input used during edit */
 .title-inp{
-  position:fixed;
-  font-family:var(--mono);font-size:.75rem;font-weight:600;
-  background:var(--s2);color:var(--acc2);
-  border:1px solid var(--acc2);border-radius:3px;
+  position:fixed;font-family:var(--mono);font-size:.75rem;font-weight:600;
+  background:var(--s2);color:var(--acc2);border:1px solid var(--acc2);border-radius:3px;
   padding:2px 6px;outline:none;z-index:9999;min-width:120px;
   box-shadow:0 0 10px rgba(90,255,206,.18);
 }
-
-/* equation badge */
 .ceq{
   font-size:.58rem;color:var(--muted);font-style:italic;
   background:var(--s2);border:1px solid var(--border);
@@ -162,8 +158,7 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   flex-shrink:0;max-width:160px;
 }
-
-.cactions{display:flex;gap:5px;flex-shrink:0;margin-left:auto}
+.cactions{display:flex;gap:5px;flex-shrink:0;margin-left:auto;align-items:center}
 .cbtn{
   background:transparent;border:1px solid var(--border2);
   border-radius:4px;color:var(--muted);
@@ -176,6 +171,19 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 .cbtn.revert-btn{border-color:color-mix(in srgb,var(--acc2) 60%,transparent);color:var(--acc2)}
 .cbtn.revert-btn:hover{background:var(--acc2);color:var(--bg);border-color:var(--acc2)}
 
+/* ── mode toolbar (move / select) ── */
+.mode-toolbar{
+  display:flex;gap:3px;background:var(--s2);border:1px solid var(--border);
+  border-radius:5px;padding:2px;
+}
+.mode-btn{
+  background:transparent;border:1px solid transparent;border-radius:3px;
+  color:var(--muted);font-size:.72rem;padding:3px 6px;cursor:pointer;
+  transition:all .12s;line-height:1;
+}
+.mode-btn:hover{color:var(--text)}
+.mode-btn.active{background:var(--s1);border-color:var(--border2);color:var(--acc2)}
+
 /* card body */
 .cbody{position:relative}
 .plot-empty{
@@ -184,68 +192,69 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 }
 .plot-empty .ei{font-size:1.8rem;opacity:.18}
 
-/* ── canvas area with axis label overlays ── */
+/* ── chart region: canvas + axis label overlays ── */
 .chart-region{
   position:relative;
-  /* leaves room for y-label on left and x-label at bottom */
-  padding-left:28px;   /* space for y-label */
-  padding-bottom:26px; /* space for x-label */
+  padding-left:28px;
+  padding-bottom:26px;
 }
-
 .canvas-wrap{
   position:relative;
-  cursor:grab;
   user-select:none;
   background:var(--s1);
+  overflow:hidden;
 }
-.canvas-wrap.panning{cursor:grabbing}
+/* cursor states driven by JS via data-mode */
+.canvas-wrap[data-mode="move"]          {cursor:grab}
+.canvas-wrap[data-mode="move"].panning  {cursor:grabbing}
+.canvas-wrap[data-mode="select"]        {cursor:crosshair}
+
 .canvas-wrap canvas{display:block;width:100%}
 
-/* axis labels — positioned absolutely within .chart-region */
-/* X label: centered horizontally at the bottom */
-.ax-xlabel{
+/* cursor coordinate readout */
+.cursor-coords{
   position:absolute;
-  bottom:0;
-  left:28px; /* offset to match padding-left */
-  right:0;
-  text-align:center;
-  height:24px;line-height:24px;
+  top:6px;right:8px;
+  font-size:.58rem;color:var(--muted);
+  background:rgba(7,7,15,.75);border:1px solid var(--border);
+  border-radius:3px;padding:2px 7px;
+  pointer-events:none;
+  opacity:0;transition:opacity .15s;
+  font-family:var(--mono);letter-spacing:.04em;
+  white-space:nowrap;
 }
-/* Y label: centered vertically on the left, rotated */
-.ax-ylabel{
+.canvas-wrap:hover .cursor-coords{opacity:1}
+
+/* selection rectangle drawn over canvas */
+.sel-rect{
   position:absolute;
-  top:0;
-  bottom:26px; /* offset to match padding-bottom */
-  left:0;
-  width:28px;
+  border:1.5px dashed rgba(90,180,255,.8);
+  background:rgba(60,140,255,.12);
+  pointer-events:none;
+  display:none;
+}
+
+/* axis labels */
+.ax-xlabel{
+  position:absolute;bottom:0;left:28px;right:0;
+  text-align:center;height:24px;line-height:24px;
+}
+.ax-ylabel{
+  position:absolute;top:0;bottom:26px;left:0;width:28px;
   display:flex;align-items:center;justify-content:center;
 }
 .ax-ylabel .lbl-inp{
-  transform:rotate(-90deg);
-  white-space:nowrap;
-  width:auto; /* will size to content */
+  transform:rotate(-90deg);white-space:nowrap;width:auto;
 }
-
-/* shared axis label input style */
 .lbl-inp{
-  background:transparent;
-  border:1px solid transparent;
-  border-radius:3px;
-  color:var(--muted);
-  font-family:var(--mono);
-  font-size:.65rem;
-  padding:2px 5px;
-  outline:none;
-  text-align:center;
-  cursor:text;
-  min-width:30px;
-  max-width:140px;
+  background:transparent;border:1px solid transparent;border-radius:3px;
+  color:var(--muted);font-family:var(--mono);font-size:.65rem;
+  padding:2px 5px;outline:none;text-align:center;cursor:text;
+  min-width:30px;max-width:140px;
   transition:border-color .12s,background .12s,color .12s;
 }
 .lbl-inp:hover,.lbl-inp:focus{
-  border-color:var(--acc2);
-  background:rgba(90,255,206,.06);
-  color:var(--acc2);
+  border-color:var(--acc2);background:rgba(90,255,206,.06);color:var(--acc2);
 }
 
 /* matplotlib img */
@@ -254,22 +263,16 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 
 /* loading spinner */
 .spin-overlay{
-  position:absolute;inset:0;
-  background:rgba(7,7,15,.72);
+  position:absolute;inset:0;background:rgba(7,7,15,.72);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:10px;z-index:50;
-  opacity:0;pointer-events:none;transition:opacity .2s;
+  gap:10px;z-index:50;opacity:0;pointer-events:none;transition:opacity .2s;
 }
 .spin-overlay.show{opacity:1;pointer-events:all}
-.spinner{
-  width:34px;height:34px;border-radius:50%;
-  border:3px solid var(--border2);border-top-color:var(--acc);
-  animation:spin .65s linear infinite;
-}
+.spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--border2);border-top-color:var(--acc);animation:spin .65s linear infinite}
 .spin-lbl{font-size:.62rem;color:var(--muted);letter-spacing:.1em}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* shimmer (mpl convert) */
+/* shimmer */
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .shimmer-overlay{
   position:absolute;inset:0;
@@ -281,8 +284,7 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 
 /* add ghost card */
 .add-card{
-  position:relative;z-index:1;flex-shrink:0;
-  min-height:90px;
+  position:relative;z-index:1;flex-shrink:0;min-height:90px;
   border:2px dashed var(--border2);border-radius:10px;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:7px;cursor:pointer;color:var(--muted);font-size:.7rem;
