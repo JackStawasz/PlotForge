@@ -14,8 +14,6 @@
   <!-- HEADER -->
   <header>
     <div class="logo"><em>Plot</em>Forge</div>
-    <div class="hdiv"></div>
-    <span class="htag">matplotlib · chart.js · python/flask</span>
     <div class="hright">
       <div class="cdot" id="cdot"></div>
       <span id="cmsg">connecting…</span>
@@ -25,6 +23,12 @@
   <!-- LEFT SIDEBAR: template picker + params -->
   <aside class="sidebar">
     <div>
+      <div id="sidebarNoPlot" class="sidebar-no-plot">
+        <div style="font-size:1.4rem;opacity:.12">⊹</div>
+        <div>Select a plot<br>to edit it</div>
+      </div>
+      <div id="sidebarPlotContent" style="display:none;flex-direction:column;gap:18px">
+      <div>
       <div class="slbl">Templates</div>
       <div id="catBlocks" class="cat-blocks"></div>
     </div>
@@ -34,6 +38,7 @@
         <div style="font-size:.65rem;color:var(--muted);font-style:italic">Select a template.</div>
       </div>
     </div>
+      </div>
   </aside>
 
   <!-- MAIN: scrollable plot list -->
@@ -53,16 +58,16 @@
           <div class="crow">
             <label>X range</label>
             <div class="drow">
-              <input type="number" id="c_xn" placeholder="auto" step="0.5"/>
-              <input type="number" id="c_xx" placeholder="auto" step="0.5"/>
+              <input type="text" inputmode="decimal" id="c_xn" placeholder="—"/>
+              <input type="text" inputmode="decimal" id="c_xx" placeholder="—"/>
             </div>
             <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
           </div>
           <div class="crow">
             <label>Y range</label>
             <div class="drow">
-              <input type="number" id="c_yn" placeholder="auto" step="0.5"/>
-              <input type="number" id="c_yx" placeholder="auto" step="0.5"/>
+              <input type="text" inputmode="decimal" id="c_yn" placeholder="—"/>
+              <input type="text" inputmode="decimal" id="c_yx" placeholder="—"/>
             </div>
             <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
           </div>
