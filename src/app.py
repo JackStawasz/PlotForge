@@ -340,6 +340,59 @@ TEMPLATES = {
       "s": {"label":"Rate (s)",      "default":0.5,   "min":-5.0, "max":5.0,  "step":0.1},
     },
   },
+  "nth_root": {
+    "category": "general", "label": "Nth Root",
+    "equation": "a · x^(1/n)",
+    "x_default": [0, 5],
+    "params": {
+      "a": {"label":"Scale (a)", "default":1.0, "min":-5.0, "max":5.0, "step":0.1},
+      "n": {"label":"Root (n)",  "default":2.0, "min":1.0,  "max":10.0, "step":0.5},
+    },
+  },
+
+  # ── OTHER ────────────────────────────────────────────────────────────────
+  "reciprocal": {
+    "category": "other", "label": "Reciprocal",
+    "equation": "a / (x + h)",
+    "x_default": [-5, 5],
+    "params": {
+      "a": {"label":"Scale (a)",  "default":1.0, "min":-5.0, "max":5.0, "step":0.1},
+      "h": {"label":"Shift (h)",  "default":0.0, "min":-5.0, "max":5.0, "step":0.1},
+    },
+  },
+  "factorial": {
+    "category": "other", "label": "Factorial",
+    "equation": "a · Γ(x+1)",
+    "x_default": [0, 6],
+    "params": {
+      "a": {"label":"Scale (a)", "default":1.0, "min":-5.0, "max":5.0, "step":0.1},
+    },
+  },
+  "ceiling": {
+    "category": "other", "label": "Ceiling",
+    "equation": "a · ⌈x⌉",
+    "x_default": [-5, 5],
+    "params": {
+      "a": {"label":"Scale (a)", "default":1.0, "min":-5.0, "max":5.0, "step":0.1},
+    },
+  },
+  "floor": {
+    "category": "other", "label": "Floor",
+    "equation": "a · ⌊x⌋",
+    "x_default": [-5, 5],
+    "params": {
+      "a": {"label":"Scale (a)", "default":1.0, "min":-5.0, "max":5.0, "step":0.1},
+    },
+  },
+  "absolute": {
+    "category": "other", "label": "Absolute Value",
+    "equation": "a · |x + h|",
+    "x_default": [-5, 5],
+    "params": {
+      "a": {"label":"Scale (a)",  "default":1.0, "min":-5.0, "max":5.0, "step":0.1},
+      "h": {"label":"Shift (h)",  "default":0.0, "min":-5.0, "max":5.0, "step":0.1},
+    },
+  },
 }
 
 
@@ -457,6 +510,28 @@ def generate_xy(tkey, params, view):
     elif tkey == "exponential":
         x=_xrange(view,xd); base=max(1.0001,p.get("b",2.718))
         y=p.get("a",1)*np.power(base,p.get("s",0.5)*x)
+    elif tkey == "nth_root":
+        lo=max(0.0, view.get("x_min") or xd[0]); hi=view.get("x_max") or xd[1]
+        x=np.linspace(lo,hi,400)
+        n=max(0.001, p.get("n",2.0))
+        y=p.get("a",1)*np.sign(x)*np.abs(x)**(1.0/n)
+    elif tkey == "reciprocal":
+        x=_xrange(view,xd,800); h=p.get("h",0.0)
+        denom=x+h; raw=p.get("a",1)/np.where(np.abs(denom)<0.01,np.nan,denom)
+        y=np.where(np.abs(raw)>50,np.nan,raw)
+    elif tkey == "factorial":
+        from scipy.special import gamma as _gamma
+        x=_xrange(view,xd,400)
+        # Use gamma function: x! = Gamma(x+1), mask negative integers
+        xp1=x+1
+        y=p.get("a",1)*np.where(xp1>0, _gamma(xp1), np.nan)
+        y=np.where(np.abs(y)>1e8, np.nan, y)
+    elif tkey == "ceiling":
+        x=_xrange(view,xd,800); y=p.get("a",1)*np.ceil(x)
+    elif tkey == "floor":
+        x=_xrange(view,xd,800); y=p.get("a",1)*np.floor(x)
+    elif tkey == "absolute":
+        x=_xrange(view,xd); y=p.get("a",1)*np.abs(x+p.get("h",0.0))
     else:
         raise ValueError(f"Unknown template '{tkey}'")
     return x, y
