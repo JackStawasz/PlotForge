@@ -2,9 +2,10 @@ const API = 'http://localhost:5000/api';
 
 // ═══ CATEGORY META ═══════════════════════════════════════════════════════
 const CAT_META = {
-  trig:   { label:'Trigonometric',    dotClass:'trig'   },
-  bell:   { label:'Bell Curves',      dotClass:'bell'   },
-  simple: { label:'Simple Functions', dotClass:'simple' },
+  trig:    { label:'Trigonometric', dotClass:'trig'    },
+  bell:    { label:'Bell Curves',   dotClass:'bell'    },
+  lines:   { label:'Lines',         dotClass:'lines'   },
+  general: { label:'General',       dotClass:'general' },
 };
 
 // ═══ STATE ═══════════════════════════════════════════════════════════════
@@ -70,119 +71,182 @@ function evalTemplate(tkey, params, view){
       y = x.map(v => (p.A||1)*Math.sin((p.f||1)*v + (p.phi||0)));
       break;
     }
-    case 'cos':{
-      x = linspace(xLo,xHi,N);
-      y = x.map(v => (p.A||1)*Math.cos((p.f||1)*v + (p.phi||0)));
-      break;
-    }
-    case 'tan':{
-      x = linspace(xLo,xHi,800);
-      y = x.map(v => {
-        const val = (p.A||1)*Math.tan((p.f||1)*v);
-        return Math.abs(val) > 50 ? null : val;
-      });
-      break;
-    }
-    case 'sec':{
-      x = linspace(xLo,xHi,800);
-      y = x.map(v => {
-        const c = Math.cos((p.f||1)*v);
-        if(Math.abs(c) < 0.01) return null;
-        const val = (p.A||1)/c;
-        return Math.abs(val) > 20 ? null : val;
-      });
-      break;
-    }
     case 'arcsin':{
-      const lo2 = Math.max(-0.9999, xLo), hi2 = Math.min(0.9999, xHi);
-      x = linspace(lo2,hi2,400);
-      y = x.map(v => (p.A||1)*Math.asin(v));
-      break;
-    }
-    case 'arctan':{
-      x = linspace(xLo,xHi,N);
-      y = x.map(v => (p.A||1)*Math.atan((p.f||1)*v));
+      const lo2=Math.max(-0.9999,xLo), hi2=Math.min(0.9999,xHi);
+      x=linspace(lo2,hi2,400); y=x.map(v=>(p.A||1)*Math.asin(v));
       break;
     }
     case 'sinh':{
-      x = linspace(xLo,xHi,N);
-      y = x.map(v => (p.A||1)*Math.sinh((p.f||1)*v));
+      x=linspace(xLo,xHi,N); y=x.map(v=>(p.A||1)*Math.sinh((p.f||1)*v));
+      break;
+    }
+    case 'arcsinh':{
+      x=linspace(xLo,xHi,N); y=x.map(v=>(p.A||1)*Math.asinh((p.f||1)*v));
+      break;
+    }
+    case 'cos':{
+      x=linspace(xLo,xHi,N); y=x.map(v=>(p.A||1)*Math.cos((p.f||1)*v+(p.phi||0)));
+      break;
+    }
+    case 'arccos':{
+      const lo2=Math.max(-0.9999,xLo), hi2=Math.min(0.9999,xHi);
+      x=linspace(lo2,hi2,400); y=x.map(v=>(p.A||1)*Math.acos(v));
       break;
     }
     case 'cosh':{
-      x = linspace(xLo,xHi,N);
-      y = x.map(v => (p.A||1)*Math.cosh((p.f||1)*v));
+      x=linspace(xLo,xHi,N); y=x.map(v=>(p.A||1)*Math.cosh((p.f||1)*v));
       break;
     }
-    case 'damped_sin':{
-      const lo2 = Math.max(0, xLo);
-      x = linspace(lo2,xHi,N);
-      y = x.map(v => Math.exp(-(p.d||0.3)*v)*Math.sin((p.f||3)*v));
+    case 'arccosh':{
+      const lo2=Math.max(1.001,xLo);
+      x=linspace(lo2,xHi,400); y=x.map(v=>(p.A||1)*Math.acosh((p.f||1)*v));
+      break;
+    }
+    case 'tan':{
+      x=linspace(xLo,xHi,800);
+      y=x.map(v=>{ const val=(p.A||1)*Math.tan((p.f||1)*v); return Math.abs(val)>50?null:val; });
+      break;
+    }
+    case 'arctan':{
+      x=linspace(xLo,xHi,N); y=x.map(v=>(p.A||1)*Math.atan((p.f||1)*v));
+      break;
+    }
+    case 'tanh':{
+      x=linspace(xLo,xHi,N); y=x.map(v=>(p.A||1)*Math.tanh((p.f||1)*v));
+      break;
+    }
+    case 'arctanh':{
+      const f=p.f||1, bound=0.9999/Math.max(0.0001,Math.abs(f));
+      const lo2=Math.max(-bound,xLo), hi2=Math.min(bound,xHi);
+      x=linspace(lo2,hi2,400); y=x.map(v=>(p.A||1)*Math.atanh(f*v));
+      break;
+    }
+    case 'csc':{
+      x=linspace(xLo,xHi,800);
+      y=x.map(v=>{ const s=Math.sin((p.f||1)*v); if(Math.abs(s)<0.01) return null;
+        const val=(p.A||1)/s; return Math.abs(val)>20?null:val; });
+      break;
+    }
+    case 'arccsc':{
+      x=linspace(xLo,xHi,N);
+      y=x.map(v=>Math.abs(v)<1?null:(p.A||1)*Math.asin(1/v));
+      break;
+    }
+    case 'csch':{
+      x=linspace(xLo,xHi,N);
+      y=x.map(v=>{ const s=Math.sinh((p.f||1)*v); if(Math.abs(s)<0.001) return null;
+        const val=(p.A||1)/s; return Math.abs(val)>50?null:val; });
+      break;
+    }
+    case 'arccsch':{
+      x=linspace(xLo,xHi,N);
+      y=x.map(v=>v===0?null:(p.A||1)*Math.asinh(1/v));
+      break;
+    }
+    case 'sec':{
+      x=linspace(xLo,xHi,800);
+      y=x.map(v=>{ const c=Math.cos((p.f||1)*v); if(Math.abs(c)<0.01) return null;
+        const val=(p.A||1)/c; return Math.abs(val)>20?null:val; });
+      break;
+    }
+    case 'arcsec':{
+      x=linspace(xLo,xHi,N);
+      y=x.map(v=>Math.abs(v)<1?null:(p.A||1)*Math.acos(1/v));
+      break;
+    }
+    case 'sech':{
+      x=linspace(xLo,xHi,N); y=x.map(v=>(p.A||1)/Math.cosh((p.f||1)*v));
+      break;
+    }
+    case 'arcsech':{
+      const lo2=Math.max(0.001,xLo), hi2=Math.min(0.9999,xHi);
+      x=linspace(lo2,hi2,400); y=x.map(v=>(p.A||1)*Math.acosh(1/v));
+      break;
+    }
+    case 'cot':{
+      x=linspace(xLo,xHi,800);
+      y=x.map(v=>{ const s=Math.sin((p.f||1)*v); if(Math.abs(s)<0.01) return null;
+        const val=(p.A||1)*Math.cos((p.f||1)*v)/s; return Math.abs(val)>50?null:val; });
+      break;
+    }
+    case 'arccot':{
+      x=linspace(xLo,xHi,N); y=x.map(v=>(p.A||1)*(Math.PI/2-Math.atan((p.f||1)*v)));
+      break;
+    }
+    case 'coth':{
+      x=linspace(xLo,xHi,N);
+      y=x.map(v=>{ const t=Math.tanh((p.f||1)*v); if(Math.abs(t)<0.001) return null;
+        const val=(p.A||1)/t; return Math.abs(val)>50?null:val; });
+      break;
+    }
+    case 'arccoth':{
+      x=linspace(xLo,xHi,N);
+      y=x.map(v=>Math.abs(v)<=1?null:(p.A||1)*Math.atanh(1/v));
       break;
     }
     case 'gaussian':{
-      x = linspace(xLo,xHi,N);
+      x=linspace(xLo,xHi,N);
       const mu=p.mu||0, sig=Math.max(0.001,p.sig||1);
-      y = x.map(v => (p.A||1)*Math.exp(-((v-mu)**2)/(2*sig**2)));
+      y=x.map(v=>(p.A||1)*Math.exp(-((v-mu)**2)/(2*sig**2)));
       break;
     }
     case 'lorentzian':{
-      x = linspace(xLo,xHi,N);
+      x=linspace(xLo,xHi,N);
       const g=Math.max(0.001,p.gamma||1), x0=p.x0||0;
-      y = x.map(v => (p.A||1)*g**2/((v-x0)**2+g**2));
+      y=x.map(v=>(p.A||1)*g**2/((v-x0)**2+g**2));
       break;
     }
     case 'binomial':{
-      discrete = true;
+      discrete=true;
       const n=Math.round(p.n||20), pk=Math.max(0.001,Math.min(0.999,p.p||0.5));
-      x = []; y = [];
-      for(let k=0;k<=n;k++){
-        x.push(k);
-        y.push(binomPMF(n,k,pk));
-      }
+      x=[]; y=[];
+      for(let k=0;k<=n;k++){ x.push(k); y.push(binomPMF(n,k,pk)); }
       break;
     }
     case 'poisson':{
-      discrete = true;
-      const lam=Math.max(0.01,p.lam||4);
-      const hi2 = Math.max(20, Math.ceil(lam*3));
-      x = []; y = [];
-      for(let k=0;k<=hi2;k++){
-        x.push(k);
-        y.push(poissonPMF(lam,k));
-      }
+      discrete=true;
+      const lam=Math.max(0.01,p.lam||4), hi2=Math.max(20,Math.ceil(lam*3));
+      x=[]; y=[];
+      for(let k=0;k<=hi2;k++){ x.push(k); y.push(poissonPMF(lam,k)); }
       break;
     }
     case 'laplace':{
-      x = linspace(xLo,xHi,N);
+      x=linspace(xLo,xHi,N);
       const b=Math.max(0.001,p.b||1), mu2=p.mu||0;
-      y = x.map(v => (p.A||1)/(2*b)*Math.exp(-Math.abs(v-mu2)/b));
+      y=x.map(v=>(p.A||1)/(2*b)*Math.exp(-Math.abs(v-mu2)/b));
       break;
     }
     case 'linear':{
-      x = linspace(xLo,xHi,N);
-      y = x.map(v => (p.m||1)*v + (p.b||0));
+      x=linspace(xLo,xHi,N); y=x.map(v=>(p.m||1)*v+(p.b||0));
+      break;
+    }
+    case 'vline':{
+      const c=p.c||0;
+      // Render as a very tall vertical segment
+      x=[c,c]; y=[-1e6,1e6];
+      break;
+    }
+    case 'hline':{
+      x=linspace(xLo,xHi,N); y=x.map(()=>p.c||0);
       break;
     }
     case 'poly_custom':{
-      x = linspace(xLo,xHi,N);
+      x=linspace(xLo,xHi,N);
       const deg=Math.round(p.degree||4);
-      y = x.map(v => {
-        let sum=0;
-        for(let i=0;i<=deg;i++) sum += (p[`a${i}`]||0)*v**i;
-        return sum;
-      });
+      y=x.map(v=>{ let sum=0; for(let i=0;i<=deg;i++) sum+=(p[`a${i}`]||0)*v**i; return sum; });
       break;
     }
     case 'logarithmic':{
       const lo2=Math.max(0.001,xLo);
-      x = linspace(lo2,xHi,400);
-      y = x.map(v => (p.a||1)*Math.log(v) + (p.b||0));
+      x=linspace(lo2,xHi,400);
+      const base=Math.max(1.0001,p.b||Math.E);
+      y=x.map(v=>(p.a||1)*(Math.log(v)/Math.log(base))+(p.c||0));
       break;
     }
     case 'exponential':{
-      x = linspace(xLo,xHi,N);
-      y = x.map(v => (p.a||1)*Math.exp((p.s||0.5)*v));
+      x=linspace(xLo,xHi,N);
+      const base=Math.max(1.0001,p.b||Math.E);
+      y=x.map(v=>(p.a||1)*Math.pow(base,(p.s||0.5)*v));
       break;
     }
     default: return null;
@@ -264,18 +328,24 @@ function refreshSidebar(){
 
   // Open the correct category accordion
   if(tkey){
-    const cat=TEMPLATES[tkey]?.category;
     document.querySelectorAll('.cat-body').forEach(b=>b.classList.remove('open'));
     document.querySelectorAll('.cat-hdr').forEach(h=>h.classList.remove('open'));
-    // Find and open the right category
-    const catHdrs=document.querySelectorAll('.cat-hdr');
-    catHdrs.forEach(hdr=>{
+    document.querySelectorAll('.subfolder-body').forEach(b=>b.classList.remove('open'));
+    document.querySelectorAll('.subfolder-hdr').forEach(h=>h.classList.remove('open'));
+    // Open the right category
+    document.querySelectorAll('.cat-hdr').forEach(hdr=>{
       const body=hdr.nextElementSibling;
-      // Check if this category body contains the selected tpl
-      const hasTpl=body?.querySelector(`[data-key="${tkey}"]`);
-      if(hasTpl){ hdr.classList.add('open'); body.classList.add('open'); }
+      if(body?.querySelector(`[data-key="${tkey}"]`)){
+        hdr.classList.add('open'); body.classList.add('open');
+        // Also open the subfolder containing this key
+        body.querySelectorAll('.subfolder-hdr').forEach(sh=>{
+          const sb=sh.nextElementSibling;
+          if(sb?.querySelector(`[data-key="${tkey}"]`)){
+            sh.classList.add('open'); sb.classList.add('open');
+          }
+        });
+      }
     });
-    // Rebuild params for this plot's template with its current param values
     selTpl=tkey;
     buildParamsForTemplate(tkey, p.params);
   }else{
@@ -287,13 +357,23 @@ function refreshSidebar(){
 function buildCategories(){
   const container = document.getElementById('catBlocks');
   container.innerHTML = '';
-  const grouped = {};
+
+  // Group by category, then by subfolder (null = flat item)
+  const grouped = {}; // cat -> { _flat: [{key,tpl}], subfolderName: [{key,tpl}] }
   for(const [key,tpl] of Object.entries(TEMPLATES)){
-    if(!grouped[tpl.category]) grouped[tpl.category] = [];
-    grouped[tpl.category].push({key,tpl});
+    const cat = tpl.category;
+    const sub = tpl.subfolder || null;
+    if(!grouped[cat]) grouped[cat] = { _flat: [] };
+    if(sub){
+      if(!grouped[cat][sub]) grouped[cat][sub] = [];
+      grouped[cat][sub].push({key,tpl});
+    } else {
+      grouped[cat]._flat.push({key,tpl});
+    }
   }
-  for(const [cat, items] of Object.entries(grouped)){
-    const meta = CAT_META[cat]||{label:cat,dotClass:''};
+
+  for(const [cat, submap] of Object.entries(grouped)){
+    const meta = CAT_META[cat]||{label:cat, dotClass:''};
     const wrap = document.createElement('div');
     wrap.className='cat-wrap';
 
@@ -304,26 +384,72 @@ function buildCategories(){
     const body = document.createElement('div');
     body.className='cat-body';
 
-    const list = document.createElement('div');
-    list.className='tpl-list';
-    items.forEach(({key,tpl}, idx) => {
-      const isLast = idx === items.length - 1;
-      const btn=document.createElement('button');
-      btn.className='tpl-item'; btn.dataset.key=key;
-      // Tree connector: ├ for all but last, └ for last
-      const connector = isLast ? '└' : '├';
-      btn.innerHTML=`<span class="tree-connector">${connector}</span><span class="tpl-label">${tpl.label}</span><span class="tpl-eq">${tpl.equation}</span>`;
-      btn.addEventListener('click',()=>selectTemplate(key));
-      list.appendChild(btn);
+    // Build subfolder list ordering: subfolders first, then flat items
+    const subfolders = Object.keys(submap).filter(k => k !== '_flat');
+    const flatItems  = submap._flat;
+
+    // Count total direct children for tree connectors
+    const totalTopLevel = subfolders.length + flatItems.length;
+    let topIdx = 0;
+
+    subfolders.forEach(subName => {
+      const items = submap[subName];
+      const isLastTop = (topIdx === totalTopLevel - 1);
+      topIdx++;
+
+      const subWrap = document.createElement('div');
+      subWrap.className = 'subfolder-wrap';
+
+      const subHdr = document.createElement('button');
+      subHdr.className = 'subfolder-hdr';
+      const subConnector = isLastTop ? '└' : '├';
+      subHdr.innerHTML = `<span class="tree-connector">${subConnector}</span><span class="sub-label">${subName}</span><span class="sub-arrow">›</span>`;
+
+      const subBody = document.createElement('div');
+      subBody.className = 'subfolder-body';
+
+      items.forEach(({key, tpl}, idx) => {
+        const isLast = idx === items.length - 1;
+        const btn = document.createElement('button');
+        btn.className = 'tpl-item sub-item'; btn.dataset.key = key;
+        // Indent connector: ├─ or └─ under subfolder
+        const conn = isLast ? '└' : '├';
+        btn.innerHTML = `<span class="tree-connector sub-connector">${conn}</span><span class="tpl-label">${tpl.label}</span><span class="tpl-eq">${tpl.equation}</span>`;
+        btn.addEventListener('click', () => selectTemplate(key));
+        subBody.appendChild(btn);
+      });
+
+      subHdr.addEventListener('click', e => {
+        e.stopPropagation();
+        const wasOpen = subBody.classList.contains('open');
+        // Close all other subfolders in this category
+        body.querySelectorAll('.subfolder-body').forEach(b => b.classList.remove('open'));
+        body.querySelectorAll('.subfolder-hdr').forEach(h => h.classList.remove('open'));
+        if(!wasOpen){ subBody.classList.add('open'); subHdr.classList.add('open'); }
+      });
+
+      subWrap.appendChild(subHdr);
+      subWrap.appendChild(subBody);
+      body.appendChild(subWrap);
     });
 
-    body.appendChild(list);
+    // Flat items (no subfolder)
+    flatItems.forEach(({key, tpl}, idx) => {
+      const isLast = (topIdx === totalTopLevel - 1);
+      topIdx++;
+      const btn = document.createElement('button');
+      btn.className = 'tpl-item'; btn.dataset.key = key;
+      const connector = isLast ? '└' : '├';
+      btn.innerHTML = `<span class="tree-connector">${connector}</span><span class="tpl-label">${tpl.label}</span><span class="tpl-eq">${tpl.equation}</span>`;
+      btn.addEventListener('click', () => selectTemplate(key));
+      body.appendChild(btn);
+    });
 
-    hdr.addEventListener('click',()=>{
-      const wasOpen=body.classList.contains('open');
-      document.querySelectorAll('.cat-body').forEach(b=>b.classList.remove('open'));
-      document.querySelectorAll('.cat-hdr').forEach(h=>h.classList.remove('open'));
-      if(!wasOpen){body.classList.add('open');hdr.classList.add('open');}
+    hdr.addEventListener('click', () => {
+      const wasOpen = body.classList.contains('open');
+      document.querySelectorAll('.cat-body').forEach(b => b.classList.remove('open'));
+      document.querySelectorAll('.cat-hdr').forEach(h => h.classList.remove('open'));
+      if(!wasOpen){ body.classList.add('open'); hdr.classList.add('open'); }
     });
 
     wrap.appendChild(hdr);
