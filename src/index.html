@@ -22,23 +22,27 @@
 
   <!-- LEFT SIDEBAR: template picker + params -->
   <aside class="sidebar">
-    <div>
-      <div id="sidebarNoPlot" class="sidebar-no-plot">
-        <div style="font-size:1.4rem;opacity:.12">⊹</div>
-        <div>Select a plot<br>to edit it</div>
-      </div>
-      <div id="sidebarPlotContent" style="display:none;flex-direction:column;gap:18px">
+    <div id="sidebarNoPlot" class="sidebar-no-plot">
+      <div style="font-size:1.4rem;opacity:.12">⊹</div>
+      <div>Select a plot<br>to edit it</div>
+    </div>
+    <div id="sidebarPlotContent" style="display:none;flex-direction:column;gap:18px">
       <div>
-      <div class="slbl">Templates</div>
-      <div id="catBlocks" class="cat-blocks"></div>
-    </div>
-    <div>
-      <div class="slbl">Parameters</div>
-      <div class="params-area" id="paramsArea">
-        <div style="font-size:.65rem;color:var(--muted);font-style:italic">Select a template.</div>
+        <div class="slbl">Templates</div>
+        <div id="catBlocks" class="cat-blocks"></div>
       </div>
-    </div>
+      <div>
+        <div class="slbl">Parameters</div>
+        <div class="params-area" id="paramsArea">
+          <div style="font-size:.65rem;color:var(--muted);font-style:italic">Select a template.</div>
+        </div>
       </div>
+      <!-- Add to Plot button -->
+      <button class="add-to-plot-btn atp-disabled" id="addToPlotBtn" disabled>
+        <span class="atp-icon">⊕</span>
+        Add to Plot
+      </button>
+    </div>
   </aside>
 
   <!-- MAIN: scrollable plot list -->
@@ -50,104 +54,178 @@
       <div style="font-size:1.5rem;opacity:.15">⊞</div>
       <div>Select a plot card<br>to configure view</div>
     </div>
-    <div id="cfgContent" style="display:none;flex-direction:column;gap:14px">
 
-      <div>
-        <div class="slbl-row">
-          <span class="slbl">Domain</span>
-          <button class="home-btn" id="domainHomeBtn" title="Reset to default view">⌂ home</button>
-        </div>
-        <div class="cfg-sec">
-          <div class="crow">
-            <label>X range</label>
-            <div class="drow">
-              <input type="text" inputmode="decimal" id="c_xn" placeholder="—"/>
-              <input type="text" inputmode="decimal" id="c_xx" placeholder="—"/>
-            </div>
-            <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
-          </div>
-          <div class="crow">
-            <label>Y range</label>
-            <div class="drow">
-              <input type="text" inputmode="decimal" id="c_yn" placeholder="—"/>
-              <input type="text" inputmode="decimal" id="c_yx" placeholder="—"/>
-            </div>
-            <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
-          </div>
-        </div>
+    <div id="cfgContent" style="display:none;flex-direction:column;gap:0">
+
+      <!-- Tab bar -->
+      <div class="cfg-tabs">
+        <button class="cfg-tab cfg-tab-active" id="cfgTabPlot">Plot Settings</button>
+        <button class="cfg-tab" id="cfgTabLine">Line Settings</button>
       </div>
 
-      <div class="cdivider"></div>
+      <!-- ══ PLOT SETTINGS PANE ══ -->
+      <div id="cfgPanePlot" style="display:flex;flex-direction:column;gap:14px;padding:14px 12px 20px">
 
-      <div>
-        <div class="slbl">Line Style</div>
-        <div class="cfg-sec">
-          <div class="crow">
-            <label>Color</label>
-            <div class="color-row">
-              <div class="cswatch"><input type="color" id="c_lc" value="#5affce"/></div>
-              <input class="chex" type="text" id="c_lchex" value="#5affce" maxlength="7"/>
+        <div>
+          <div class="slbl-row">
+            <span class="slbl">Viewport Domain</span>
+            <button class="home-btn" id="domainHomeBtn" title="Reset to default view">↺ reset view</button>
+          </div>
+          <div class="cfg-sec">
+            <div class="crow">
+              <label>X range</label>
+              <div class="drow">
+                <input type="text" inputmode="decimal" id="c_xn" placeholder="—"/>
+                <input type="text" inputmode="decimal" id="c_xx" placeholder="—"/>
+              </div>
+              <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
+            </div>
+            <div class="crow">
+              <label>Y range</label>
+              <div class="drow">
+                <input type="text" inputmode="decimal" id="c_yn" placeholder="—"/>
+                <input type="text" inputmode="decimal" id="c_yx" placeholder="—"/>
+              </div>
+              <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
             </div>
           </div>
-          <div class="crow">
-            <label>Width — <span id="c_lw_val" style="color:var(--acc2)">2.0</span></label>
-            <input type="range" id="c_lw" min="0.5" max="6" step="0.5" value="2"/>
-          </div>
-          <div class="crow">
-            <label>Style</label>
-            <select id="c_ls">
-              <option value="solid">── Solid</option>
-              <option value="dashed">- - Dashed</option>
-              <option value="dotted">··· Dotted</option>
-              <option value="dashdot">-·- Dash-dot</option>
-            </select>
-          </div>
-          <div class="crow">
-            <label>Marker</label>
-            <select id="c_mk">
-              <option value="none">None</option>
-              <option value="o">● Circle</option>
-              <option value="s">■ Square</option>
-              <option value="^">▲ Triangle</option>
-              <option value="D">◆ Diamond</option>
-              <option value="+">+ Cross</option>
-              <option value="x">× X</option>
-            </select>
+        </div>
+
+        <div class="cdivider"></div>
+
+        <div>
+          <div class="slbl">Grid</div>
+          <div class="cfg-sec">
+            <div class="trow">
+              <label>Show grid</label>
+              <label class="tog"><input type="checkbox" id="c_grid" checked><span class="tslider"></span></label>
+            </div>
+            <div class="trow">
+              <label>Display legend</label>
+              <label class="tog"><input type="checkbox" id="c_show_legend" checked><span class="tslider"></span></label>
+            </div>
+            <div class="crow">
+              <label>Opacity — <span id="c_galpha_val" style="color:var(--acc2)">0.50</span></label>
+              <input type="range" id="c_galpha" min="0.05" max="1" step="0.05" value="0.5"/>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="cdivider"></div>
+        <div class="cdivider"></div>
 
-      <div>
-        <div class="slbl">Fill &amp; Grid</div>
-        <div class="cfg-sec">
-          <div class="trow">
-            <label>Fill under curve</label>
-            <label class="tog"><input type="checkbox" id="c_fill"><span class="tslider"></span></label>
-          </div>
-          <div class="trow">
-            <label>Show grid</label>
-            <label class="tog"><input type="checkbox" id="c_grid" checked><span class="tslider"></span></label>
-          </div>
-        </div>
-      </div>
-
-      <div class="cdivider"></div>
-
-      <div>
-        <div class="slbl">Typography</div>
-        <div class="cfg-sec">
-          <div class="crow">
-            <label>Title size (pt)</label>
-            <input type="number" id="c_ts" value="13" min="7" max="22" step="1"/>
-          </div>
-          <div class="crow">
-            <label>Axis label size (pt)</label>
-            <input type="number" id="c_ls2" value="10" min="6" max="18" step="1"/>
+        <div>
+          <div class="slbl">Typography</div>
+          <div class="cfg-sec">
+            <div class="crow">
+              <label>Title size (pt)</label>
+              <input type="number" id="c_ts" value="13" min="7" max="22" step="1"/>
+            </div>
+            <div class="crow">
+              <label>Axis label size (pt)</label>
+              <input type="number" id="c_ls2" value="10" min="6" max="18" step="1"/>
+            </div>
           </div>
         </div>
-      </div>
+
+      </div><!-- #cfgPanePlot -->
+
+      <!-- ══ LINE SETTINGS PANE ══ -->
+      <div id="cfgPaneLine" style="display:none;flex-direction:column;gap:14px;padding:14px 12px 20px">
+
+        <!-- Curve selector -->
+        <div id="lineCurveSelector" class="curve-selector" style="display:none"></div>
+
+        <div>
+          <div class="slbl">Curve Identity</div>
+          <div class="cfg-sec">
+            <div class="crow">
+              <label>Legend name</label>
+              <input type="text" id="c_curvename" placeholder="Auto (template name)" maxlength="40"/>
+            </div>
+            <button class="remove-curve-btn" id="removeCurveBtn">✕ Remove curve</button>
+          </div>
+        </div>
+
+        <div class="cdivider"></div>
+
+        <div>
+          <div class="slbl">Line Style</div>
+          <div class="cfg-sec">
+            <div class="crow">
+              <label>Color</label>
+              <div class="color-row">
+                <div class="cswatch"><input type="color" id="c_lc" value="#5affce"/></div>
+                <input class="chex" type="text" id="c_lchex" value="#5affce" maxlength="7"/>
+              </div>
+            </div>
+            <div class="crow">
+              <label>Width — <span id="c_lw_val" style="color:var(--acc2)">2.0</span></label>
+              <input type="range" id="c_lw" min="0.5" max="6" step="0.5" value="2"/>
+            </div>
+            <div class="crow">
+              <label>Style</label>
+              <select id="c_ls">
+                <option value="solid">── Solid</option>
+                <option value="dashed">- - Dashed</option>
+                <option value="dotted">··· Dotted</option>
+                <option value="dashdot">-·- Dash-dot</option>
+              </select>
+            </div>
+            <div class="crow">
+              <label>Marker</label>
+              <select id="c_mk">
+                <option value="none">None</option>
+                <option value="o">● Circle</option>
+                <option value="s">■ Square</option>
+                <option value="^">▲ Triangle</option>
+                <option value="D">◆ Diamond</option>
+                <option value="+">+ Cross</option>
+                <option value="x">× X</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="cdivider"></div>
+
+        <div>
+          <div class="slbl">Fill</div>
+          <div class="cfg-sec">
+            <div class="trow">
+              <label>Fill under curve</label>
+              <label class="tog"><input type="checkbox" id="c_fill"><span class="tslider"></span></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="cdivider"></div>
+
+        <div>
+          <div class="slbl-row">
+            <span class="slbl">Data Mask</span>
+            <span class="slbl-hint">filter by value</span>
+          </div>
+          <div class="cfg-sec">
+            <div class="crow">
+              <label>X range</label>
+              <div class="drow">
+                <input type="text" inputmode="decimal" id="c_mask_xn" placeholder="-inf"/>
+                <input type="text" inputmode="decimal" id="c_mask_xx" placeholder="+inf"/>
+              </div>
+              <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
+            </div>
+            <div class="crow">
+              <label>Y range</label>
+              <div class="drow">
+                <input type="text" inputmode="decimal" id="c_mask_yn" placeholder="-inf"/>
+                <input type="text" inputmode="decimal" id="c_mask_yx" placeholder="+inf"/>
+              </div>
+              <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- #cfgPaneLine -->
 
     </div><!-- #cfgContent -->
   </aside>

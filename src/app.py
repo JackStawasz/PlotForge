@@ -539,37 +539,96 @@ def generate_xy(tkey, params, view):
 
 BG="#080810"; SURFACE="#12121c"; GRID_C="#1a1a2c"; TEXT_C="#c0c0e0"; SPINE_C="#222236"
 
-def render_matplotlib(x, y, view, labels, is_discrete=False):
+def _apply_mask(x, y, ci):
+    """Apply x/y mask: keep points where x in (xMin,xMax) and y in (yMin,yMax)."""
+    xn=ci.get("mask_x_min"); xx=ci.get("mask_x_max")
+    yn=ci.get("mask_y_min"); yx=ci.get("mask_y_max")
+    if xn is None and xx is None and yn is None and yx is None:
+        return x, y
+    mask=np.ones(len(x),dtype=bool)
+    if xn is not None: mask&=(x>xn)
+    if xx is not None: mask&=(x<xx)
+    if yn is not None: mask&=(y>yn)
+    if yx is not None: mask&=(y<yx)
+    return x[mask], y[mask]
+
+
+
+def _hex_to_rgb01(h):
+    h=h.lstrip('#')
+    return tuple(int(h[i:i+2],16)/255 for i in (0,2,4))
+
+def render_matplotlib_multi(curves_data, view, labels):
+    """
+    curves_data: list of dicts with keys:
+      x, y, is_discrete, line_color, line_width, line_style,
+      marker, marker_size, fill_under, fill_alpha, label
+    """
     fig,ax=plt.subplots(figsize=(view.get("fig_width",9),view.get("fig_height",4.2)),facecolor=BG)
     ax.set_facecolor(SURFACE)
-    lc=view.get("line_color","#5affce"); lw=view.get("line_width",2.0)
-    ls=view.get("line_style","solid"); mk=view.get("marker","none")
-    ms=view.get("marker_size",4); fill=view.get("fill_under",False); falp=view.get("fill_alpha",.15)
-    mpl_mk=None if mk=="none" else mk
-    if is_discrete:
-        ax.bar(x,y,color=lc,alpha=0.75,width=0.6,zorder=3)
-    else:
-        ax.plot(x,y,color=lc,linewidth=lw,linestyle=ls,marker=mpl_mk,markersize=ms,
-                markerfacecolor=lc,markeredgecolor="none",zorder=3)
-        if fill: ax.fill_between(x,y,alpha=falp,color=lc,zorder=2)
+    show_legend=view.get("show_legend",True)
+
+    for cd in curves_data:
+        x=cd["x"]; y=cd["y"]; is_d=cd.get("is_discrete",False)
+        lc=cd.get("line_color","#5affce")
+        lw=cd.get("line_width",2.0)
+        ls=cd.get("line_style","solid")
+        mk=cd.get("marker","none"); ms=cd.get("marker_size",4)
+        fill=cd.get("fill_under",False); falp=cd.get("fill_alpha",.15)
+        lbl=cd.get("label","")
+        mpl_mk=None if mk=="none" else mk
+        try: rgb=_hex_to_rgb01(lc)
+        except: rgb=(0.35,1.0,0.81)
+        if is_d:
+            ax.bar(x,y,color=rgb+(0.75,),width=0.6,zorder=3,label=lbl)
+        else:
+            ax.plot(x,y,color=rgb,linewidth=lw,linestyle=ls,
+                    marker=mpl_mk,markersize=ms,
+                    markerfacecolor=rgb,markeredgecolor="none",
+                    zorder=3,label=lbl)
+            if fill: ax.fill_between(x,y,alpha=falp,color=rgb,zorder=2)
+
     if view.get("x_min") is not None or view.get("x_max") is not None:
-        valid=x[~np.isnan(y)] if len(x) else x
-        ax.set_xlim(view.get("x_min",float(valid.min()) if len(valid) else 0),
-                    view.get("x_max",float(valid.max()) if len(valid) else 1))
+        all_x=np.concatenate([cd["x"] for cd in curves_data]) if curves_data else np.array([0,1])
+        ax.set_xlim(view.get("x_min",float(all_x.min())),
+                    view.get("x_max",float(all_x.max())))
     if view.get("y_min") is not None or view.get("y_max") is not None:
-        valid_y=y[~np.isnan(y)] if len(y) else y
+        all_y=np.concatenate([cd["y"] for cd in curves_data]) if curves_data else np.array([0,1])
+        valid_y=all_y[~np.isnan(all_y)] if len(all_y) else all_y
         ax.set_ylim(view.get("y_min",float(valid_y.min()) if len(valid_y) else 0),
                     view.get("y_max",float(valid_y.max()) if len(valid_y) else 1))
-    ax.grid(view.get("show_grid",True),color=GRID_C,linewidth=0.7,alpha=view.get("grid_alpha",.5),zorder=1)
+
+    ax.grid(view.get("show_grid",True),color=GRID_C,linewidth=0.7,
+            alpha=view.get("grid_alpha",.5),zorder=1)
     for sp in ax.spines.values(): sp.set_edgecolor(SPINE_C); sp.set_linewidth(0.8)
     ax.tick_params(colors=TEXT_C,labelsize=8,length=4,width=0.6)
-    for t in ax.get_xticklabels()+ax.get_yticklabels(): t.set_color(TEXT_C); t.set_fontfamily("monospace")
+    for t in ax.get_xticklabels()+ax.get_yticklabels():
+        t.set_color(TEXT_C); t.set_fontfamily("monospace")
     ax.set_title(labels.get("title",""),color=TEXT_C,fontsize=view.get("title_size",13),
                  fontfamily="monospace",pad=10,loc="left",fontweight="bold")
     ax.set_xlabel(labels.get("xlabel",""),color=TEXT_C,fontsize=view.get("label_size",10),
                   fontfamily="monospace",labelpad=6)
     ax.set_ylabel(labels.get("ylabel",""),color=TEXT_C,fontsize=view.get("label_size",10),
                   fontfamily="monospace",labelpad=6)
+
+    # Legend — only if enabled and any curve has a non-empty label
+    if show_legend and any(cd.get("label","") for cd in curves_data):
+        lx = view.get("legend_x_frac", 0.98)
+        ly = view.get("legend_y_frac", 0.02)
+        # Convert from top-origin (JS) to bottom-origin (matplotlib axes fraction)
+        mpl_ly = 1.0 - ly
+        leg=ax.legend(
+            facecolor="#0c0c1a", edgecolor=SPINE_C,
+            labelcolor=TEXT_C,
+            fontsize=max(7,view.get("label_size",10)-1),
+            prop={"family":"monospace","size":max(7,view.get("label_size",10)-1)},
+            framealpha=0.85,
+            bbox_to_anchor=(lx, mpl_ly),
+            bbox_transform=ax.transAxes,
+            loc="upper right" if lx > 0.5 else "upper left",
+        )
+        leg.get_frame().set_linewidth(0.6)
+
     fig.tight_layout(pad=1.4)
     buf=io.BytesIO(); fig.savefig(buf,format="png",dpi=130,facecolor=BG,bbox_inches="tight")
     plt.close(fig); buf.seek(0)
@@ -591,19 +650,53 @@ def get_data():
 
 @app.route("/api/plot", methods=["POST"])
 def plot_matplotlib():
-    body=request.get_json(silent=True) or {}; tkey=body.get("template")
-    if tkey not in TEMPLATES: return jsonify({"error":f"Unknown template '{tkey}'"}),400
+    body=request.get_json(silent=True) or {}
+    view=body.get("view",{}); labels=body.get("labels",{})
+    curves_in=body.get("curves",[])
+    # Backwards-compat: single-curve payload
+    if not curves_in and body.get("template"):
+        curves_in=[{
+            "template":body["template"],
+            "params":body.get("params",{}),
+            "line_color":view.get("line_color","#5affce"),
+            "line_width":view.get("line_width",2.0),
+            "line_style":view.get("line_style","solid"),
+            "marker":view.get("marker","none"),
+            "marker_size":view.get("marker_size",4),
+            "fill_under":view.get("fill_under",False),
+            "fill_alpha":view.get("fill_alpha",.15),
+            "label":body.get("label",""),
+        }]
+    if not curves_in:
+        return jsonify({"error":"No curves provided"}),400
     try:
-        x,y=generate_xy(tkey,body.get("params",{}),body.get("view",{}))
-        is_d=tkey in ("binomial","poisson")
-        img=render_matplotlib(x,y,body.get("view",{}),body.get("labels",{}),is_discrete=is_d)
-        yv=y[~np.isnan(y)] if len(y) else y
-        return jsonify({"image":img,"x_min":float(x.min()) if len(x) else 0,
-                        "x_max":float(x.max()) if len(x) else 1,
-                        "y_min":float(yv.min()) if len(yv) else 0,
-                        "y_max":float(yv.max()) if len(yv) else 1,
-                        "n":len(x),"equation":TEMPLATES[tkey]["equation"]})
-    except Exception as e: return jsonify({"error":str(e)}),500
+        curves_data=[]
+        for ci in curves_in:
+            tkey=ci.get("template")
+            if not tkey or tkey not in TEMPLATES:
+                continue
+            x,y=generate_xy(tkey,ci.get("params",{}),view)
+            x,y=_apply_mask(x,y,ci)  # apply data mask
+            is_d=tkey in ("binomial","poisson")
+            y_clean=np.where(np.isnan(y),np.nan,y)
+            curves_data.append({
+                "x":x,"y":y_clean,"is_discrete":is_d,
+                "line_color":ci.get("line_color","#5affce"),
+                "line_width":ci.get("line_width",2.0),
+                "line_style":ci.get("line_style","solid"),
+                "marker":ci.get("marker","none"),
+                "marker_size":ci.get("marker_size",4),
+                "fill_under":ci.get("fill_under",False),
+                "fill_alpha":ci.get("fill_alpha",.15),
+                "label":ci.get("label",""),
+            })
+        if not curves_data:
+            return jsonify({"error":"No valid curves"}),400
+        img=render_matplotlib_multi(curves_data,view,labels)
+        return jsonify({"image":img})
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error":str(e)}),500
 
 if __name__ == "__main__":
     print("PlotForge backend  →  http://localhost:5000")

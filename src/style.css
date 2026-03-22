@@ -16,7 +16,7 @@
   --serif:'Fraunces',serif;
   --sidebar:290px;
   --header:62px;
-  --cfg:258px;
+  --cfg:268px;
 }
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:14px}
 
@@ -30,8 +30,6 @@ header{
 }
 .logo{font-family:var(--serif);font-weight:700;font-size:2.4rem}
 .logo em{color:var(--acc);font-style:italic}
-.hdiv{width:1px;height:18px;background:var(--border);margin:0 2px}
-.htag{font-size:.58rem;color:var(--muted);letter-spacing:.16em;text-transform:uppercase}
 .hright{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.72rem;color:#9898c8}
 .cdot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background .3s}
 .cdot.ok{background:#5aff9a;box-shadow:0 0 6px #5aff9a55}
@@ -46,7 +44,6 @@ header{
 .sidebar::-webkit-scrollbar{width:3px}
 .sidebar::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 .slbl{font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:#b0b0d8;margin-bottom:7px;font-weight:600}
-/* slbl with inline button (e.g. Domain + Home) */
 .slbl-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
 .slbl-row .slbl{margin-bottom:0}
 .home-btn{
@@ -60,6 +57,32 @@ header{
   gap:8px;color:var(--muted);font-size:.68rem;text-align:center;font-style:italic;
   opacity:.7;
 }
+
+/* ── Add to Plot button ── */
+.add-to-plot-btn{
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  width:100%;padding:9px 14px;
+  background:rgba(212,255,90,.08);
+  border:1px solid color-mix(in srgb,var(--acc) 55%,transparent);
+  border-radius:6px;
+  color:var(--acc);font-family:var(--mono);font-size:.75rem;font-weight:600;
+  cursor:pointer;letter-spacing:.06em;
+  transition:all .15s;
+  flex-shrink:0;
+}
+.add-to-plot-btn:hover:not(:disabled){
+  background:rgba(212,255,90,.15);
+  border-color:var(--acc);
+  box-shadow:0 0 12px rgba(212,255,90,.12);
+}
+.add-to-plot-btn.atp-disabled,
+.add-to-plot-btn:disabled{
+  opacity:.28;cursor:not-allowed;
+  background:transparent;
+  border-color:var(--border2);
+  color:var(--muted);
+}
+.atp-icon{font-size:1rem;line-height:1}
 
 /* category accordion */
 .cat-blocks{display:flex;flex-direction:column;gap:2px}
@@ -75,12 +98,9 @@ header{
 .cat-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .cat-dot.trig{background:#5affce}
 .cat-dot.bell{background:#ffb347}
-.cat-dot.simple{background:#d4ff5a}
 .cat-dot.lines{background:#a78bfa}
 .cat-dot.general{background:#d4ff5a}
 .cat-dot.other{background:#ff6faa}
-
-/* Category header text — bright and legible */
 .cat-hdr span:not(.cat-arrow){color:#d0d0ee}
 .cat-hdr:hover span:not(.cat-arrow){color:#fff}
 .cat-hdr.open span:not(.cat-arrow){color:#fff}
@@ -93,7 +113,6 @@ header{
   border-bottom-left-radius:5px;border-bottom-right-radius:5px;
 }
 .cat-body.open{max-height:600px}
-.tpl-list{display:flex;flex-direction:column;padding:4px 0 6px 0}
 .tpl-item{
   display:flex;align-items:center;gap:0;padding:4px 8px 4px 0;
   border:1px solid transparent;cursor:pointer;font-size:.73rem;
@@ -115,7 +134,7 @@ header{
 .tpl-eq{font-size:.65rem;color:#5a5a88;font-style:italic;flex-shrink:0;max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}
 .tpl-item.sel .tpl-eq{color:color-mix(in srgb,var(--acc) 45%,transparent)}
 
-/* ── subfolders ── */
+/* subfolders */
 .subfolder-wrap{display:flex;flex-direction:column}
 .subfolder-hdr{
   display:flex;align-items:center;gap:0;padding:4px 8px 4px 0;
@@ -132,8 +151,8 @@ header{
 .subfolder-hdr.open .sub-arrow{transform:rotate(90deg);color:#9090c8}
 .subfolder-body{overflow:hidden;max-height:0;transition:max-height .2s ease}
 .subfolder-body.open{max-height:400px}
-/* Sub-items indented an extra level */
 .sub-item .sub-connector{padding-left:16px;width:44px}
+
 .params-area{display:flex;flex-direction:column;gap:12px}
 .p-row{display:flex;flex-direction:column;gap:4px}
 .p-row-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
@@ -166,14 +185,12 @@ input[type=range]::-webkit-slider-thumb{
 }
 input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 
-/* ═══ MAIN — scrollable plot list ═════════════════════════════════ */
+/* ═══ MAIN ════════════════════════════════════════════════════════ */
 .main{
-  overflow-y:auto;
-  overflow-x:hidden;
+  overflow-y:auto;overflow-x:hidden;
   padding:20px 18px;
   display:flex;flex-direction:column;gap:14px;
   background:var(--bg);position:relative;
-  /* explicit scroll behaviour */
   scroll-behavior:smooth;
 }
 .main::-webkit-scrollbar{width:6px}
@@ -198,8 +215,6 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
   border-color:var(--acc2);
   box-shadow:0 0 0 1px var(--acc2),0 6px 36px rgba(90,255,206,.07);
 }
-
-/* topbar */
 .ctop{
   display:flex;align-items:center;gap:7px;
   padding:8px 12px;border-bottom:1px solid var(--border);
@@ -210,14 +225,6 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
   background:var(--s2);border:1px solid var(--border2);
   border-radius:3px;padding:2px 7px;letter-spacing:.08em;flex-shrink:0;
 }
-.ctitle{
-  font-size:.88rem;font-weight:600;flex:1;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  border-radius:3px;padding:1px 4px;
-  border:1px solid transparent;cursor:text;max-width:200px;
-}
-.ctitle.editable:hover{border-color:var(--acc2);background:rgba(90,255,206,.05);color:var(--acc2)}
-.ctitle.readonly{cursor:default;color:var(--muted)}
 .cactions{display:flex;gap:5px;flex-shrink:0;margin-left:auto;align-items:center}
 .cbtn{
   background:transparent;border:1px solid var(--border2);
@@ -231,8 +238,6 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 .cbtn.mpl-btn.mpl-disabled{opacity:.3;pointer-events:none}
 .cbtn.revert-btn{border-color:color-mix(in srgb,var(--acc2) 60%,transparent);color:var(--acc2)}
 .cbtn.revert-btn:hover{background:var(--acc2);color:var(--bg);border-color:var(--acc2)}
-
-/* card body */
 .cbody{position:relative}
 .plot-empty{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -240,14 +245,13 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 }
 .plot-empty .ei{font-size:1.8rem;opacity:.18}
 
-/* ── chart region: canvas + axis label overlays ── */
+/* ── chart region ── */
 .chart-region{
   position:relative;
   padding-left:28px;
-  padding-bottom:26px;
-  padding-top:32px; /* space for inline title */
+  padding-bottom:28px;
+  padding-top:32px;
 }
-/* inline editable title inside the chart region */
 .chart-title-inp{
   position:absolute;
   top:0;left:28px;height:30px;
@@ -269,10 +273,7 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
   cursor:grab;
 }
 .canvas-wrap.panning{cursor:grabbing}
-
 .canvas-wrap canvas{display:block;width:100%}
-
-/* cursor coordinate readout */
 .cursor-coords{
   position:absolute;
   top:6px;right:8px;
@@ -286,19 +287,71 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 }
 .canvas-wrap:hover .cursor-coords{opacity:1}
 
+/* ── OVERLAY LEGEND (draggable, inside canvas-wrap) ── */
+.overlay-legend{
+  position:absolute;z-index:20;
+  background:rgba(8,8,16,.85);
+  border:1px solid var(--border2);
+  border-radius:6px;
+  padding:5px 8px;
+  backdrop-filter:blur(4px);
+  cursor:grab;
+  user-select:none;
+  min-width:80px;
+  max-width:200px;
+  transition:border-color .12s;
+}
+.overlay-legend:hover{border-color:rgba(90,255,206,.3);}
+.overlay-legend.dragging{cursor:grabbing;border-color:var(--acc2);box-shadow:0 4px 20px rgba(90,255,206,.1);}
+.ol-row{
+  display:flex;align-items:center;gap:6px;
+  padding:2px 0;font-size:.68rem;font-family:var(--mono);color:#b0b0d8;
+}
+.ol-swatch{width:8px;height:8px;border-radius:2px;flex-shrink:0;display:inline-block;}
+.ol-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ol-del{
+  background:transparent;border:none;cursor:pointer;
+  color:#4a4a70;font-size:.75rem;padding:0;line-height:1;
+  transition:color .1s;font-family:var(--mono);flex-shrink:0;
+}
+.ol-del:hover{color:var(--acc3);}
+
+/* ── CURVE SELECTOR PILLS (top of Line Settings) ── */
+.curve-selector{
+  display:flex;flex-wrap:wrap;gap:5px;
+  padding-bottom:10px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:2px;
+}
+.curve-pill{
+  display:flex;align-items:center;gap:5px;
+  padding:3px 9px 3px 6px;
+  border-radius:20px;
+  border:1px solid var(--border2);
+  background:transparent;
+  cursor:pointer;font-family:var(--mono);font-size:.68rem;color:#9898c8;
+  transition:all .12s;white-space:nowrap;
+}
+.curve-pill:hover{border-color:var(--border2);background:rgba(255,255,255,.04);color:#d0d0ee;}
+.curve-pill-active{
+  background:rgba(90,255,206,.08);
+  border-color:rgba(90,255,206,.4);
+  color:var(--acc2);
+}
+.pill-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.pill-label{max-width:90px;overflow:hidden;text-overflow:ellipsis;}
+
 /* axis labels */
 .ax-xlabel{
-  position:absolute;bottom:0;left:28px;right:0;
+  position:absolute;bottom:4px;left:28px;right:0;
   text-align:center;height:24px;line-height:24px;
 }
 .ax-ylabel{
-  position:absolute;top:32px;bottom:26px;left:0;width:28px;
+  position:absolute;top:32px;bottom:48px;left:0;width:28px;
   display:flex;align-items:center;justify-content:center;
   overflow:visible;
 }
-.ax-ylabel .lbl-inp{
-  transform:rotate(-90deg);white-space:nowrap;
-}
+.ax-ylabel .lbl-inp{transform:rotate(-90deg);white-space:nowrap;}
 .lbl-inp{
   background:transparent;border:1px solid transparent;border-radius:3px;
   color:#9898c8;font-family:var(--mono);
@@ -311,11 +364,7 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
   border-color:var(--acc2);background:rgba(90,255,206,.06);color:var(--acc2);
 }
 
-/* matplotlib img */
-.mpl-img{width:100%;display:block}
-.mpl-body img{width:100%;display:block}
-
-/* loading spinner */
+/* spinner */
 .spin-overlay{
   position:absolute;inset:0;background:rgba(7,7,15,.72);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -326,7 +375,14 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 .spin-lbl{font-size:.62rem;color:var(--muted);letter-spacing:.1em}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* shimmer */
+/* matplotlib image — centered */
+.mpl-body{
+  display:flex;align-items:center;justify-content:center;
+  background:var(--s1);padding:8px 0;
+}
+.mpl-img{max-width:100%;display:block}
+
+/* shimmer overlay for mpl converting */
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .shimmer-overlay{
   position:absolute;inset:0;
@@ -356,14 +412,39 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 /* ═══ CFG PANEL ═══════════════════════════════════════════════════ */
 .cfg{
   background:var(--s0);border-left:1px solid var(--border);
-  overflow-y:auto;padding:16px 12px 20px;display:flex;flex-direction:column;gap:14px;
+  overflow-y:auto;display:flex;flex-direction:column;gap:0;
+  padding:0;
 }
 .cfg::-webkit-scrollbar{width:3px}
 .cfg::-webkit-scrollbar-thumb{background:var(--border2)}
 .cfg-empty{
   flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;color:var(--muted);font-size:.64rem;text-align:center;font-style:italic;
+  padding:16px 12px;
 }
+
+/* ── cfg tab bar ── */
+.cfg-tabs{
+  display:flex;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+  background:var(--s0);
+  position:sticky;top:0;z-index:10;
+}
+.cfg-tab{
+  flex:1;padding:9px 6px;
+  background:transparent;border:none;border-bottom:2px solid transparent;
+  color:var(--muted);font-family:var(--mono);font-size:.68rem;font-weight:600;
+  letter-spacing:.06em;cursor:pointer;text-transform:uppercase;
+  transition:color .14s,border-color .14s,background .14s;
+}
+.cfg-tab:hover{color:#d0d0ee;background:rgba(255,255,255,.025)}
+.cfg-tab.cfg-tab-active{
+  color:var(--acc2);
+  border-bottom-color:var(--acc2);
+  background:rgba(90,255,206,.04);
+}
+
 .cdivider{height:1px;background:var(--border);margin:2px 0}
 .cfg-sec{display:flex;flex-direction:column;gap:9px}
 .crow{display:flex;flex-direction:column;gap:3px}
@@ -411,3 +492,17 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
   font-family:var(--mono);font-size:.68rem;padding:4px 7px;outline:none;transition:border-color .12s;
 }
 .chex:focus{border-color:var(--acc2)}
+
+/* remove curve button in Line Settings */
+.remove-curve-btn{
+  width:100%;padding:6px 10px;margin-top:4px;
+  background:transparent;
+  border:1px solid color-mix(in srgb,var(--acc3) 50%,transparent);
+  border-radius:4px;color:#c06080;
+  font-family:var(--mono);font-size:.68rem;cursor:pointer;
+  transition:all .12s;
+}
+.remove-curve-btn:hover{
+  background:rgba(255,111,170,.08);
+  border-color:var(--acc3);color:var(--acc3);
+}
