@@ -6,6 +6,7 @@ const CAT_META = {
   bell:    { label:'Bell Curves',   dotClass:'bell'    },
   lines:   { label:'Lines',         dotClass:'lines'   },
   general: { label:'General',       dotClass:'general' },
+  other:   { label:'Other',         dotClass:'other'   },
 };
 
 // ═══ STATE ═══════════════════════════════════════════════════════════════
@@ -247,6 +248,49 @@ function evalTemplate(tkey, params, view){
       x=linspace(xLo,xHi,N);
       const base=Math.max(1.0001,p.b||Math.E);
       y=x.map(v=>(p.a||1)*Math.pow(base,(p.s||0.5)*v));
+      break;
+    }
+    case 'nth_root':{
+      const lo2=Math.max(0,xLo);
+      x=linspace(lo2,xHi,400);
+      const n=Math.max(0.001,p.n||2);
+      y=x.map(v=>(p.a||1)*Math.sign(v)*Math.pow(Math.abs(v),1/n));
+      break;
+    }
+    case 'reciprocal':{
+      x=linspace(xLo,xHi,800);
+      y=x.map(v=>{
+        const d=v+(p.h||0);
+        if(Math.abs(d)<0.01) return null;
+        const val=(p.a||1)/d;
+        return Math.abs(val)>50?null:val;
+      });
+      break;
+    }
+    case 'factorial':{
+      // Use Lanczos gamma approximation: Gamma(x+1) = x!
+      x=linspace(xLo,xHi,400);
+      y=x.map(v=>{
+        const xp1=v+1;
+        if(xp1<=0) return null;
+        const g=lanczosGamma(xp1);
+        return (p.a||1)*(Math.abs(g)>1e8?null:g);
+      });
+      break;
+    }
+    case 'ceiling':{
+      x=linspace(xLo,xHi,800);
+      y=x.map(v=>(p.a||1)*Math.ceil(v));
+      break;
+    }
+    case 'floor':{
+      x=linspace(xLo,xHi,800);
+      y=x.map(v=>(p.a||1)*Math.floor(v));
+      break;
+    }
+    case 'absolute':{
+      x=linspace(xLo,xHi,N);
+      y=x.map(v=>(p.a||1)*Math.abs(v+(p.h||0)));
       break;
     }
     default: return null;
@@ -707,24 +751,28 @@ function buildInnerHTML(p){
   const titleVal = p.labels.title||'';
   const xlabelVal = p.labels.xlabel||'';
   const ylabelVal = p.labels.ylabel||'';
+  // Interactive display size: base 16px for title, 13px for labels (looks good in chart)
+  // These are separate from the matplotlib pt sizes stored in p.view
+  const titleDisplayPx = Math.max(14, (p.view.title_size||13) + 3);
+  const labelDisplayPx = Math.max(12, (p.view.label_size||10) + 3);
   return `
     <div class="chart-region" id="cregion_${pid}">
-      <input class="chart-title-inp" id="ctitleinp_${pid}" type="text"
-             value="${titleVal}" placeholder="Insert title"
-             style="font-size:${p.view.title_size||13}px"/>
+      <input class="chart-title-inp auto-inp" id="ctitleinp_${pid}" type="text"
+             value="${titleVal}" placeholder="Title" maxlength="80"
+             style="font-size:${titleDisplayPx}px"/>
       <div class="canvas-wrap" id="cwrap_${pid}">
         <canvas id="chart_${pid}" style="display:block;width:100%"></canvas>
         <div class="cursor-coords" id="coords_${pid}">x=— y=—</div>
       </div>
       <div class="ax-xlabel">
-        <input class="lbl-inp" id="xlabel_${pid}" type="text"
-               value="${xlabelVal}" placeholder="Insert x-label"
-               style="font-size:${p.view.label_size||10}px"/>
+        <input class="lbl-inp auto-inp" id="xlabel_${pid}" type="text"
+               value="${xlabelVal}" placeholder="x-label" maxlength="40"
+               style="font-size:${labelDisplayPx}px"/>
       </div>
       <div class="ax-ylabel">
-        <input class="lbl-inp" id="ylabel_${pid}" type="text"
-               value="${ylabelVal}" placeholder="Insert y-label"
-               style="font-size:${p.view.label_size||10}px"/>
+        <input class="lbl-inp auto-inp" id="ylabel_${pid}" type="text"
+               value="${ylabelVal}" placeholder="y-label" maxlength="40"
+               style="font-size:${labelDisplayPx}px"/>
       </div>
     </div>`;
 }
@@ -829,8 +877,6 @@ function buildCard(p, i){
 }
 
 function buildTopbarInner(p, i){
-  const tplName=p.template?TEMPLATES[p.template]?.label||p.template:'—';
-
   const canMpl = !!p.template;
   const mplBtn = p.mode==='js'
     ? `<button class="cbtn mpl-btn${!canMpl?' mpl-disabled':''}" data-pid="${p.id}" data-action="mpl"
@@ -839,7 +885,6 @@ function buildTopbarInner(p, i){
 
   return `
     <span class="cnum">PLOT ${String(i+1).padStart(2,'0')}</span>
-    <span class="ctitle readonly" id="ctitle_${p.id}">${tplName}</span>
     <div class="cactions">
       ${mplBtn}
       <button class="cbtn" data-pid="${p.id}" data-action="del">✕</button>
@@ -849,39 +894,76 @@ function buildTopbarInner(p, i){
 // Title is now edited inline inside the chart — topbar is read-only
 function wireTopbarTitle(p){ /* no-op */ }
 
+// Auto-resize an input to fit its content (uses a hidden measuring span)
+const _measureSpan = document.createElement('span');
+_measureSpan.style.cssText='position:absolute;visibility:hidden;white-space:pre;pointer-events:none;top:-9999px;left:-9999px';
+document.body ? document.body.appendChild(_measureSpan)
+  : document.addEventListener('DOMContentLoaded',()=>document.body.appendChild(_measureSpan));
+
+function autoResizeInput(inp, maxPx){
+  if(!inp) return;
+  const cs = window.getComputedStyle(inp);
+  _measureSpan.style.font = cs.font;
+  _measureSpan.style.letterSpacing = cs.letterSpacing;
+  const text = inp.value || inp.placeholder || '';
+  _measureSpan.textContent = text;
+  const w = _measureSpan.offsetWidth;
+  const cap = maxPx || 9999;
+  inp.style.width = Math.min(cap, Math.max(30, w + 16)) + 'px';
+}
+
+// Get the pixel dimensions of the canvas-wrap for a given plot
+function getCanvasDims(pid){
+  const wrap = document.getElementById(`cwrap_${pid}`);
+  if(!wrap) return {w:300, h:200};
+  return {w: wrap.offsetWidth, h: wrap.offsetHeight};
+}
+
 // ═══ AXIS LABEL INPUTS ═══════════════════════════════════════════════════
 function wireAxisLabelInputs(p){
   const xi=document.getElementById(`xlabel_${p.id}`);
   const yi=document.getElementById(`ylabel_${p.id}`);
   const ti=document.getElementById(`ctitleinp_${p.id}`);
-  if(xi){
-    xi.addEventListener('change',()=>{p.labels.xlabel=xi.value;});
-    xi.addEventListener('input', ()=>{p.labels.xlabel=xi.value;});
-    xi.addEventListener('click', e=>e.stopPropagation());
+
+  const dims = getCanvasDims(p.id);
+
+  function wire(el, setter, maxPx){
+    if(!el) return;
+    autoResizeInput(el, maxPx);
+    el.addEventListener('input', ()=>{ setter(el.value); autoResizeInput(el, maxPx); });
+    el.addEventListener('change',()=>{ setter(el.value); autoResizeInput(el, maxPx); });
+    el.addEventListener('click', e=>e.stopPropagation());
   }
-  if(yi){
-    yi.addEventListener('change',()=>{p.labels.ylabel=yi.value;});
-    yi.addEventListener('input', ()=>{p.labels.ylabel=yi.value;});
-    yi.addEventListener('click', e=>e.stopPropagation());
-  }
+
+  // x-label: max width = canvas width
+  wire(xi, v=>{ p.labels.xlabel=v; }, dims.w);
+  // y-label: max width = canvas height (since it's rotated 90°)
+  wire(yi, v=>{ p.labels.ylabel=v; }, dims.h);
+
   if(ti){
-    ti.addEventListener('change',()=>{p.labels.title=ti.value;});
-    ti.addEventListener('input', ()=>{p.labels.title=ti.value;});
+    autoResizeInput(ti, dims.w);
+    ti.addEventListener('input', ()=>{ p.labels.title=ti.value; autoResizeInput(ti, dims.w); });
+    ti.addEventListener('change',()=>{ p.labels.title=ti.value; autoResizeInput(ti, dims.w); });
     ti.addEventListener('click', e=>e.stopPropagation());
-    ti.addEventListener('keydown',e=>{if(e.key==='Enter') ti.blur();});
+    ti.addEventListener('keydown',e=>{ if(e.key==='Enter') ti.blur(); });
   }
 }
 
 // Apply font size updates to live label inputs without full rebuild
+// Note: display px = mpl pt + 3 (so labels look good in interactive mode
+// while not changing the mpl pt value sent to matplotlib)
 function applyLabelFontSizes(pid){
   const p=gp(pid); if(!p) return;
   const v=p.view;
+  const titleDisplayPx = Math.max(14, (v.title_size||13) + 3);
+  const labelDisplayPx = Math.max(12, (v.label_size||10) + 3);
+  const dims = getCanvasDims(pid);
   const ti=document.getElementById(`ctitleinp_${pid}`);
   const xi=document.getElementById(`xlabel_${pid}`);
   const yi=document.getElementById(`ylabel_${pid}`);
-  if(ti) ti.style.fontSize=(v.title_size||13)+'px';
-  if(xi) xi.style.fontSize=(v.label_size||10)+'px';
-  if(yi) yi.style.fontSize=(v.label_size||10)+'px';
+  if(ti){ ti.style.fontSize=titleDisplayPx+'px'; autoResizeInput(ti, dims.w); }
+  if(xi){ xi.style.fontSize=labelDisplayPx+'px'; autoResizeInput(xi, dims.w); }
+  if(yi){ yi.style.fontSize=labelDisplayPx+'px'; autoResizeInput(yi, dims.h); }
 }
 
 // ═══ ACTIVE HIGHLIGHT ════════════════════════════════════════════════════
@@ -1059,6 +1141,28 @@ function hexAlpha(hex,a){
   return `rgba(${r},${g},${b},${a})`;
 }
 
+// Format a number to N significant figures, stripping trailing zeros
+function sigFig(v, n){
+  if(!isFinite(v)) return '—';
+  if(v===0) return '0';
+  return parseFloat(v.toPrecision(n)).toString();
+}
+
+// Lanczos approximation of the Gamma function (for x! = Gamma(x+1))
+function lanczosGamma(z){
+  if(z<0.5) return Math.PI/(Math.sin(Math.PI*z)*lanczosGamma(1-z));
+  z-=1;
+  const g=7, c=[
+    0.99999999999980993,676.5203681218851,-1259.1392167224028,
+    771.32342877765313,-176.61502916214059,12.507343278686905,
+    -0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7
+  ];
+  let x=c[0];
+  for(let i=1;i<g+2;i++) x+=c[i]/(z+i);
+  const t=z+g+0.5;
+  return Math.sqrt(2*Math.PI)*Math.pow(t,z+0.5)*Math.exp(-t)*x;
+}
+
 // ═══ HELPER: pixel → data coords ═════════════════════════════════════════
 // Chart.js scales (sx.left, sx.right, etc.) are in CSS pixel space
 // relative to the canvas element. getBoundingClientRect gives us the
@@ -1093,7 +1197,7 @@ function wireInteraction(p){
     const ch=chartInstances[p.id]; if(!ch) return;
     const {dataX,dataY}=pixelToData(ch,e.clientX,e.clientY);
     const coordEl=document.getElementById(`coords_${p.id}`);
-    if(coordEl) coordEl.textContent=`x=${dataX.toFixed(3)}  y=${dataY.toFixed(3)}`;
+    if(coordEl) coordEl.textContent=`x=${sigFig(dataX,4)}  y=${sigFig(dataY,4)}`;
     if(panState[p.id]?.dragging) onPanMove(e,p);
   });
   wrap.addEventListener('mouseleave',()=>{
@@ -1326,7 +1430,19 @@ function syncCfgDomain(){
   set('c_yx',dom.yMax);
 }
 
+function resetDomainToDefault(){
+  const p=activePid!==null?gp(activePid):null; if(!p||!p.template) return;
+  // Clear pinned view bounds so evalTemplate uses its own x_default
+  p.view.x_min=null; p.view.x_max=null; p.view.y_min=null; p.view.y_max=null;
+  // Re-render with firstRender=true so bounds get re-pinned from template defaults
+  renderJS(p.id, true);
+}
+
 function wireAllCfgInputs(){
+  // Home button: reset view to template defaults
+  const homeBtn=document.getElementById('domainHomeBtn');
+  if(homeBtn) homeBtn.addEventListener('click', resetDomainToDefault);
+
   // Domain inputs: commit only on Enter or blur
   const domainMap=[
     {id:'c_xn',axis:'x',mm:'min'},{id:'c_xx',axis:'x',mm:'max'},
