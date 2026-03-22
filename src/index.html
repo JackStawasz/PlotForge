@@ -100,13 +100,37 @@
               <label>Show grid</label>
               <label class="tog"><input type="checkbox" id="c_grid" checked><span class="tslider"></span></label>
             </div>
-            <div class="trow">
-              <label>Display legend</label>
-              <label class="tog"><input type="checkbox" id="c_show_legend" checked><span class="tslider"></span></label>
-            </div>
             <div class="crow">
               <label>Opacity — <span id="c_galpha_val" style="color:var(--acc2)">0.50</span></label>
               <input type="range" id="c_galpha" min="0.05" max="1" step="0.05" value="0.5"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="cdivider"></div>
+
+        <div>
+          <div class="slbl">Axis Lines</div>
+          <div class="cfg-sec">
+            <div class="trow">
+              <label>Show x=0, y=0</label>
+              <label class="tog"><input type="checkbox" id="c_axis_lines" checked><span class="tslider"></span></label>
+            </div>
+            <div class="crow">
+              <label>Opacity — <span id="c_aalpha_val" style="color:var(--acc2)">0.60</span></label>
+              <input type="range" id="c_aalpha" min="0.05" max="1" step="0.05" value="0.6"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="cdivider"></div>
+
+        <div>
+          <div class="slbl">Legend</div>
+          <div class="cfg-sec">
+            <div class="trow">
+              <label>Display legend</label>
+              <label class="tog"><input type="checkbox" id="c_show_legend" checked><span class="tslider"></span></label>
             </div>
           </div>
         </div>
@@ -169,6 +193,7 @@
                 <option value="dashed">- - Dashed</option>
                 <option value="dotted">··· Dotted</option>
                 <option value="dashdot">-·- Dash-dot</option>
+                <option value="none">None</option>
               </select>
             </div>
             <div class="crow">
@@ -232,6 +257,9 @@
 
 </div><!-- .shell -->
 
-<script src="app.js"></script>
+<script src="math.js"></script>
+<script src="API.js"></script>
+<script src="UI.js"></script>
+<script>boot();</script>
 </body>
 </html>
