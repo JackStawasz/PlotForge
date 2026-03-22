@@ -34,7 +34,7 @@ function defView(){
 function mkPlot(){
   return {
     id:mkPid(), template:null, params:{}, view:defView(),
-    labels:{title:'', xlabel:'x', ylabel:'y'},
+    labels:{title:'', xlabel:'', ylabel:''},
     jsData:null, mplImage:null, mode:'js', equation:'',
     loading:false, converting:false
   };
@@ -339,7 +339,6 @@ function selectTemplate(key){
     if(p){
       const isNewTemplate = p.template !== key;
       p.template=key;
-      if(!p.labels.title) p.labels.title=TEMPLATES[key].label;
       selTpl=key;
       document.querySelectorAll('.tpl-item').forEach(b=>b.classList.toggle('sel',b.dataset.key===key));
       buildParamsForTemplate(key);
@@ -355,16 +354,47 @@ function selectTemplate(key){
 function buildParamsForTemplate(key, existingParams){
   const pa=document.getElementById('paramsArea');
   pa.innerHTML='';
-  for(const [pk,p] of Object.entries(TEMPLATES[key].params)){
+  for(const [pk,pd] of Object.entries(TEMPLATES[key].params)){
     const row=document.createElement('div');
     row.className='p-row'; row.dataset.pkey=pk;
-    const val = existingParams?.[pk] ?? p.default;
-    const fmt=v=>p.step<1?parseFloat(v).toFixed(2):parseInt(v);
+    const val = existingParams?.[pk] ?? pd.default;
+    // Slider range: stored per-param in sliderRanges, default from template
+    if(!sliderRanges[key]) sliderRanges[key]={};
+    if(!sliderRanges[key][pk]) sliderRanges[key][pk]={min:pd.min, max:pd.max};
+    const {min,max} = sliderRanges[key][pk];
+    const fmt=v=>pd.step<1?parseFloat(v).toFixed(2):parseInt(v);
     row.innerHTML=`
-      <label><span>${p.label}</span><span class="pval" id="pv_${pk}">${fmt(val)}</span></label>
-      <input type="range" id="ps_${pk}" min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
-        oninput="onParamChange('${pk}',this.value)"/>`;
+      <div class="p-row-top">
+        <span class="p-lbl">${pd.label}</span>
+        <input class="p-val-inp" id="pv_${pk}" type="text" value="${fmt(val)}"
+               data-pk="${pk}" data-step="${pd.step}"/>
+      </div>
+      <div class="p-slider-wrap">
+        <input class="p-range-inp" type="text" value="${fmt(min)}" data-pk="${pk}" data-bound="min"
+               title="Slider min"/>
+        <input type="range" id="ps_${pk}" min="${min}" max="${max}" step="${pd.step}" value="${val}"
+               oninput="onParamSlider('${pk}',this.value)"/>
+        <input class="p-range-inp" type="text" value="${fmt(max)}" data-pk="${pk}" data-bound="max"
+               title="Slider max"/>
+      </div>`;
     pa.appendChild(row);
+
+    // Wire value text input
+    const valInp=row.querySelector(`#pv_${pk}`);
+    valInp.addEventListener('change', ()=>commitParamValue(pk, valInp.value, pd.step));
+    valInp.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){commitParamValue(pk, valInp.value, pd.step); valInp.blur();}
+    });
+    valInp.addEventListener('click', e=>e.stopPropagation());
+
+    // Wire range bound inputs
+    row.querySelectorAll('.p-range-inp').forEach(inp=>{
+      inp.addEventListener('change', ()=>commitRangeBound(key, pk, inp.dataset.bound, inp.value, pd.step));
+      inp.addEventListener('keydown', e=>{
+        if(e.key==='Enter'){commitRangeBound(key, pk, inp.dataset.bound, inp.value, pd.step); inp.blur();}
+      });
+      inp.addEventListener('click', e=>e.stopPropagation());
+    });
   }
   if(key==='poly_custom'){
     const deg=existingParams?.degree ?? TEMPLATES.poly_custom.params.degree.default;
@@ -372,14 +402,69 @@ function buildParamsForTemplate(key, existingParams){
   }
 }
 
-function onParamChange(pk, val){
-  const tpl=selTpl?TEMPLATES[selTpl]:null;
-  if(tpl&&tpl.params[pk]){
-    const el=document.getElementById(`pv_${pk}`);
-    if(el) el.textContent=tpl.params[pk].step<1?parseFloat(val).toFixed(2):parseInt(val);
+// Per-template slider range overrides (survives template switches for same key)
+const sliderRanges = {};
+
+function commitParamValue(pk, raw, step){
+  const val=parseFloat(raw);
+  if(isNaN(val)) { syncParamInputFromSlider(pk); return; }
+  const slider=document.getElementById(`ps_${pk}`);
+  const valInp=document.getElementById(`pv_${pk}`);
+  if(!slider) return;
+  const fmt=v=>step<1?parseFloat(v).toFixed(2):parseInt(v);
+  // Extend slider range if value is outside it
+  if(val < parseFloat(slider.min)){
+    slider.min=val;
+    if(selTpl) { if(!sliderRanges[selTpl]) sliderRanges[selTpl]={}; if(!sliderRanges[selTpl][pk]) sliderRanges[selTpl][pk]={}; sliderRanges[selTpl][pk].min=val; }
+    const minInp=slider.parentElement.querySelector('[data-bound="min"]');
+    if(minInp) minInp.value=fmt(val);
   }
+  if(val > parseFloat(slider.max)){
+    slider.max=val;
+    if(selTpl) { if(!sliderRanges[selTpl]) sliderRanges[selTpl]={}; if(!sliderRanges[selTpl][pk]) sliderRanges[selTpl][pk]={}; sliderRanges[selTpl][pk].max=val; }
+    const maxInp=slider.parentElement.querySelector('[data-bound="max"]');
+    if(maxInp) maxInp.value=fmt(val);
+  }
+  slider.value=val;
+  if(valInp) valInp.value=fmt(val);
   if(selTpl==='poly_custom'&&pk==='degree') updatePolyCoeffVisibility(parseInt(val));
-  // Param change: immediate render, no animation, no view reset
+  if(activePid!==null) applyAndRender(activePid, false);
+}
+
+function commitRangeBound(key, pk, bound, raw, step){
+  const val=parseFloat(raw);
+  const slider=document.getElementById(`ps_${pk}`);
+  const inp=slider?.parentElement?.querySelector(`[data-bound="${bound}"]`);
+  if(isNaN(val)||!slider){ if(inp) inp.value=bound==='min'?slider?.min:slider?.max; return; }
+  const fmt=v=>step<1?parseFloat(v).toFixed(2):parseInt(v);
+  if(bound==='min') slider.min=val;
+  else              slider.max=val;
+  if(inp) inp.value=fmt(val);
+  if(!sliderRanges[key]) sliderRanges[key]={};
+  if(!sliderRanges[key][pk]) sliderRanges[key][pk]={};
+  sliderRanges[key][pk][bound]=val;
+  // Clamp current slider value
+  const cur=parseFloat(slider.value);
+  if(bound==='min'&&cur<val){ slider.value=val; const vi=document.getElementById(`pv_${pk}`); if(vi) vi.value=fmt(val); }
+  if(bound==='max'&&cur>val){ slider.value=val; const vi=document.getElementById(`pv_${pk}`); if(vi) vi.value=fmt(val); }
+}
+
+function syncParamInputFromSlider(pk){
+  // Reset text input to match slider
+  const slider=document.getElementById(`ps_${pk}`);
+  const valInp=document.getElementById(`pv_${pk}`);
+  if(slider&&valInp){
+    const step=parseFloat(slider.step)||0.1;
+    valInp.value=step<1?parseFloat(slider.value).toFixed(2):parseInt(slider.value);
+  }
+}
+
+function onParamSlider(pk, val){
+  const tpl=selTpl?TEMPLATES[selTpl]:null;
+  const step=tpl?.params[pk]?.step??0.1;
+  const vi=document.getElementById(`pv_${pk}`);
+  if(vi) vi.value=step<1?parseFloat(val).toFixed(2):parseInt(val);
+  if(selTpl==='poly_custom'&&pk==='degree') updatePolyCoeffVisibility(parseInt(val));
   if(activePid!==null) applyAndRender(activePid, false);
 }
 
@@ -401,7 +486,7 @@ function applyAndRender(pid, isNewTemplate=false){
   }
   p.template=selTpl;
   p.params=params;
-  if(!p.labels.title) p.labels.title=TEMPLATES[selTpl].label;
+  // Don't auto-set title — user edits it inline in the chart (placeholder shows template name)
   if(p.mode==='mpl') return;
   renderJS(pid, isNewTemplate);
 }
@@ -493,19 +578,27 @@ function buildInnerHTML(p){
   if(p.mode==='mpl'&&p.mplImage){
     return `<div class="mpl-body"><img class="mpl-img" src="data:image/png;base64,${p.mplImage}" alt="plot"/></div>`;
   }
+  const titleVal = p.labels.title||'';
+  const xlabelVal = p.labels.xlabel||'';
+  const ylabelVal = p.labels.ylabel||'';
   return `
     <div class="chart-region" id="cregion_${pid}">
-      <div class="canvas-wrap" id="cwrap_${pid}" data-mode="${plotModes[pid]||'move'}">
+      <input class="chart-title-inp" id="ctitleinp_${pid}" type="text"
+             value="${titleVal}" placeholder="Insert title"
+             style="font-size:${p.view.title_size||13}px"/>
+      <div class="canvas-wrap" id="cwrap_${pid}">
         <canvas id="chart_${pid}" style="display:block;width:100%"></canvas>
         <div class="cursor-coords" id="coords_${pid}">x=— y=—</div>
       </div>
       <div class="ax-xlabel">
         <input class="lbl-inp" id="xlabel_${pid}" type="text"
-               value="${p.labels.xlabel}" placeholder="x label"/>
+               value="${xlabelVal}" placeholder="Insert x-label"
+               style="font-size:${p.view.label_size||10}px"/>
       </div>
       <div class="ax-ylabel">
         <input class="lbl-inp" id="ylabel_${pid}" type="text"
-               value="${p.labels.ylabel}" placeholder="y label"/>
+               value="${ylabelVal}" placeholder="Insert y-label"
+               style="font-size:${p.view.label_size||10}px"/>
       </div>
     </div>`;
 }
@@ -611,9 +704,7 @@ function buildCard(p, i){
 
 function buildTopbarInner(p, i){
   const tplName=p.template?TEMPLATES[p.template]?.label||p.template:'—';
-  const editable=p.mode==='js';
 
-  // mpl/revert button — always shown, enabled when plot has a template
   const canMpl = !!p.template;
   const mplBtn = p.mode==='js'
     ? `<button class="cbtn mpl-btn${!canMpl?' mpl-disabled':''}" data-pid="${p.id}" data-action="mpl"
@@ -622,52 +713,49 @@ function buildTopbarInner(p, i){
 
   return `
     <span class="cnum">PLOT ${String(i+1).padStart(2,'0')}</span>
-    <span class="ctitle ${editable?'editable':'readonly'}" id="ctitle_${p.id}"
-          title="${editable?'Click to edit title':''}">${p.labels.title||tplName}</span>
+    <span class="ctitle readonly" id="ctitle_${p.id}">${tplName}</span>
     <div class="cactions">
       ${mplBtn}
       <button class="cbtn" data-pid="${p.id}" data-action="del">✕</button>
     </div>`;
 }
 
-// ═══ TITLE EDITING ═══════════════════════════════════════════════════════
-function wireTopbarTitle(p){
-  const el=document.getElementById(`ctitle_${p.id}`);
-  if(!el||!el.classList.contains('editable')) return;
-  el.addEventListener('click',(e)=>{
-    e.stopPropagation();
-    if(document.querySelector('.title-inp')) return;
-    const inp=document.createElement('input');
-    inp.className='title-inp'; inp.type='text'; inp.value=p.labels.title;
-    const rect=el.getBoundingClientRect();
-    inp.style.left=rect.left+'px'; inp.style.top=rect.top+'px';
-    inp.style.width=Math.max(140,rect.width+20)+'px';
-    document.body.appendChild(inp); inp.focus(); inp.select();
-    function commit(){
-      p.labels.title=inp.value.trim()||TEMPLATES[p.template]?.label||'';
-      el.textContent=p.labels.title; inp.remove();
-    }
-    inp.addEventListener('keydown',(e)=>{if(e.key==='Enter')commit();else if(e.key==='Escape')inp.remove();});
-    inp.addEventListener('blur',commit);
-  });
-}
+// Title is now edited inline inside the chart — topbar is read-only
+function wireTopbarTitle(p){ /* no-op */ }
 
 // ═══ AXIS LABEL INPUTS ═══════════════════════════════════════════════════
 function wireAxisLabelInputs(p){
   const xi=document.getElementById(`xlabel_${p.id}`);
   const yi=document.getElementById(`ylabel_${p.id}`);
+  const ti=document.getElementById(`ctitleinp_${p.id}`);
   if(xi){
-    xi.value=p.labels.xlabel;
     xi.addEventListener('change',()=>{p.labels.xlabel=xi.value;});
     xi.addEventListener('input', ()=>{p.labels.xlabel=xi.value;});
     xi.addEventListener('click', e=>e.stopPropagation());
   }
   if(yi){
-    yi.value=p.labels.ylabel;
     yi.addEventListener('change',()=>{p.labels.ylabel=yi.value;});
     yi.addEventListener('input', ()=>{p.labels.ylabel=yi.value;});
     yi.addEventListener('click', e=>e.stopPropagation());
   }
+  if(ti){
+    ti.addEventListener('change',()=>{p.labels.title=ti.value;});
+    ti.addEventListener('input', ()=>{p.labels.title=ti.value;});
+    ti.addEventListener('click', e=>e.stopPropagation());
+    ti.addEventListener('keydown',e=>{if(e.key==='Enter') ti.blur();});
+  }
+}
+
+// Apply font size updates to live label inputs without full rebuild
+function applyLabelFontSizes(pid){
+  const p=gp(pid); if(!p) return;
+  const v=p.view;
+  const ti=document.getElementById(`ctitleinp_${pid}`);
+  const xi=document.getElementById(`xlabel_${pid}`);
+  const yi=document.getElementById(`ylabel_${pid}`);
+  if(ti) ti.style.fontSize=(v.title_size||13)+'px';
+  if(xi) xi.style.fontSize=(v.label_size||10)+'px';
+  if(yi) yi.style.fontSize=(v.label_size||10)+'px';
 }
 
 // ═══ ACTIVE HIGHLIGHT ════════════════════════════════════════════════════
@@ -1087,6 +1175,8 @@ function triggerCfgRender(){
   readCfgIntoActive();
   const p=gp(activePid);
   if(!p||!p.template) return;
+  // Always update label font sizes in JS mode (instant, no redraw needed)
+  applyLabelFontSizes(activePid);
   if(p.mode==='js') renderJS(activePid, false);
   else{
     clearTimeout(window._cfgDebounce);
