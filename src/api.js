@@ -36,6 +36,7 @@ function defView(){
     x_min:null, x_max:null, y_min:null, y_max:null,
     show_grid:true, grid_alpha:.5,
     show_axis_lines:true, axis_alpha:.6,
+    x_log:false, y_log:false,
     title_size:13, label_size:10,
     show_legend:true,
     legend_x_frac: 0.98,
@@ -106,9 +107,8 @@ async function boot(){
   wireAllCfgInputs();
 }
 
-function setConn(s,msg){
+function setConn(s, _msg){
   document.getElementById('cdot').className = 'cdot'+(s==='ok'?' ok':s==='err'?' err':'');
-  document.getElementById('cmsg').textContent = msg;
 }
 
 // ═══ MATPLOTLIB CALLS ════════════════════════════════════════════════════
@@ -153,6 +153,16 @@ async function convertToMpl(pid){
 function revertToJS(pid){
   const p = gp(pid); if(!p) return;
   p.mplMode = false; p.mplImage = null;
-  updateCardContent(pid); updateTopbar(pid);
-  if(p.curves.some(c=>c.template)) renderJS(pid, false);
+  // Keep this plot active
+  activePid = pid;
+  // Rebuild inner content (mpl→js) and topbar
+  updateCardContent(pid);
+  updateTopbar(pid);
+  syncActiveHighlight();
+  // renderJS will handle drawChart; refreshCfg/Sidebar after the chart settles
+  if(p.curves.some(c=>c.template)){
+    renderJS(pid, false);
+  }
+  // Defer panel refresh until after renderJS's internal setTimeout completes
+  setTimeout(()=>{ refreshCfg(); refreshSidebar(); }, 20);
 }

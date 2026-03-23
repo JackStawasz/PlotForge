@@ -324,13 +324,22 @@ function drawChart(p){
 
   if(chartInstances[p.id] && !shouldAnimate){
     const ch = chartInstances[p.id];
-    ch.data.datasets = [...axisDatasets, ...datasets];
-    if(hasDiscrete) ch.data.labels = p.curves.find(c=>c.jsData?.discrete)?.jsData.x.map(n=>n) || [];
-    const galpha = v.grid_alpha ?? 0.5, gc = `rgba(60,60,100,${galpha})`;
-    ch.options.scales.x.grid.display=v.show_grid; ch.options.scales.x.grid.color=gc;
-    ch.options.scales.y.grid.display=v.show_grid; ch.options.scales.y.grid.color=gc;
-    ch.options.scales.x.ticks.callback=makeTickCb('x'); ch.options.scales.y.ticks.callback=makeTickCb('y');
-    applyScaleLimits(ch.options.scales, v); ch.update('none'); refreshOverlayLegend(p.id); return;
+    // If scale type changed (log toggle), must destroy and recreate
+    const xTypeChanged = ch.options.scales.x.type !== (v.x_log ? 'logarithmic' : 'linear');
+    const yTypeChanged = ch.options.scales.y.type !== (v.y_log ? 'logarithmic' : 'linear');
+    if(xTypeChanged || yTypeChanged){
+      destroyChart(p.id);
+      // Fall through to full rebuild below
+    } else {
+      ch.data.datasets = [...axisDatasets, ...datasets];
+      if(hasDiscrete) ch.data.labels = p.curves.find(c=>c.jsData?.discrete)?.jsData.x.map(n=>n) || [];
+      const galpha = v.grid_alpha ?? 0.5, gc = `rgba(60,60,100,${galpha})`;
+      ch.options.scales.x.grid.display=v.show_grid; ch.options.scales.x.grid.color=gc;
+      ch.options.scales.y.grid.display=v.show_grid; ch.options.scales.y.grid.color=gc;
+      ch.options.scales.x.ticks.callback = v.x_log ? makeLogTickCb() : makeTickCb('x');
+      ch.options.scales.y.ticks.callback = v.y_log ? makeLogTickCb() : makeTickCb('y');
+      applyScaleLimits(ch.options.scales, v); ch.update('none'); refreshOverlayLegend(p.id); return;
+    }
   }
 
   destroyChart(p.id); const ctx = canvas.getContext('2d');

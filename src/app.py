@@ -219,6 +219,17 @@ def render_matplotlib_multi(curves_data, view, labels):
 
     ax.grid(view.get("show_grid",True),color=GRID_C,linewidth=0.7,
             alpha=view.get("grid_alpha",.5),zorder=1)
+
+    # Log scale
+    if view.get("x_log",False): ax.set_xscale('log')
+    if view.get("y_log",False): ax.set_yscale('log')
+
+    # Axis lines at x=0 and y=0
+    if view.get("show_axis_lines",True):
+        aa = view.get("axis_alpha",0.6)
+        axis_color=(0.7,0.7,0.86,aa)
+        ax.axhline(0,color=axis_color,linewidth=0.9,zorder=2)
+        ax.axvline(0,color=axis_color,linewidth=0.9,zorder=2)
     for sp in ax.spines.values(): sp.set_edgecolor(SPINE_C); sp.set_linewidth(0.8)
     ax.tick_params(colors=TEXT_C,labelsize=8,length=4,width=0.6)
     for t in ax.get_xticklabels()+ax.get_yticklabels():
