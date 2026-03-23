@@ -99,7 +99,57 @@ function lanczosGamma(z){
   return Math.sqrt(2*Math.PI)*Math.pow(t,z+0.5)*Math.exp(-t)*x;
 }
 
-// ═══ NUMERIC UTILITIES ═══════════════════════════════════════════════════
+// ═══ DISCONTINUITY CLIPPING ══════════════════════════════════════════════
+// Inserts null sentinels only at true asymptote discontinuities (sign-flip
+// jumps). Does NOT clip finite peaks — even narrow ones.
+function clipForDisplay(xArr, yArr){
+  const n = xArr.length;
+  if(n < 4) return {x:xArr, y:yArr};
+
+  // Collect all finite values to estimate the data range
+  const finite = yArr.filter(v => v != null && isFinite(v));
+  if(finite.length < 4) return {x:xArr, y:yArr};
+
+  const yMin = Math.min(...finite);
+  const yMax = Math.max(...finite);
+  const yRange = yMax - yMin;
+
+  // If the entire range is well-behaved, no clipping needed
+  if(yRange <= 0 || !isFinite(yRange)) return {x:xArr, y:yArr};
+
+  // Detect only true discontinuities: jumps that are very large relative to
+  // the full data range AND cross zero (sign-flip = asymptote crossing).
+  // This avoids clipping smooth peaks like Lorentzians.
+  const DISC_THRESH = 5.0;   // jump > 5× total range = likely asymptote
+
+  const xOut = [], yOut = [];
+  let prevKeptY = null;
+
+  for(let i = 0; i < n; i++){
+    const yi = yArr[i];
+
+    if(yi == null || !isFinite(yi)){
+      xOut.push(xArr[i]); yOut.push(null);
+      prevKeptY = null;
+      continue;
+    }
+
+    if(prevKeptY !== null){
+      const dy = Math.abs(yi - prevKeptY);
+      // Only break if: large jump AND values cross zero (true asymptote)
+      const crossesZero = (yi * prevKeptY < 0);
+      if(dy > DISC_THRESH * yRange && crossesZero){
+        xOut.push(xArr[i]); yOut.push(null);
+        // Don't update prevKeptY — next point compares against the pre-jump value
+      }
+    }
+
+    xOut.push(xArr[i]); yOut.push(yi);
+    prevKeptY = yi;
+  }
+  return {x:xOut, y:yOut};
+}
+
 // Round a value to N significant figures, stripping trailing zeros.
 function sigFig(v,n){
   if(!isFinite(v)) return '—';
@@ -122,4 +172,54 @@ function niceSliderStep(min,max){
   const rough=span/200, mag=Math.pow(10,Math.floor(Math.log10(rough))), norm=rough/mag;
   let nice; if(norm<1.5)nice=1; else if(norm<3.5)nice=2; else if(norm<7.5)nice=5; else nice=10;
   return nice*mag;
+}
+
+// ═══ ADAPTIVE SAMPLING ═══════════════════════════════════════════════════
+// Detects intervals with large |Δy| and inserts extra evaluated points so
+// narrow peaks (e.g. thin Lorentzians) are never dropped on zoom-out.
+function adaptiveSample(xArr, yArr, evalFn, maxExtra=600){
+  const n = xArr.length;
+  if(n < 2 || !evalFn) return {x:xArr, y:yArr};
+
+  // Median |Δy| as a robust scale estimate
+  const diffs = [];
+  for(let i=1;i<n;i++){
+    const yi=yArr[i], yp=yArr[i-1];
+    if(yi!=null&&yp!=null&&isFinite(yi)&&isFinite(yp)) diffs.push(Math.abs(yi-yp));
+  }
+  if(!diffs.length) return {x:xArr, y:yArr};
+  diffs.sort((a,b)=>a-b);
+  const medDiff = diffs[Math.floor(diffs.length/2)] || 1e-10;
+
+  // Collect segments that need more points
+  const THRESH = 6;
+  const hot = [];
+  for(let i=1;i<n;i++){
+    const yi=yArr[i], yp=yArr[i-1];
+    if(yi==null||yp==null||!isFinite(yi)||!isFinite(yp)) continue;
+    const dy = Math.abs(yi-yp);
+    if(dy > THRESH * medDiff) hot.push({i, dy});
+  }
+  if(!hot.length) return {x:xArr, y:yArr};
+
+  const totalDy = hot.reduce((s,h)=>s+h.dy, 0);
+  const extras = [];
+  let used = 0;
+
+  for(const {i, dy} of hot){
+    if(used >= maxExtra) break;
+    const k = Math.min(Math.ceil((dy/totalDy)*maxExtra), maxExtra-used, 80);
+    if(k < 1) continue;
+    const x0=xArr[i-1], x1=xArr[i];
+    for(let j=1;j<=k;j++){
+      const xr = x0 + (x1-x0)*j/(k+1);
+      try{ const yr=evalFn(xr); if(yr!=null&&isFinite(yr)) extras.push({x:xr,y:yr}); }catch(e){}
+    }
+    used += k;
+  }
+  if(!extras.length) return {x:xArr, y:yArr};
+
+  const merged = xArr.map((x,i)=>({x, y:yArr[i]})).concat(extras);
+  merged.sort((a,b)=>a.x-b.x);
+  return {x:merged.map(p=>p.x), y:merged.map(p=>p.y)};
 }
