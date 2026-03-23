@@ -46,25 +46,38 @@ function updateAddToPlotBtn(){
 function buildCategories(){
   const container = document.getElementById('catBlocks');
   container.innerHTML = '';
-  const grouped = {};
+
+  // Build grouped structure preserving JSON insertion order.
+  // Use arrays for both category order and subfolder order.
+  const catOrder    = [];   // category keys in encounter order
+  const catMeta     = {};   // cat -> { subfolderOrder:[], subfolders:{name->[items]}, flat:[items] }
+
   for(const [key,tpl] of Object.entries(TEMPLATES)){
     const cat = tpl.category, sub = tpl.subfolder || null;
-    if(!grouped[cat]) grouped[cat] = {_flat:[]};
-    if(sub){ if(!grouped[cat][sub]) grouped[cat][sub]=[]; grouped[cat][sub].push({key,tpl}); }
-    else grouped[cat]._flat.push({key,tpl});
+    if(!catMeta[cat]){
+      catOrder.push(cat);
+      catMeta[cat] = { subfolderOrder:[], subfolders:{}, flat:[] };
+    }
+    const cm = catMeta[cat];
+    if(sub){
+      if(!cm.subfolders[sub]){ cm.subfolderOrder.push(sub); cm.subfolders[sub]=[]; }
+      cm.subfolders[sub].push({key,tpl});
+    }else{
+      cm.flat.push({key,tpl});
+    }
   }
-  for(const [cat,submap] of Object.entries(grouped)){
+
+  for(const cat of catOrder){
+    const cm   = catMeta[cat];
     const meta = CAT_META[cat] || {label:cat, dotClass:''};
     const wrap = document.createElement('div'); wrap.className = 'cat-wrap';
     const hdr  = document.createElement('button'); hdr.className = 'cat-hdr';
     hdr.innerHTML = `<div class="cat-dot ${meta.dotClass}"></div><span>${meta.label}</span><span class="cat-arrow">›</span>`;
     const body = document.createElement('div'); body.className = 'cat-body';
-    const subfolders = Object.keys(submap).filter(k=>k!=='_flat');
-    const flatItems  = submap._flat;
-    const total = subfolders.length + flatItems.length; let ti = 0;
+    const total = cm.subfolderOrder.length + cm.flat.length; let ti = 0;
 
-    subfolders.forEach(subName=>{
-      const items = submap[subName]; const isLast = (ti===total-1); ti++;
+    cm.subfolderOrder.forEach(subName=>{
+      const items = cm.subfolders[subName]; const isLast = (ti===total-1); ti++;
       const sw = document.createElement('div'); sw.className = 'subfolder-wrap';
       const sh = document.createElement('button'); sh.className = 'subfolder-hdr';
       sh.innerHTML = `<span class="tree-connector">${isLast?'└':'├'}</span><span class="sub-label">${subName}</span><span class="sub-arrow">›</span>`;
@@ -84,7 +97,7 @@ function buildCategories(){
       sw.appendChild(sh); sw.appendChild(sb); body.appendChild(sw);
     });
 
-    flatItems.forEach(({key,tpl})=>{
+    cm.flat.forEach(({key,tpl})=>{
       ti++; const isLast = (ti===total);
       const btn = document.createElement('button'); btn.className = 'tpl-item'; btn.dataset.key = key;
       btn.innerHTML = `<span class="tree-connector">${isLast?'└':'├'}</span><span class="tpl-label">${tpl.label}</span><span class="tpl-eq">${tpl.equation}</span>`;
@@ -106,18 +119,10 @@ function selectTemplate(key){
   selTpl = key;
   document.querySelectorAll('.tpl-item').forEach(b=>b.classList.toggle('sel', b.dataset.key===key));
   updateAddToPlotBtn();
-  const p = activePlot();
-  if(p){
-    const curve = activeCurve();
-    if(curve && !curve.template){
-      curve.template = key;
-      buildParamsForTemplate(key, curve.params);
-      p.view.x_min=null; p.view.x_max=null; p.view.y_min=null; p.view.y_max=null;
-      applyAndRender(p.id, true);
-    }else{
-      buildParamsForTemplate(key, curve?.params);
-    }
-  }
+  // Load params for the selected template using the active curve's existing param values
+  // (if any), but do NOT auto-assign or auto-render — user must click "Add to Plot".
+  const curve = activeCurve();
+  buildParamsForTemplate(key, curve?.template === key ? curve.params : {});
 }
 
 function addToPlot(){
@@ -261,8 +266,18 @@ function renderJS(pid, firstRender=false){
   for(const curve of p.curves){
     if(!curve.template) continue;
     const result = evalTemplate(curve.template, curve.params, p.view); if(!result) continue;
-    const masked = applyMask(result.x, result.y, curve);
-    curve.jsData = {x:masked.x, y:masked.y, discrete:result.discrete};
+    // Adaptive sampling: re-evaluate in high-|dy/dx| regions to preserve narrow peaks
+    let sampled = result;
+    if(!result.discrete){
+      const evalFn = x => {
+        const tiny = evalTemplate(curve.template, curve.params, {x_min:x, x_max:x+1e-10});
+        return tiny ? tiny.y[0] : null;
+      };
+      sampled = adaptiveSample(result.x, result.y, evalFn);
+    }
+    const masked = applyMask(sampled.x, sampled.y, curve);
+    const clipped = masked.discrete ? masked : clipForDisplay(masked.x, masked.y);
+    curve.jsData = {x:clipped.x, y:clipped.y, discrete:result.discrete};
     curve.equation = result.equation; anyData = true;
     if(gxMin===null||result.autoXMin<gxMin) gxMin=result.autoXMin;
     if(gxMax===null||result.autoXMax>gxMax) gxMax=result.autoXMax;
@@ -310,10 +325,10 @@ function drawChart(p){
       datasets.push({
         label: curve.name || (curve.template ? TEMPLATES[curve.template]?.label : 'Curve'),
         type:'line', data:curve.jsData.x.map((xv,i)=>({x:xv,y:curve.jsData.y[i]})),
-        borderColor:lc, borderWidth:curve.line_width||2, borderDash:dashFor(curve.line_style),
+        borderColor:lc, borderWidth:borderWidthFor(curve), borderDash:dashFor(curve.line_style),
         pointRadius:curve.marker!=='none' ? curve.marker_size||4 : 0, pointBackgroundColor:lc,
         fill:curve.fill_under, backgroundColor:hexAlpha(lc,curve.fill_alpha||.15),
-        tension:0.35, spanGaps:true, parsing:false,
+        tension:0, spanGaps:false, parsing:false,
       });
     }
   }
@@ -351,7 +366,8 @@ function drawChart(p){
         plugins:{legend:{display:false},tooltip:tooltipOpts()},scales}
     });
   }else{
-    scales.x.type = 'linear';
+    // For continuous plots, override x type from the default 'category' to linear/log
+    scales.x.type = v.x_log ? 'logarithmic' : 'linear';
     chartInstances[p.id] = new Chart(ctx, {
       type:'line', data:{datasets:[...axisDatasets,...datasets]},
       options:{responsive:true,maintainAspectRatio:true,animation:animOpts,
@@ -365,6 +381,7 @@ function drawChart(p){
 }
 
 function dashFor(ls){ return ls==='dashed'?[6,3]:ls==='dotted'?[2,3]:ls==='dashdot'?[6,3,2,3]:[]; }
+function borderWidthFor(curve){ return curve.line_style==='none' ? 0 : (curve.line_width||2); }
 
 function buildAxisLineDatasets(v){
   if(!v.show_axis_lines) return [];
@@ -375,20 +392,20 @@ function buildAxisLineDatasets(v){
     { // y=0 line (horizontal)
       type:'line', _axisLine:true, label:'',
       data:[{x:-big,y:0},{x:big,y:0}],
-      borderColor:color, borderWidth:1, borderDash:[],
+      borderColor:color, borderWidth:1.5, borderDash:[],
       pointRadius:0, fill:false, tension:0, spanGaps:true, parsing:false,
     },
     { // x=0 line (vertical)
       type:'line', _axisLine:true, label:'',
       data:[{x:0,y:-big},{x:0,y:big}],
-      borderColor:color, borderWidth:1, borderDash:[],
+      borderColor:color, borderWidth:1.5, borderDash:[],
       pointRadius:0, fill:false, tension:0, spanGaps:true, parsing:false,
     },
   ];
 }
 
 function makeTickCb(axisKey){
-  return function(val){
+  return function(val, index, ticks){
     const span=this.max-this.min, target=axisKey==='x'?8:6, step=niceStep(span,target);
     const rem=Math.abs(val%step), tol=step*1e-6;
     if(rem>tol && (step-rem)>tol) return null;
@@ -400,10 +417,34 @@ function makeTickCb(axisKey){
 function buildScales(v){
   const galpha = v.grid_alpha ?? 0.5, gc = `rgba(60,60,100,${galpha})`;
   const s = {
-    x:{ticks:{color:'#b0b0e0',font:{family:"'IBM Plex Mono'",size:10},maxTicksLimit:12,callback:makeTickCb('x')},grid:{color:gc,display:v.show_grid}},
-    y:{ticks:{color:'#b0b0e0',font:{family:"'IBM Plex Mono'",size:10},maxTicksLimit:10,callback:makeTickCb('y')},grid:{color:gc,display:v.show_grid}},
+    x:{
+      type: v.x_log ? 'logarithmic' : 'linear',
+      border:{ display:true, color:gc },
+      ticks:{color:'#b0b0e0',font:{family:"'IBM Plex Mono'",size:10},maxTicksLimit:12,
+             callback: v.x_log ? makeLogTickCb() : makeTickCb('x')},
+      grid:{color:gc,display:v.show_grid, drawBorder:true},
+    },
+    y:{
+      type: v.y_log ? 'logarithmic' : 'linear',
+      border:{ display:true, color:gc },
+      ticks:{color:'#b0b0e0',font:{family:"'IBM Plex Mono'",size:10},maxTicksLimit:10,
+             callback: v.y_log ? makeLogTickCb() : makeTickCb('y')},
+      grid:{color:gc,display:v.show_grid, drawBorder:true},
+    },
   };
   applyScaleLimits(s, v); return s;
+}
+
+function makeLogTickCb(){
+  return function(val){
+    // Show labels at powers of 10
+    const log = Math.log10(val);
+    if(Math.abs(log - Math.round(log)) > 0.01) return null;
+    const exp = Math.round(log);
+    if(exp === 0) return '1';
+    if(exp === 1) return '10';
+    return `10^${exp}`;
+  };
 }
 
 function applyScaleLimits(scales, v){
@@ -427,6 +468,49 @@ function hexAlpha(hex,a){
   return `rgba(${r},${g},${b},${a})`;
 }
 
+// ═══ CURVE SYMBOL ════════════════════════════════════════════════════════
+// Renders a miniature SVG line+marker symbol matching the curve's style.
+function makeCurveSymbolSVG(curve, w=32, h=10){
+  const c   = curve.line_color;
+  const lw  = Math.min(curve.line_width||2, 3);
+  const ls  = curve.line_style || 'solid';
+  const mk  = curve.marker || 'none';
+  const ms  = Math.min(curve.marker_size||4, 5);
+  const y   = h/2;
+  const x1  = 2, x2 = w-2, xm = w/2;
+
+  let dashAttr = '';
+  if(ls==='dashed')  dashAttr = `stroke-dasharray="5,3"`;
+  else if(ls==='dotted')  dashAttr = `stroke-dasharray="1,3"`;
+  else if(ls==='dashdot') dashAttr = `stroke-dasharray="5,2,1,2"`;
+
+  const lineVis = ls==='none' ? 'visibility="hidden"' : '';
+
+  let markerSVG = '';
+  if(mk !== 'none'){
+    const r = ms/2;
+    if(mk==='o')
+      markerSVG = `<circle cx="${xm}" cy="${y}" r="${r}" fill="${c}" stroke="none"/>`;
+    else if(mk==='s')
+      markerSVG = `<rect x="${xm-r}" y="${y-r}" width="${ms}" height="${ms}" fill="${c}" stroke="none"/>`;
+    else if(mk==='^')
+      markerSVG = `<polygon points="${xm},${y-r} ${xm-r},${y+r} ${xm+r},${y+r}" fill="${c}" stroke="none"/>`;
+    else if(mk==='D')
+      markerSVG = `<polygon points="${xm},${y-r} ${xm+r},${y} ${xm},${y+r} ${xm-r},${y}" fill="${c}" stroke="none"/>`;
+    else if(mk==='+')
+      markerSVG = `<line x1="${xm-r}" y1="${y}" x2="${xm+r}" y2="${y}" stroke="${c}" stroke-width="1.5"/><line x1="${xm}" y1="${y-r}" x2="${xm}" y2="${y+r}" stroke="${c}" stroke-width="1.5"/>`;
+    else if(mk==='x')
+      markerSVG = `<line x1="${xm-r}" y1="${y-r}" x2="${xm+r}" y2="${y+r}" stroke="${c}" stroke-width="1.5"/><line x1="${xm+r}" y1="${y-r}" x2="${xm-r}" y2="${y+r}" stroke="${c}" stroke-width="1.5"/>`;
+    else
+      markerSVG = `<circle cx="${xm}" cy="${y}" r="${r}" fill="${c}" stroke="none"/>`;
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" style="vertical-align:middle;flex-shrink:0">
+    <line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${c}" stroke-width="${lw}" ${dashAttr} ${lineVis}/>
+    ${markerSVG}
+  </svg>`;
+}
+
 // ═══ OVERLAY LEGEND ══════════════════════════════════════════════════════
 function refreshOverlayLegend(pid){
   const p = gp(pid); if(!p) return;
@@ -439,13 +523,18 @@ function refreshOverlayLegend(pid){
     box = document.createElement('div'); box.id = `olegend_${pid}`; box.className = 'overlay-legend';
     wrap.appendChild(box); wireLegendDrag(box, pid);
   }
+  const legPx = Math.max(8, (p.view.legend_size ?? 9) + 2); // display px slightly larger than pt
+  const symH  = Math.max(8, legPx - 2);
   box.style.display = 'block'; box.innerHTML = '';
   curvesWithData.forEach(curve=>{
     const label = curve.name || (curve.template ? (TEMPLATES[curve.template]?.label||curve.template) : 'Curve');
-    const row = document.createElement('div'); row.className = 'ol-row';
-    const sw  = document.createElement('span'); sw.className = 'ol-swatch'; sw.style.background = curve.line_color;
+    const row = document.createElement('div');
+    row.className = 'ol-row';
+    row.style.fontSize = legPx + 'px';
+    const swrap = document.createElement('span'); swrap.className = 'ol-swatch';
+    swrap.innerHTML = makeCurveSymbolSVG(curve, 32, symH);
     const nm  = document.createElement('span'); nm.className = 'ol-label'; nm.textContent = label;
-    row.appendChild(sw); row.appendChild(nm); box.appendChild(row);
+    row.appendChild(swrap); row.appendChild(nm); box.appendChild(row);
   });
   requestAnimationFrame(()=>positionOverlayLegend(box, pid));
 }
@@ -700,21 +789,39 @@ function getCanvasDims(pid){
 
 function wireAxisLabelInputs(p){
   const xi=document.getElementById(`xlabel_${p.id}`), yi=document.getElementById(`ylabel_${p.id}`), ti=document.getElementById(`ctitleinp_${p.id}`);
-  const dims = getCanvasDims(p.id);
-  function wire(el, setter, maxPx){
-    if(!el) return; autoResizeInput(el, maxPx);
-    el.addEventListener('input',  ()=>{ setter(el.value); autoResizeInput(el, maxPx); });
-    el.addEventListener('change', ()=>{ setter(el.value); autoResizeInput(el, maxPx); });
-    el.addEventListener('click',  e=>e.stopPropagation());
+  const wrap = document.getElementById(`cwrap_${p.id}`);
+
+  function updateLabelMaxWidths(){
+    const dims = getCanvasDims(p.id);
+    const maxX = Math.max(60, Math.floor(dims.w * 0.9));
+    const maxY = Math.max(60, Math.floor(dims.h * 0.9));
+    if(xi){ xi.style.maxWidth = maxX+'px'; autoResizeInput(xi, maxX); }
+    if(yi){ yi.style.maxWidth = maxY+'px'; autoResizeInput(yi, maxY); }
+    if(ti){ ti.style.maxWidth = Math.floor(dims.w * 0.95)+'px'; autoResizeInput(ti, dims.w); }
   }
-  wire(xi, v=>{ p.labels.xlabel=v; }, dims.w);
-  wire(yi, v=>{ p.labels.ylabel=v; }, dims.h);
+
+  function wire(el, setter, getMaxPx){
+    if(!el) return;
+    el.addEventListener('input',   ()=>{ setter(el.value); autoResizeInput(el, getMaxPx()); });
+    el.addEventListener('change',  ()=>{ setter(el.value); autoResizeInput(el, getMaxPx()); });
+    el.addEventListener('click',   e=>e.stopPropagation());
+    el.addEventListener('keydown', e=>{ if(e.key==='Enter') el.blur(); });
+  }
+
+  wire(xi, v=>{ p.labels.xlabel=v; }, ()=>Math.max(60,Math.floor(getCanvasDims(p.id).w*0.9)));
+  wire(yi, v=>{ p.labels.ylabel=v; }, ()=>Math.max(60,Math.floor(getCanvasDims(p.id).h*0.9)));
+
   if(ti){
-    autoResizeInput(ti, dims.w);
-    ti.addEventListener('input',   ()=>{ p.labels.title=ti.value; autoResizeInput(ti, dims.w); });
-    ti.addEventListener('change',  ()=>{ p.labels.title=ti.value; autoResizeInput(ti, dims.w); });
+    ti.addEventListener('input',   ()=>{ p.labels.title=ti.value; autoResizeInput(ti, getCanvasDims(p.id).w); });
+    ti.addEventListener('change',  ()=>{ p.labels.title=ti.value; autoResizeInput(ti, getCanvasDims(p.id).w); });
     ti.addEventListener('click',   e=>e.stopPropagation());
     ti.addEventListener('keydown', e=>{ if(e.key==='Enter') ti.blur(); });
+  }
+
+  // Set immediately, then update when canvas resizes
+  updateLabelMaxWidths();
+  if(wrap){
+    new ResizeObserver(updateLabelMaxWidths).observe(wrap);
   }
 }
 
@@ -724,8 +831,8 @@ function applyLabelFontSizes(pid){
   const dims = getCanvasDims(pid);
   const ti=document.getElementById(`ctitleinp_${pid}`), xi=document.getElementById(`xlabel_${pid}`), yi=document.getElementById(`ylabel_${pid}`);
   if(ti){ ti.style.fontSize=tpx+'px'; autoResizeInput(ti, dims.w); }
-  if(xi){ xi.style.fontSize=lpx+'px'; autoResizeInput(xi, dims.w); }
-  if(yi){ yi.style.fontSize=lpx+'px'; autoResizeInput(yi, dims.h); }
+  if(xi){ xi.style.fontSize=lpx+'px'; autoResizeInput(xi, Math.floor(dims.w * 0.9)); }
+  if(yi){ yi.style.fontSize=lpx+'px'; autoResizeInput(yi, Math.floor(dims.h * 0.9)); }
 }
 
 function syncActiveHighlight(){
@@ -774,15 +881,103 @@ function refreshLineCurveSelector(){
   const p = activePlot();
   if(!p || !p.curves.some(c=>c.template)){ container.innerHTML=''; container.style.display='none'; return; }
   container.style.display = 'flex'; container.innerHTML = '';
+
+  let dragSrcIdx = null;
+
   p.curves.forEach((curve, idx)=>{
     if(!curve.template) return;
     const label = curve.name || (TEMPLATES[curve.template]?.label || `Curve ${idx+1}`);
-    const pill  = document.createElement('button');
+
+    const pill = document.createElement('div');
     pill.className = 'curve-pill' + (idx===activeCurveIdx ? ' curve-pill-active' : '');
-    const dot = document.createElement('span'); dot.className='pill-dot'; dot.style.background=curve.line_color;
-    const txt = document.createElement('span'); txt.className='pill-label'; txt.textContent=label;
-    pill.appendChild(dot); pill.appendChild(txt);
-    pill.addEventListener('click', ()=>{ activeCurveIdx=idx; refreshLineCurveSelector(); refreshCfg(); });
+    pill.dataset.idx = idx;
+    pill.draggable = true;
+
+    const handle = document.createElement('span');
+    handle.className = 'pill-drag-handle';
+    handle.textContent = '⠿';
+    handle.title = 'Drag to reorder';
+
+    const symWrap = document.createElement('span');
+    symWrap.className = 'pill-sym';
+    symWrap.innerHTML = makeCurveSymbolSVG(curve, 28, 10);
+
+    // Inline name input — shows current name, editable on focus
+    const nameInp = document.createElement('input');
+    nameInp.type = 'text';
+    nameInp.className = 'pill-name-inp';
+    nameInp.value = curve.name || '';
+    nameInp.placeholder = TEMPLATES[curve.template]?.label || `Curve ${idx+1}`;
+    nameInp.maxLength = 40;
+    nameInp.addEventListener('click', e=>e.stopPropagation());
+    nameInp.addEventListener('input', ()=>{
+      curve.name = nameInp.value;
+      refreshOverlayLegend(p.id);
+      // Update other pills' placeholder/label without full rebuild
+      container.querySelectorAll('.curve-pill').forEach(el=>{
+        if(parseInt(el.dataset.idx)===idx){
+          // already this pill — nothing extra needed
+        }
+      });
+    });
+    nameInp.addEventListener('keydown', e=>{ if(e.key==='Enter') nameInp.blur(); e.stopPropagation(); });
+
+    // X delete button, right-justified
+    const delBtn = document.createElement('button');
+    delBtn.className = 'pill-del-btn';
+    delBtn.textContent = '✕';
+    delBtn.title = 'Remove curve';
+    delBtn.addEventListener('click', e=>{
+      e.stopPropagation();
+      const ap = activePlot(); if(!ap) return;
+      removeCurve(ap.id, idx);
+    });
+
+    pill.appendChild(handle);
+    pill.appendChild(symWrap);
+    pill.appendChild(nameInp);
+    pill.appendChild(delBtn);
+
+    // Select curve on click (but not when dragging or clicking name/del)
+    pill.addEventListener('click', e=>{
+      if(e.target === handle || e.target === nameInp || e.target === delBtn) return;
+      activeCurveIdx = idx; refreshLineCurveSelector(); refreshCfg();
+    });
+
+    // Drag-to-reorder
+    pill.addEventListener('dragstart', e=>{
+      dragSrcIdx = idx;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(()=>pill.style.opacity='0.4', 0);
+    });
+    pill.addEventListener('dragend', ()=>{
+      pill.style.opacity='';
+      container.querySelectorAll('.curve-pill').forEach(p=>p.classList.remove('drag-over'));
+    });
+    pill.addEventListener('dragover', e=>{
+      e.preventDefault(); e.dataTransfer.dropEffect='move';
+      pill.classList.add('drag-over');
+    });
+    pill.addEventListener('dragleave', ()=>pill.classList.remove('drag-over'));
+    pill.addEventListener('drop', e=>{
+      e.preventDefault();
+      pill.classList.remove('drag-over');
+      const destIdx = parseInt(pill.dataset.idx);
+      if(dragSrcIdx === null || dragSrcIdx === destIdx) return;
+      const ap = activePlot(); if(!ap) return;
+      // Reorder curves array
+      const [moved] = ap.curves.splice(dragSrcIdx, 1);
+      ap.curves.splice(destIdx, 0, moved);
+      // Update activeCurveIdx to follow the moved curve
+      if(activeCurveIdx === dragSrcIdx) activeCurveIdx = destIdx;
+      else if(activeCurveIdx > dragSrcIdx && activeCurveIdx <= destIdx) activeCurveIdx--;
+      else if(activeCurveIdx < dragSrcIdx && activeCurveIdx >= destIdx) activeCurveIdx++;
+      dragSrcIdx = null;
+      refreshLineCurveSelector();
+      refreshOverlayLegend(ap.id);
+      if(ap.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(ap.id),350); }
+    });
+
     container.appendChild(pill);
   });
 }
@@ -797,14 +992,18 @@ function refreshCfg(){
   const v = p.view;
   document.getElementById('c_grid').checked = v.show_grid;
   sv('c_galpha', v.grid_alpha ?? 0.5);
-  document.getElementById('c_galpha_val').textContent = parseFloat(v.grid_alpha ?? 0.5).toFixed(2);
+  document.getElementById('c_galpha_val').textContent = Math.round((v.grid_alpha ?? 0.5)*100)+'%';
   const axEl = document.getElementById('c_axis_lines'); if(axEl) axEl.checked = v.show_axis_lines ?? true;
-  sv('c_aalpha', v.axis_alpha ?? 0.6);
-  document.getElementById('c_aalpha_val').textContent = parseFloat(v.axis_alpha ?? 0.6).toFixed(2);
+  sv('c_aalpha', v.axis_alpha ?? 1.0);
+  document.getElementById('c_aalpha_val').textContent = Math.round((v.axis_alpha ?? 1.0)*100)+'%';
+  const xlEl = document.getElementById('c_x_log'); if(xlEl) xlEl.checked = v.x_log ?? false;
+  const ylEl = document.getElementById('c_y_log'); if(ylEl) ylEl.checked = v.y_log ?? false;
   sv('c_ts', v.title_size); sv('c_ls2', v.label_size);
+  sv('c_legend_size', v.legend_size ?? 9);
   const slEl = document.getElementById('c_show_legend'); if(slEl) slEl.checked = v.show_legend ?? true;
   updateGridOpacityState(v.show_grid);
   updateAxisOpacityState(v.show_axis_lines ?? true);
+  updateLegendOpacityState(v.show_legend ?? true);
   refreshLineCurveSelector();
   const curve = activeCurve();
   if(curve){
@@ -813,8 +1012,6 @@ function refreshCfg(){
     sv('c_lw', curve.line_width);
     document.getElementById('c_lw_val').textContent = parseFloat(curve.line_width).toFixed(1);
     sv('c_ls', curve.line_style); sv('c_mk', curve.marker);
-    document.getElementById('c_fill').checked = curve.fill_under;
-    const ni = document.getElementById('c_curvename'); if(ni) ni.value = curve.name||'';
     syncDataMaskInputs();
   }
 }
@@ -839,17 +1036,24 @@ function commitMaskInput(id, axis, minMax){
 }
 
 function updateGridOpacityState(gridOn){
-  const row = document.getElementById('c_galpha')?.closest('.crow');
+  const row = document.getElementById('row_galpha');
   if(!row) return;
   row.style.opacity = gridOn ? '1' : '0.35';
   row.style.pointerEvents = gridOn ? '' : 'none';
 }
 
 function updateAxisOpacityState(axisOn){
-  const row = document.getElementById('c_aalpha')?.closest('.crow');
+  const row = document.getElementById('row_aalpha');
   if(!row) return;
   row.style.opacity = axisOn ? '1' : '0.35';
   row.style.pointerEvents = axisOn ? '' : 'none';
+}
+
+function updateLegendOpacityState(legendOn){
+  const row = document.getElementById('row_legend_size');
+  if(!row) return;
+  row.style.opacity = legendOn ? '1' : '0.35';
+  row.style.pointerEvents = legendOn ? '' : 'none';
 }
 
 function sv(id, val){ const el=document.getElementById(id); if(el) el.value=val; }
@@ -889,9 +1093,12 @@ function readCfgIntoActive(){
   v.show_grid        = document.getElementById('c_grid').checked;
   v.grid_alpha       = parseFloat(document.getElementById('c_galpha').value) || 0.5;
   v.show_axis_lines  = document.getElementById('c_axis_lines')?.checked ?? true;
-  v.axis_alpha       = parseFloat(document.getElementById('c_aalpha')?.value) || 0.6;
+  v.axis_alpha       = parseFloat(document.getElementById('c_aalpha')?.value) || 1.0;
+  v.x_log            = document.getElementById('c_x_log')?.checked ?? false;
+  v.y_log            = document.getElementById('c_y_log')?.checked ?? false;
   v.title_size       = parseInt(document.getElementById('c_ts').value) || 13;
   v.label_size       = parseInt(document.getElementById('c_ls2').value) || 10;
+  v.legend_size      = parseInt(document.getElementById('c_legend_size')?.value) || 9;
   v.show_legend      = document.getElementById('c_show_legend')?.checked ?? true;
   const curve = activeCurve();
   if(curve){
@@ -899,8 +1106,6 @@ function readCfgIntoActive(){
     curve.line_width = parseFloat(document.getElementById('c_lw').value);
     curve.line_style = document.getElementById('c_ls').value;
     curve.marker     = document.getElementById('c_mk').value;
-    curve.fill_under = document.getElementById('c_fill').checked;
-    const ni = document.getElementById('c_curvename'); if(ni) curve.name = ni.value;
   }
 }
 
@@ -919,6 +1124,22 @@ function resetDomainToDefault(){
 }
 
 function wireAllCfgInputs(){
+  // Gear button: toggle settings panel
+  const gearBtn = document.getElementById('gearBtn');
+  const gearPanel = document.getElementById('gearPanel');
+  if(gearBtn && gearPanel){
+    gearBtn.addEventListener('click', e=>{
+      e.stopPropagation();
+      const open = gearPanel.classList.toggle('open');
+      gearBtn.classList.toggle('open', open);
+    });
+    document.addEventListener('click', e=>{
+      if(!gearPanel.contains(e.target) && e.target !== gearBtn){
+        gearPanel.classList.remove('open'); gearBtn.classList.remove('open');
+      }
+    });
+  }
+
   document.getElementById('cfgTabPlot')?.addEventListener('click', ()=>setCfgTab('plot'));
   document.getElementById('cfgTabLine')?.addEventListener('click', ()=>{ setCfgTab('line'); refreshLineCurveSelector(); });
   document.getElementById('domainHomeBtn')?.addEventListener('click', resetDomainToDefault);
@@ -929,19 +1150,19 @@ function wireAllCfgInputs(){
     el.addEventListener('blur', ()=>commitDomainInput(id,axis,mm));
   });
 
-  ['c_ts','c_ls2'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input',triggerCfgRender); el.addEventListener('change',triggerCfgRender); } });
+  ['c_ts','c_ls2','c_legend_size'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input',triggerCfgRender); el.addEventListener('change',triggerCfgRender); } });
   document.getElementById('c_grid').addEventListener('change', function(){ updateGridOpacityState(this.checked); triggerCfgRender(); });
   document.getElementById('c_axis_lines')?.addEventListener('change', function(){ updateAxisOpacityState(this.checked); triggerCfgRender(); });
-  document.getElementById('c_show_legend')?.addEventListener('change', triggerCfgRender);
-  document.getElementById('c_galpha').addEventListener('input', function(){ document.getElementById('c_galpha_val').textContent=parseFloat(this.value).toFixed(2); triggerCfgRender(); });
-  document.getElementById('c_aalpha')?.addEventListener('input', function(){ document.getElementById('c_aalpha_val').textContent=parseFloat(this.value).toFixed(2); triggerCfgRender(); });
+  document.getElementById('c_show_legend')?.addEventListener('change', function(){ updateLegendOpacityState(this.checked); triggerCfgRender(); });
+  document.getElementById('c_x_log')?.addEventListener('change', triggerCfgRender);
+  document.getElementById('c_y_log')?.addEventListener('change', triggerCfgRender);
+  document.getElementById('c_galpha').addEventListener('input', function(){ document.getElementById('c_galpha_val').textContent=Math.round(parseFloat(this.value)*100)+'%'; triggerCfgRender(); });
+  document.getElementById('c_aalpha')?.addEventListener('input', function(){ document.getElementById('c_aalpha_val').textContent=Math.round(parseFloat(this.value)*100)+'%'; triggerCfgRender(); });
 
   ['c_lw','c_ls','c_mk'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input',triggerCfgRender); el.addEventListener('change',triggerCfgRender); } });
   document.getElementById('c_lc').addEventListener('input', function(){ document.getElementById('c_lchex').value=this.value; triggerCfgRender(); refreshOverlayLegend(activePid); refreshLineCurveSelector(); });
   document.getElementById('c_lchex').addEventListener('input', function(){ if(/^#[0-9a-fA-F]{6}$/.test(this.value)){ document.getElementById('c_lc').value=this.value; triggerCfgRender(); refreshOverlayLegend(activePid); refreshLineCurveSelector(); } });
   document.getElementById('c_lw').addEventListener('input', function(){ document.getElementById('c_lw_val').textContent=parseFloat(this.value).toFixed(1); });
-  document.getElementById('c_fill').addEventListener('change', triggerCfgRender);
-  document.getElementById('c_curvename')?.addEventListener('input', function(){ const curve=activeCurve(); if(curve){ curve.name=this.value; refreshOverlayLegend(activePid); refreshLineCurveSelector(); } });
 
   [['c_mask_xn','x','min'],['c_mask_xx','x','max'],['c_mask_yn','y','min'],['c_mask_yx','y','max']].forEach(([id,axis,mm])=>{
     const el = document.getElementById(id); if(!el) return;
@@ -949,6 +1170,14 @@ function wireAllCfgInputs(){
     el.addEventListener('blur', ()=>commitMaskInput(id,axis,mm));
   });
 
-  document.getElementById('removeCurveBtn')?.addEventListener('click', ()=>{ const p=activePlot(); if(!p) return; removeCurve(p.id, activeCurveIdx); });
+  document.getElementById('maskResetBtn')?.addEventListener('click', ()=>{
+    const p = activePlot(); if(!p) return;
+    const curve = activeCurve(); if(!curve) return;
+    curve.mask_x_min=null; curve.mask_x_max=null; curve.mask_y_min=null; curve.mask_y_max=null;
+    syncDataMaskInputs();
+    if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(p.id),350); }
+    else renderJS(p.id, false);
+  });
+
   document.getElementById('addToPlotBtn')?.addEventListener('click', addToPlot);
 }

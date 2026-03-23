@@ -30,10 +30,28 @@ header{
 }
 .logo{font-family:var(--serif);font-weight:700;font-size:2.4rem}
 .logo em{color:var(--acc);font-style:italic}
-.hright{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.72rem;color:#9898c8}
+.hright{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.72rem;color:#9898c8;position:relative;}
 .cdot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background .3s}
 .cdot.ok{background:#5aff9a;box-shadow:0 0 6px #5aff9a55}
 .cdot.err{background:var(--acc3)}
+.gear-btn{
+  background:transparent;border:1px solid transparent;border-radius:5px;
+  color:#7070a0;font-size:1.1rem;cursor:pointer;padding:4px 7px;
+  transition:color .15s,border-color .15s,background .15s;line-height:1;
+  display:flex;align-items:center;
+}
+.gear-btn:hover{color:#d0d0ee;border-color:var(--border2);background:rgba(255,255,255,.04);}
+.gear-btn.open{color:var(--acc);border-color:var(--acc2);background:rgba(90,255,206,.06);}
+.gear-panel{
+  position:absolute;top:calc(100% + 10px);right:0;
+  background:var(--s1);border:1px solid var(--border2);border-radius:8px;
+  padding:14px 16px;min-width:200px;z-index:500;
+  box-shadow:0 8px 32px rgba(0,0,0,.4);
+  display:none;flex-direction:column;gap:10px;
+}
+.gear-panel.open{display:flex;}
+.gear-panel-title{font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:#7070a0;font-weight:600;margin-bottom:2px;}
+.gear-panel-placeholder{font-size:.68rem;color:var(--muted);font-style:italic;}
 
 /* ═══ SIDEBAR ═════════════════════════════════════════════════════ */
 .sidebar{
@@ -290,24 +308,24 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 /* ── OVERLAY LEGEND (draggable, inside canvas-wrap) ── */
 .overlay-legend{
   position:absolute;z-index:20;
-  background:rgba(8,8,16,.85);
+  background:rgba(8,8,16,.88);
   border:1px solid var(--border2);
-  border-radius:6px;
-  padding:5px 8px;
+  border-radius:7px;
+  padding:6px 10px;
   backdrop-filter:blur(4px);
   cursor:grab;
   user-select:none;
-  min-width:80px;
-  max-width:200px;
+  min-width:96px;
+  max-width:240px;
   transition:border-color .12s;
 }
 .overlay-legend:hover{border-color:rgba(90,255,206,.3);}
 .overlay-legend.dragging{cursor:grabbing;border-color:var(--acc2);box-shadow:0 4px 20px rgba(90,255,206,.1);}
 .ol-row{
-  display:flex;align-items:center;gap:6px;
-  padding:2px 0;font-size:.68rem;font-family:var(--mono);color:#b0b0d8;
+  display:flex;align-items:center;gap:7px;
+  padding:3px 0;font-size:.82rem;font-family:var(--mono);color:#b0b0d8;
 }
-.ol-swatch{width:8px;height:8px;border-radius:2px;flex-shrink:0;display:inline-block;}
+.ol-swatch{display:flex;align-items:center;flex-shrink:0;}
 .ol-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ol-del{
   background:transparent;border:none;cursor:pointer;
@@ -318,19 +336,20 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 
 /* ── CURVE SELECTOR PILLS (top of Line Settings) ── */
 .curve-selector{
-  display:flex;flex-wrap:wrap;gap:5px;
+  display:flex;flex-direction:column;gap:4px;
   padding-bottom:10px;
   border-bottom:1px solid var(--border);
   margin-bottom:2px;
 }
 .curve-pill{
-  display:flex;align-items:center;gap:5px;
-  padding:3px 9px 3px 6px;
-  border-radius:20px;
+  display:flex;align-items:center;gap:6px;
+  padding:5px 9px 5px 6px;
+  border-radius:6px;
   border:1px solid var(--border2);
   background:transparent;
   cursor:pointer;font-family:var(--mono);font-size:.68rem;color:#9898c8;
-  transition:all .12s;white-space:nowrap;
+  transition:background .1s,border-color .1s,color .1s;white-space:nowrap;
+  width:100%;text-align:left;
 }
 .curve-pill:hover{border-color:var(--border2);background:rgba(255,255,255,.04);color:#d0d0ee;}
 .curve-pill-active{
@@ -338,8 +357,30 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
   border-color:rgba(90,255,206,.4);
   color:var(--acc2);
 }
-.pill-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
-.pill-label{max-width:90px;overflow:hidden;text-overflow:ellipsis;}
+.curve-pill.drag-over{border-color:var(--acc);background:rgba(212,255,90,.06);}
+.pill-drag-handle{
+  color:#3a3a60;font-size:.8rem;cursor:grab;flex-shrink:0;
+  padding:0 2px;line-height:1;
+}
+.pill-drag-handle:active{cursor:grabbing;}
+.pill-sym{display:flex;align-items:center;flex-shrink:0;}
+.pill-name-inp{
+  flex:1;min-width:0;
+  background:transparent;border:none;border-bottom:1px solid transparent;
+  color:#c8c8e8;font-family:var(--mono);font-size:.68rem;
+  padding:0 2px;outline:none;cursor:text;
+  transition:border-color .12s,color .12s;
+}
+.pill-name-inp::placeholder{color:#3c3c60;font-style:italic;}
+.pill-name-inp:hover{border-bottom-color:var(--border2);}
+.pill-name-inp:focus{border-bottom-color:var(--acc2);color:var(--acc2);}
+.curve-pill-active .pill-name-inp{color:var(--acc2);}
+.pill-del-btn{
+  background:transparent;border:none;cursor:pointer;
+  color:#3a3a60;font-size:.72rem;padding:0 0 0 4px;line-height:1;
+  flex-shrink:0;transition:color .1s;font-family:var(--mono);
+}
+.pill-del-btn:hover{color:var(--acc3);}
 
 /* axis labels */
 .ax-xlabel{
@@ -356,7 +397,7 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
   background:transparent;border:1px solid transparent;border-radius:3px;
   color:#9898c8;font-family:var(--mono);
   padding:2px 5px;outline:none;text-align:center;cursor:text;
-  min-width:30px;max-width:160px;
+  min-width:30px;
   transition:border-color .12s,background .12s,color .12s;
 }
 .lbl-inp::placeholder{color:#3a3a60;font-style:italic}
@@ -492,17 +533,3 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
   font-family:var(--mono);font-size:.68rem;padding:4px 7px;outline:none;transition:border-color .12s;
 }
 .chex:focus{border-color:var(--acc2)}
-
-/* remove curve button in Line Settings */
-.remove-curve-btn{
-  width:100%;padding:6px 10px;margin-top:4px;
-  background:transparent;
-  border:1px solid color-mix(in srgb,var(--acc3) 50%,transparent);
-  border-radius:4px;color:#c06080;
-  font-family:var(--mono);font-size:.68rem;cursor:pointer;
-  transition:all .12s;
-}
-.remove-curve-btn:hover{
-  background:rgba(255,111,170,.08);
-  border-color:var(--acc3);color:var(--acc3);
-}

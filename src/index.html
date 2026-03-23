@@ -16,7 +16,11 @@
     <div class="logo"><em>Plot</em>Forge</div>
     <div class="hright">
       <div class="cdot" id="cdot"></div>
-      <span id="cmsg">connecting…</span>
+      <button class="gear-btn" id="gearBtn" title="Settings">⚙</button>
+      <div class="gear-panel" id="gearPanel">
+        <div class="gear-panel-title">Site Settings</div>
+        <div class="gear-panel-placeholder">No settings yet.</div>
+      </div>
     </div>
   </header>
 
@@ -102,31 +106,23 @@
         <div class="cdivider"></div>
 
         <div>
-          <div class="slbl">Grid</div>
+          <div class="slbl">Grid &amp; Axis Lines</div>
           <div class="cfg-sec">
             <div class="trow">
               <label>Show grid</label>
               <label class="tog"><input type="checkbox" id="c_grid" checked><span class="tslider"></span></label>
             </div>
-            <div class="crow">
-              <label>Opacity — <span id="c_galpha_val" style="color:var(--acc2)">0.50</span></label>
+            <div class="crow" id="row_galpha">
+              <label>Grid opacity — <span id="c_galpha_val" style="color:var(--acc2)">50%</span></label>
               <input type="range" id="c_galpha" min="0.05" max="1" step="0.05" value="0.5"/>
             </div>
-          </div>
-        </div>
-
-        <div class="cdivider"></div>
-
-        <div>
-          <div class="slbl">Axis Lines</div>
-          <div class="cfg-sec">
             <div class="trow">
-              <label>Show x=0, y=0</label>
+              <label>Show major axes</label>
               <label class="tog"><input type="checkbox" id="c_axis_lines" checked><span class="tslider"></span></label>
             </div>
-            <div class="crow">
-              <label>Opacity — <span id="c_aalpha_val" style="color:var(--acc2)">0.60</span></label>
-              <input type="range" id="c_aalpha" min="0.05" max="1" step="0.05" value="0.6"/>
+            <div class="crow" id="row_aalpha">
+              <label>Axis opacity — <span id="c_aalpha_val" style="color:var(--acc2)">100%</span></label>
+              <input type="range" id="c_aalpha" min="0.05" max="1" step="0.05" value="1"/>
             </div>
           </div>
         </div>
@@ -134,20 +130,16 @@
         <div class="cdivider"></div>
 
         <div>
-          <div class="slbl">Legend</div>
+          <div class="slbl">Labels</div>
           <div class="cfg-sec">
             <div class="trow">
               <label>Display legend</label>
               <label class="tog"><input type="checkbox" id="c_show_legend" checked><span class="tslider"></span></label>
             </div>
-          </div>
-        </div>
-
-        <div class="cdivider"></div>
-
-        <div>
-          <div class="slbl">Typography</div>
-          <div class="cfg-sec">
+            <div class="crow" id="row_legend_size">
+              <label>Legend font size (pt)</label>
+              <input type="number" id="c_legend_size" value="9" min="6" max="18" step="1"/>
+            </div>
             <div class="crow">
               <label>Title size (pt)</label>
               <input type="number" id="c_ts" value="13" min="7" max="22" step="1"/>
@@ -164,21 +156,8 @@
       <!-- ══ LINE SETTINGS PANE ══ -->
       <div id="cfgPaneLine" style="display:none;flex-direction:column;gap:14px;padding:14px 12px 20px">
 
-        <!-- Curve selector -->
+        <!-- Curve selector with inline name editing and delete -->
         <div id="lineCurveSelector" class="curve-selector" style="display:none"></div>
-
-        <div>
-          <div class="slbl">Curve Identity</div>
-          <div class="cfg-sec">
-            <div class="crow">
-              <label>Legend name</label>
-              <input type="text" id="c_curvename" placeholder="Auto (template name)" maxlength="40"/>
-            </div>
-            <button class="remove-curve-btn" id="removeCurveBtn">✕ Remove curve</button>
-          </div>
-        </div>
-
-        <div class="cdivider"></div>
 
         <div>
           <div class="slbl">Line Style</div>
@@ -197,11 +176,11 @@
             <div class="crow">
               <label>Style</label>
               <select id="c_ls">
+                <option value="none">None</option>
                 <option value="solid">── Solid</option>
                 <option value="dashed">- - Dashed</option>
                 <option value="dotted">··· Dotted</option>
                 <option value="dashdot">-·- Dash-dot</option>
-                <option value="none">None</option>
               </select>
             </div>
             <div class="crow">
@@ -222,21 +201,9 @@
         <div class="cdivider"></div>
 
         <div>
-          <div class="slbl">Fill</div>
-          <div class="cfg-sec">
-            <div class="trow">
-              <label>Fill under curve</label>
-              <label class="tog"><input type="checkbox" id="c_fill"><span class="tslider"></span></label>
-            </div>
-          </div>
-        </div>
-
-        <div class="cdivider"></div>
-
-        <div>
           <div class="slbl-row">
             <span class="slbl">Data Mask</span>
-            <span class="slbl-hint">filter by value</span>
+            <button class="home-btn" id="maskResetBtn" title="Clear all mask values">↺ reset</button>
           </div>
           <div class="cfg-sec">
             <div class="crow">

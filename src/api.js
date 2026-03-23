@@ -35,9 +35,9 @@ function defView(){
   return {
     x_min:null, x_max:null, y_min:null, y_max:null,
     show_grid:true, grid_alpha:.5,
-    show_axis_lines:true, axis_alpha:.6,
+    show_axis_lines:true, axis_alpha:1.0,
     x_log:false, y_log:false,
-    title_size:13, label_size:10,
+    title_size:13, label_size:10, legend_size:9,
     show_legend:true,
     legend_x_frac: 0.98,
     legend_y_frac: 0.02,

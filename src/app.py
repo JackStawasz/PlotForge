@@ -196,12 +196,14 @@ def render_matplotlib_multi(curves_data, view, labels):
         fill=cd.get("fill_under",False); falp=cd.get("fill_alpha",.15)
         lbl=cd.get("label","")
         mpl_mk=None if mk=="none" else mk
+        # line_style "none" means no line (markers only)
+        mpl_ls = "None" if ls=="none" else ls
         try: rgb=_hex_to_rgb01(lc)
         except: rgb=(0.35,1.0,0.81)
         if is_d:
             ax.bar(x,y,color=rgb+(0.75,),width=0.6,zorder=3,label=lbl)
         else:
-            ax.plot(x,y,color=rgb,linewidth=lw,linestyle=ls,
+            ax.plot(x,y,color=rgb,linewidth=lw,linestyle=mpl_ls,
                     marker=mpl_mk,markersize=ms,
                     markerfacecolor=rgb,markeredgecolor="none",
                     zorder=3,label=lbl)
@@ -250,8 +252,8 @@ def render_matplotlib_multi(curves_data, view, labels):
         leg=ax.legend(
             facecolor="#0c0c1a", edgecolor=SPINE_C,
             labelcolor=TEXT_C,
-            fontsize=max(7,view.get("label_size",10)-1),
-            prop={"family":"monospace","size":max(7,view.get("label_size",10)-1)},
+            fontsize=max(6, view.get("legend_size", 9)),
+            prop={"family":"monospace","size":max(6, view.get("legend_size", 9))},
             framealpha=0.85,
             bbox_to_anchor=(lx, mpl_ly),
             bbox_transform=ax.transAxes,
