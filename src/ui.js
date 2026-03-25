@@ -127,14 +127,16 @@ function selectTemplate(key){
 
 function addToPlot(){
   const p = activePlot(); if(!p||!selTpl) return;
+  const autoName = TEMPLATES[selTpl]?.equation || selTpl;
   const curve = activeCurve();
   if(curve && !curve.template){
     curve.template = selTpl;
+    if(!curve.name) curve.name = autoName;
     buildParamsForTemplate(selTpl, curve.params);
     p.view.x_min=null; p.view.x_max=null; p.view.y_min=null; p.view.y_max=null;
     applyAndRender(p.id, true); refreshOverlayLegend(p.id); refreshLineCurveSelector(); return;
   }
-  const nc = defCurve(p.curves); nc.template = selTpl; p.curves.push(nc);
+  const nc = defCurve(p.curves); nc.template = selTpl; nc.name = autoName; p.curves.push(nc);
   activeCurveIdx = p.curves.length - 1;
   buildParamsForTemplate(selTpl, {});
   applyAndRender(p.id, false);
@@ -317,13 +319,13 @@ function drawChart(p){
     if(curve.jsData.discrete){
       hasDiscrete = true;
       datasets.push({
-        label: curve.name || (curve.template ? TEMPLATES[curve.template]?.label : 'Curve'),
+        label: curve.name || (curve.template ? (TEMPLATES[curve.template]?.equation||'Curve') : 'Curve'),
         type:'bar', data:curve.jsData.y,
         backgroundColor:hexAlpha(lc,.7), borderColor:lc, borderWidth:1,
       });
     }else{
       datasets.push({
-        label: curve.name || (curve.template ? TEMPLATES[curve.template]?.label : 'Curve'),
+        label: curve.name || (curve.template ? (TEMPLATES[curve.template]?.equation||'Curve') : 'Curve'),
         type:'line', data:curve.jsData.x.map((xv,i)=>({x:xv,y:curve.jsData.y[i]})),
         borderColor:lc, borderWidth:borderWidthFor(curve), borderDash:dashFor(curve.line_style),
         pointRadius:curve.marker!=='none' ? curve.marker_size||4 : 0, pointBackgroundColor:lc,
@@ -527,7 +529,7 @@ function refreshOverlayLegend(pid){
   const symH  = Math.max(8, legPx - 2);
   box.style.display = 'block'; box.innerHTML = '';
   curvesWithData.forEach(curve=>{
-    const label = curve.name || (curve.template ? (TEMPLATES[curve.template]?.label||curve.template) : 'Curve');
+    const label = curve.name || (curve.template ? (TEMPLATES[curve.template]?.equation||curve.template) : 'Curve');
     const row = document.createElement('div');
     row.className = 'ol-row';
     row.style.fontSize = legPx + 'px';
@@ -765,9 +767,12 @@ function buildTopbarInner(p, i){
     ? `<button class="cbtn revert-btn" data-pid="${p.id}" data-action="revert">⟲ interactive</button>`
     : `<button class="cbtn mpl-btn${!canMpl?' mpl-disabled':''}" data-pid="${p.id}" data-action="mpl" ${!canMpl?'disabled':''}>▨ matplotlib</button>`;
   return `
-    <span class="cnum">PLOT ${String(i+1).padStart(2,'0')}</span>
-    <span class="cnum" style="color:var(--muted)">${cc} curve${cc!==1?'s':''}</span>
-    <div class="cactions">${mplBtn}<button class="cbtn" data-pid="${p.id}" data-action="del">✕</button></div>`;
+    <span class="ctitle-text">Plot ${i+1} <span class="ctitle-curves">(${cc} curve${cc!==1?'s':''})</span></span>
+    <div class="cactions">
+      ${mplBtn}
+      <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" title="Duplicate plot">⧉</button>
+      <button class="cbtn" data-pid="${p.id}" data-action="del">✕</button>
+    </div>`;
 }
 
 const _measureSpan = document.createElement('span');
@@ -840,7 +845,27 @@ function syncActiveHighlight(){
 }
 
 // ═══ ACTIONS ═════════════════════════════════════════════════════════════
+function duplicatePlot(pid){
+  const src = gp(pid); if(!src) return;
+  // Deep-clone via JSON (all view/curve data is plain serialisable objects)
+  const clone = JSON.parse(JSON.stringify(src));
+  // Assign fresh ids
+  clone.id = mkPid();
+  clone.curves = clone.curves.map(c=>({ ...c, id:mkCid(), jsData:null }));
+  // Reset ephemeral state
+  clone.loading = false; clone.converting = false;
+  clone.mplMode = false; clone.mplImage = null;
+  // Insert immediately after the source plot
+  const srcIdx = plots.findIndex(p=>p.id===pid);
+  plots.splice(srcIdx+1, 0, clone);
+  activePid = clone.id; activeCurveIdx = 0;
+  renderDOM();
+  // Re-render all curves in the new plot
+  if(clone.curves.some(c=>c.template)) renderJS(clone.id, false);
+}
+
 function handleAction(action, pid){
+  if(action==='dup')  { duplicatePlot(pid); return; }
   if(action==='del'){
     destroyChart(pid); plots = plots.filter(p=>p.id!==pid);
     if(activePid===pid){ activePid=plots[0]?.id||null; activeCurveIdx=0; }
@@ -902,23 +927,34 @@ function refreshLineCurveSelector(){
     symWrap.className = 'pill-sym';
     symWrap.innerHTML = makeCurveSymbolSVG(curve, 28, 10);
 
-    // Inline name input — shows current name, editable on focus
+    // Inline name input — required, falls back to equation as placeholder
+    const autoName = TEMPLATES[curve.template]?.equation || `Curve ${idx+1}`;
     const nameInp = document.createElement('input');
     nameInp.type = 'text';
     nameInp.className = 'pill-name-inp';
-    nameInp.value = curve.name || '';
-    nameInp.placeholder = TEMPLATES[curve.template]?.label || `Curve ${idx+1}`;
+    nameInp.value = curve.name || autoName;
     nameInp.maxLength = 40;
+
+    let nameOnFocus = '';  // snapshot taken when user starts editing
+
+    nameInp.addEventListener('focus', ()=>{
+      nameOnFocus = nameInp.value;
+    });
     nameInp.addEventListener('click', e=>e.stopPropagation());
     nameInp.addEventListener('input', ()=>{
-      curve.name = nameInp.value;
+      curve.name = nameInp.value || autoName;
       refreshOverlayLegend(p.id);
-      // Update other pills' placeholder/label without full rebuild
-      container.querySelectorAll('.curve-pill').forEach(el=>{
-        if(parseInt(el.dataset.idx)===idx){
-          // already this pill — nothing extra needed
-        }
-      });
+    });
+    nameInp.addEventListener('blur', ()=>{
+      // Enforce non-empty: if blank, restore to pre-edit value (or autoName)
+      if(!nameInp.value.trim()){
+        const fallback = nameOnFocus.trim() || autoName;
+        nameInp.value = fallback;
+        curve.name = fallback;
+        refreshOverlayLegend(p.id);
+      } else {
+        curve.name = nameInp.value;
+      }
     });
     nameInp.addEventListener('keydown', e=>{ if(e.key==='Enter') nameInp.blur(); e.stopPropagation(); });
 

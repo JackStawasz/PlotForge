@@ -126,7 +126,7 @@ async function convertToMpl(pid){
     marker_size: c.marker_size,
     fill_under:  c.fill_under,
     fill_alpha:  c.fill_alpha,
-    label:       c.name || (TEMPLATES[c.template]?.label || c.template),
+    label:       c.name || (TEMPLATES[c.template]?.equation || c.template),
     mask_x_min:  c.mask_x_min,
     mask_x_max:  c.mask_x_max,
     mask_y_min:  c.mask_y_min,
