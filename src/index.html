@@ -106,8 +106,15 @@
         <div class="cdivider"></div>
 
         <div>
-          <div class="slbl">Grid &amp; Axis Lines</div>
+          <div class="slbl">Background &amp; Grid</div>
           <div class="cfg-sec">
+            <div class="crow">
+              <label>Plot background</label>
+              <div class="color-row">
+                <div class="cswatch"><input type="color" id="c_bg_color" value="#12121c"/></div>
+                <input class="chex" type="text" id="c_bg_hex" value="#12121c" maxlength="7"/>
+              </div>
+            </div>
             <div class="trow">
               <label>Show grid</label>
               <label class="tog"><input type="checkbox" id="c_grid" checked><span class="tslider"></span></label>
@@ -136,15 +143,15 @@
               <label>Display legend</label>
               <label class="tog"><input type="checkbox" id="c_show_legend" checked><span class="tslider"></span></label>
             </div>
-            <div class="crow" id="row_legend_size">
+            <div class="crow-inline" id="row_legend_size">
               <label>Legend font size (pt)</label>
               <input type="number" id="c_legend_size" value="9" min="6" max="18" step="1"/>
             </div>
-            <div class="crow">
+            <div class="crow-inline">
               <label>Title size (pt)</label>
               <input type="number" id="c_ts" value="13" min="7" max="22" step="1"/>
             </div>
-            <div class="crow">
+            <div class="crow-inline">
               <label>Axis label size (pt)</label>
               <input type="number" id="c_ls2" value="10" min="6" max="18" step="1"/>
             </div>

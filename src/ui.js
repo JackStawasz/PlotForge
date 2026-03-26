@@ -296,10 +296,10 @@ function renderJS(pid, firstRender=false){
   const innerEl = document.getElementById(`cinner_${pid}`); if(!innerEl) return;
   if(!document.getElementById(`chart_${pid}`)){
     innerEl.innerHTML = buildInnerHTML(p);
-    setTimeout(()=>{ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); syncCfgDomain(); updateTopbar(pid); }, 0);
+    setTimeout(()=>{ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); applyBgColorToCanvas(pid); syncCfgDomain(); updateTopbar(pid); }, 0);
     return;
   }
-  drawChart(p); syncCfgDomain(); refreshOverlayLegend(pid);
+  drawChart(p); syncCfgDomain(); refreshOverlayLegend(pid); applyBgColorToCanvas(pid);
 }
 
 // ═══ CHART.JS RENDERING ══════════════════════════════════════════════════
@@ -699,7 +699,7 @@ function updateCardContent(pid){
   const innerEl = document.getElementById(`cinner_${pid}`); if(!innerEl) return;
   destroyChart(pid); innerEl.innerHTML = buildInnerHTML(p);
   if(!p.mplMode && p.curves.some(c=>c.jsData)){
-    setTimeout(()=>{ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); }, 0);
+    setTimeout(()=>{ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); }, 0);
   }
 }
 
@@ -734,7 +734,7 @@ function renderDOM(){
   refreshCfg(); refreshSidebar();
   setTimeout(()=>{
     for(const p of plots){
-      if(p.curves.some(c=>c.jsData)){ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); }
+      if(p.curves.some(c=>c.jsData)){ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); }
     }
   }, 0);
 }
@@ -770,6 +770,7 @@ function buildTopbarInner(p, i){
     <span class="ctitle-text">Plot ${i+1} <span class="ctitle-curves">(${cc} curve${cc!==1?'s':''})</span></span>
     <div class="cactions">
       ${mplBtn}
+      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addtext" title="Add text annotation">✎ text</button>
       <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" title="Duplicate plot">⧉</button>
       <button class="cbtn" data-pid="${p.id}" data-action="del">✕</button>
     </div>`;
@@ -844,6 +845,107 @@ function syncActiveHighlight(){
   document.querySelectorAll('.plot-card').forEach(c=>c.classList.toggle('active', parseInt(c.dataset.pid)===activePid));
 }
 
+function applyBgColorToCanvas(pid){
+  if(pid == null) return;
+  const p = gp(pid); if(!p) return;
+  const bg = p.view.bg_color || '#12121c';
+  const wrap = document.getElementById(`cwrap_${pid}`); if(wrap) wrap.style.background = bg;
+  const region = document.getElementById(`cregion_${pid}`); if(region) region.style.background = bg;
+}
+
+// ═══ TEXT ANNOTATIONS ════════════════════════════════════════════════════
+function addTextAnnotation(pid){
+  const p = gp(pid); if(!p) return;
+  if(!p.textAnnotations) p.textAnnotations = [];
+  const ann = {
+    id: mkCid(),
+    text: 'Label',
+    x_frac: 0.5,
+    y_frac: 0.5,
+    color: '#eeeeff',
+    size: 13,
+    bold: false,
+  };
+  p.textAnnotations.push(ann);
+  renderTextAnnotations(pid);
+  // Also trigger mpl re-render if in mpl mode
+  if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(pid),350); }
+}
+
+function renderTextAnnotations(pid){
+  const p = gp(pid); if(!p) return;
+  const wrap = document.getElementById(`cwrap_${pid}`); if(!wrap) return;
+  // Remove old annotation elements
+  wrap.querySelectorAll('.text-annotation').forEach(el=>el.remove());
+  if(!p.textAnnotations) return;
+  p.textAnnotations.forEach(ann=>{
+    const el = document.createElement('div');
+    el.className = 'text-annotation';
+    el.dataset.annId = ann.id;
+    el.contentEditable = 'true';
+    el.textContent = ann.text;
+    el.style.cssText = `
+      position:absolute;
+      left:${ann.x_frac*100}%;
+      top:${ann.y_frac*100}%;
+      transform:translate(-50%,-50%);
+      color:${ann.color};
+      font-size:${ann.size}px;
+      font-family:var(--mono);
+      font-weight:${ann.bold?'600':'400'};
+      cursor:move;
+      user-select:none;
+      z-index:25;
+      background:transparent;
+      border:1px dashed transparent;
+      border-radius:3px;
+      padding:2px 5px;
+      min-width:20px;
+      outline:none;
+      white-space:nowrap;
+      transition:border-color .12s;
+    `;
+    // Hover border
+    el.addEventListener('mouseenter', ()=>el.style.borderColor='rgba(90,255,206,.4)');
+    el.addEventListener('mouseleave', ()=>{ if(document.activeElement!==el) el.style.borderColor='transparent'; });
+    el.addEventListener('focus', ()=>{ el.style.borderColor='var(--acc2)'; el.style.cursor='text'; });
+    el.addEventListener('blur', ()=>{ ann.text=el.textContent||'Label'; el.style.borderColor='transparent'; el.style.cursor='move'; if(p.mplMode){clearTimeout(window._mplDebounce);window._mplDebounce=setTimeout(()=>convertToMpl(pid),350);} });
+    el.addEventListener('keydown', e=>{ if(e.key==='Escape') el.blur(); e.stopPropagation(); });
+    // Delete on double-click on the × handle
+    const delBtn = document.createElement('span');
+    delBtn.textContent = '×';
+    delBtn.style.cssText = 'position:absolute;top:-6px;right:-6px;font-size:.7rem;color:#ff6faa;cursor:pointer;display:none;background:#0c0c18;border-radius:50%;width:14px;height:14px;line-height:14px;text-align:center;';
+    el.appendChild(delBtn);
+    el.addEventListener('mouseenter', ()=>delBtn.style.display='block');
+    el.addEventListener('mouseleave', ()=>{ if(document.activeElement!==el) delBtn.style.display='none'; });
+    delBtn.addEventListener('mousedown', e=>{
+      e.stopPropagation(); e.preventDefault();
+      p.textAnnotations = p.textAnnotations.filter(a=>a.id!==ann.id);
+      el.remove();
+      if(p.mplMode){clearTimeout(window._mplDebounce);window._mplDebounce=setTimeout(()=>convertToMpl(pid),350);}
+    });
+    // Drag to reposition
+    let dragging=false, sx=0, sy=0;
+    el.addEventListener('mousedown', e=>{
+      if(e.target===delBtn) return;
+      // Only drag if not editing text
+      if(document.activeElement===el) return;
+      dragging=true; sx=e.clientX; sy=e.clientY; e.preventDefault(); e.stopPropagation();
+    });
+    window.addEventListener('mousemove', e=>{
+      if(!dragging) return;
+      const rect=wrap.getBoundingClientRect();
+      const nx=((parseFloat(el.style.left)/100)*rect.width + (e.clientX-sx)) / rect.width;
+      const ny=((parseFloat(el.style.top)/100)*rect.height + (e.clientY-sy)) / rect.height;
+      ann.x_frac=Math.max(0,Math.min(1,nx)); ann.y_frac=Math.max(0,Math.min(1,ny));
+      el.style.left=(ann.x_frac*100)+'%'; el.style.top=(ann.y_frac*100)+'%';
+      sx=e.clientX; sy=e.clientY;
+    });
+    window.addEventListener('mouseup', ()=>{ if(dragging){ dragging=false; if(p.mplMode){clearTimeout(window._mplDebounce);window._mplDebounce=setTimeout(()=>convertToMpl(pid),350);} } });
+    wrap.appendChild(el);
+  });
+}
+
 // ═══ ACTIONS ═════════════════════════════════════════════════════════════
 function duplicatePlot(pid){
   const src = gp(pid); if(!src) return;
@@ -866,6 +968,7 @@ function duplicatePlot(pid){
 
 function handleAction(action, pid){
   if(action==='dup')  { duplicatePlot(pid); return; }
+  if(action==='addtext') { addTextAnnotation(pid); return; }
   if(action==='del'){
     destroyChart(pid); plots = plots.filter(p=>p.id!==pid);
     if(activePid===pid){ activePid=plots[0]?.id||null; activeCurveIdx=0; }
@@ -1037,6 +1140,9 @@ function refreshCfg(){
   sv('c_ts', v.title_size); sv('c_ls2', v.label_size);
   sv('c_legend_size', v.legend_size ?? 9);
   const slEl = document.getElementById('c_show_legend'); if(slEl) slEl.checked = v.show_legend ?? true;
+  const bgEl = document.getElementById('c_bg_color'); if(bgEl) bgEl.value = v.bg_color || '#12121c';
+  const bgHexEl = document.getElementById('c_bg_hex'); if(bgHexEl) bgHexEl.value = v.bg_color || '#12121c';
+  applyBgColorToCanvas(activePid);
   updateGridOpacityState(v.show_grid);
   updateAxisOpacityState(v.show_axis_lines ?? true);
   updateLegendOpacityState(v.show_legend ?? true);
@@ -1136,6 +1242,8 @@ function readCfgIntoActive(){
   v.label_size       = parseInt(document.getElementById('c_ls2').value) || 10;
   v.legend_size      = parseInt(document.getElementById('c_legend_size')?.value) || 9;
   v.show_legend      = document.getElementById('c_show_legend')?.checked ?? true;
+  v.bg_color         = document.getElementById('c_bg_color')?.value || '#12121c';
+  v.surface_color    = v.bg_color;
   const curve = activeCurve();
   if(curve){
     curve.line_color = document.getElementById('c_lc').value;
@@ -1175,6 +1283,19 @@ function wireAllCfgInputs(){
       }
     });
   }
+
+  document.getElementById('c_bg_color')?.addEventListener('input', function(){
+    document.getElementById('c_bg_hex').value = this.value;
+    triggerCfgRender();
+    applyBgColorToCanvas(activePid);
+  });
+  document.getElementById('c_bg_hex')?.addEventListener('input', function(){
+    if(/^#[0-9a-fA-F]{6}$/.test(this.value)){
+      document.getElementById('c_bg_color').value = this.value;
+      triggerCfgRender();
+      applyBgColorToCanvas(activePid);
+    }
+  });
 
   document.getElementById('cfgTabPlot')?.addEventListener('click', ()=>setCfgTab('plot'));
   document.getElementById('cfgTabLine')?.addEventListener('click', ()=>{ setCfgTab('line'); refreshLineCurveSelector(); });

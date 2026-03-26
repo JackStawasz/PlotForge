@@ -184,14 +184,16 @@ def _hex_to_rgb01(h):
     h=h.lstrip('#')
     return tuple(int(h[i:i+2],16)/255 for i in (0,2,4))
 
-def render_matplotlib_multi(curves_data, view, labels):
+def render_matplotlib_multi(curves_data, view, labels, text_annotations=None):
     """
     curves_data: list of dicts with keys:
       x, y, is_discrete, line_color, line_width, line_style,
       marker, marker_size, fill_under, fill_alpha, label
     """
-    fig,ax=plt.subplots(figsize=(view.get("fig_width",9),view.get("fig_height",4.2)),facecolor=BG)
-    ax.set_facecolor(SURFACE)
+    bg_color      = view.get("bg_color", BG)
+    surface_color = view.get("surface_color", SURFACE)
+    fig,ax=plt.subplots(figsize=(view.get("fig_width",9),view.get("fig_height",4.2)),facecolor=bg_color)
+    ax.set_facecolor(surface_color)
     show_legend=view.get("show_legend",True)
 
     for cd in curves_data:
@@ -268,8 +270,24 @@ def render_matplotlib_multi(curves_data, view, labels):
         )
         leg.get_frame().set_linewidth(0.6)
 
+    # Text annotations
+    if text_annotations:
+        for ann in text_annotations:
+            x_frac = ann.get("x_frac", 0.5)
+            y_frac = ann.get("y_frac", 0.5)
+            text   = ann.get("text", "")
+            color  = ann.get("color", "#eeeeff")
+            size   = ann.get("size", 13)
+            bold   = ann.get("bold", False)
+            fw     = "bold" if bold else "normal"
+            ax.text(x_frac, 1.0 - y_frac, text,
+                    transform=ax.transAxes,
+                    color=color, fontsize=size,
+                    fontfamily="monospace", fontweight=fw,
+                    ha="center", va="center", zorder=30)
+
     fig.tight_layout(pad=1.4)
-    buf=io.BytesIO(); fig.savefig(buf,format="png",dpi=130,facecolor=BG,bbox_inches="tight")
+    buf=io.BytesIO(); fig.savefig(buf,format="png",dpi=130,facecolor=bg_color,bbox_inches="tight")
     plt.close(fig); buf.seek(0)
     return base64.b64encode(buf.read()).decode()
 
@@ -292,6 +310,7 @@ def plot_matplotlib():
     body=request.get_json(silent=True) or {}
     view=body.get("view",{}); labels=body.get("labels",{})
     curves_in=body.get("curves",[])
+    text_annotations=body.get("text_annotations",[])
     # Backwards-compat: single-curve payload
     if not curves_in and body.get("template"):
         curves_in=[{
@@ -331,7 +350,7 @@ def plot_matplotlib():
             })
         if not curves_data:
             return jsonify({"error":"No valid curves"}),400
-        img=render_matplotlib_multi(curves_data,view,labels)
+        img=render_matplotlib_multi(curves_data,view,labels,text_annotations)
         return jsonify({"image":img})
     except Exception as e:
         import traceback; traceback.print_exc()
