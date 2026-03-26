@@ -74,6 +74,23 @@ function evalTemplate(tkey, params, view){
     case 'ceiling':{ x=linspace(xLo,xHi,800); y=x.map(v=>(p.a||1)*Math.ceil(v)); break; }
     case 'floor':{ x=linspace(xLo,xHi,800); y=x.map(v=>(p.a||1)*Math.floor(v)); break; }
     case 'absolute':{ x=linspace(xLo,xHi,N); y=x.map(v=>(p.a||1)*Math.abs(v+(p.h||0))); break; }
+    case 'legendre':{
+      const ell = Math.max(0, Math.round(p.ell ?? 3));
+      const a   = p.a ?? 1;
+      // Compute P_ell(x) via recurrence: P0=1, P1=x, (n+1)P_{n+1}=(2n+1)x*Pn - n*P_{n-1}
+      x = linspace(Math.max(-1, xLo), Math.min(1, xHi), 600);
+      y = x.map(v => {
+        if(ell === 0) return a * 1;
+        if(ell === 1) return a * v;
+        let pp = 1, pc = v;
+        for(let n = 1; n < ell; n++){
+          const pn = ((2*n+1)*v*pc - n*pp) / (n+1);
+          pp = pc; pc = pn;
+        }
+        return a * pc;
+      });
+      break;
+    }
     default: return null;
   }
 

@@ -151,6 +151,13 @@ def generate_xy(tkey, params, view):
         x=_xrange(view,xd,800); y=p.get("a",1)*np.floor(x)
     elif tkey == "absolute":
         x=_xrange(view,xd); y=p.get("a",1)*np.abs(x+p.get("h",0.0))
+    elif tkey == "legendre":
+        lo=max(-1.0, view.get("x_min") or xd[0]); hi=min(1.0, view.get("x_max") or xd[1])
+        x=np.linspace(lo,hi,600)
+        ell=max(0,int(round(p.get("ell",3)))); a=p.get("a",1)
+        from numpy.polynomial.legendre import legval
+        coeffs=[0]*ell+[1]
+        y=a*legval(x,coeffs)
     else:
         raise ValueError(f"Unknown template '{tkey}'")
     return x, y

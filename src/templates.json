@@ -1075,5 +1075,30 @@
         "step": 0.1
       }
     }
+  },
+  "legendre": {
+    "category": "advanced",
+    "label": "Legendre Polynomial",
+    "equation": "P_ℓ(x)",
+    "x_default": [
+      -1,
+      1
+    ],
+    "params": {
+      "ell": {
+        "label": "Degree (ℓ)",
+        "default": 3,
+        "min": 0,
+        "max": 10,
+        "step": 1
+      },
+      "a": {
+        "label": "Scale (a)",
+        "default": 1.0,
+        "min": -5.0,
+        "max": 5.0,
+        "step": 0.1
+      }
+    }
   }
 }

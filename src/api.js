@@ -2,11 +2,12 @@ const API = 'http://localhost:5000/api';
 
 // ═══ DISPLAY CONSTANTS ═══════════════════════════════════════════════════
 const CAT_META = {
-  trig:    { label:'Trigonometric', dotClass:'trig'    },
-  bell:    { label:'Bell Curves',   dotClass:'bell'    },
-  lines:   { label:'Lines',         dotClass:'lines'   },
-  general: { label:'General',       dotClass:'general' },
-  other:   { label:'Other',         dotClass:'other'   },
+  trig:     { label:'Trigonometric', dotClass:'trig'     },
+  bell:     { label:'Bell Curves',   dotClass:'bell'     },
+  lines:    { label:'Lines',         dotClass:'lines'    },
+  general:  { label:'General',       dotClass:'general'  },
+  other:    { label:'Other',         dotClass:'other'    },
+  advanced: { label:'Advanced',      dotClass:'advanced' },
 };
 
 const CURVE_COLORS = [
@@ -41,6 +42,8 @@ function defView(){
     show_legend:true,
     legend_x_frac: 0.98,
     legend_y_frac: 0.02,
+    bg_color: '#12121c',
+    surface_color: '#12121c',
   };
 }
 
@@ -137,7 +140,7 @@ async function convertToMpl(pid){
     const r = await fetch(`${API}/plot`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({curves:curvesPayload, view:p.view, labels:p.labels}),
+      body: JSON.stringify({curves:curvesPayload, view:{...p.view, bg_color:p.view.bg_color||'#12121c', surface_color:p.view.surface_color||'#12121c'}, labels:p.labels, text_annotations: p.textAnnotations||[]}),
     });
     const data = await r.json();
     if(data.error) throw new Error(data.error);
