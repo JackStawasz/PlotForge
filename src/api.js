@@ -101,17 +101,44 @@ async function boot(){
   initLeftSidebar();
   initResizableSidebars();
   wireTemplateModal();
-  try{
-    const r = await fetch(`${API}/templates`);
-    TEMPLATES = await r.json();
-    buildCategories();
-    setConn('ok','Backend connected');
-  }catch(e){ setConn('err','Backend unreachable — run app.py'); }
+  const connected = await tryConnect();
   plots = [];
   const p = mkPlot(); plots.push(p);
   activePid = p.id; activeCurveIdx = 0;
   renderDOM();
   wireAllCfgInputs();
+  if(!connected) startReconnectPoller();
+}
+
+async function tryConnect(){
+  try{
+    const r = await fetch(`${API}/templates`);
+    if(!r.ok) throw new Error('not ok');
+    TEMPLATES = await r.json();
+    buildCategories();
+    setConn('ok','Backend connected');
+    return true;
+  }catch(e){
+    setConn('err','Backend unreachable — run app.py');
+    return false;
+  }
+}
+
+let _reconnectTimer = null;
+
+function startReconnectPoller(){
+  if(_reconnectTimer) return; // already polling
+  _reconnectTimer = setInterval(async ()=>{
+    const ok = await tryConnect();
+    if(ok){
+      clearInterval(_reconnectTimer);
+      _reconnectTimer = null;
+      // Re-render topbars so mpl buttons become active
+      plots.forEach((p, i)=>updateTopbar(p.id));
+      // Rebuild modal template grid
+      buildModalNavAndGrid?.();
+    }
+  }, 3000);
 }
 
 function setConn(s, _msg){
