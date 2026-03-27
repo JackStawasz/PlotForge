@@ -471,10 +471,10 @@ header{
 }
 .plot-card.plot-fs{
   position:fixed;
-  top:var(--header);left:0;right:0;bottom:0;
-  z-index:800;
+  top:0;left:0;right:0;bottom:0;
+  z-index:1000;
   border-radius:0;border:none;
-  box-shadow:0 0 0 100vmax rgba(4,4,12,.7);
+  box-shadow:none;
   overflow:hidden;
   display:flex;flex-direction:column;
   animation:fsEnter .22s cubic-bezier(.22,1,.36,1) forwards;

@@ -895,20 +895,23 @@ function buildCard(p, i){
 
 function buildTopbarInner(p, i){
   const cc = p.curves.filter(c=>c.template).length, canMpl = cc>0;
+  const inFs = !!document.querySelector('.plot-card.plot-fs');
   const mplBtn = p.mplMode
     ? `<button class="cbtn revert-btn" data-pid="${p.id}" data-action="revert">⟲ interactive</button>`
     : `<button class="cbtn mpl-btn${!canMpl?' mpl-disabled':''}" data-pid="${p.id}" data-action="mpl" ${!canMpl?'disabled':''}>▨ matplotlib</button>`;
+  const annDisabled = p.mplMode ? 'disabled style="opacity:.3;pointer-events:none"' : '';
+  const dupDelDisabled = inFs ? 'disabled style="opacity:.3;pointer-events:none;cursor:not-allowed"' : '';
   return `
     <span class="ctitle-text">Plot ${i+1} <span class="ctitle-curves">(${cc} curve${cc!==1?'s':''})</span></span>
     <div class="cactions-center">
       ${mplBtn}
-      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addtext" title="Add text annotation">✎ annotate</button>
+      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addtext" title="Add text annotation" ${annDisabled}>✎ annotate</button>
     </div>
     <div class="cactions-right">
-      <span class="ctop-coords" id="ctop_coords_${p.id}">x=—&nbsp;y=—</span>
-      <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" title="Duplicate plot">⧉</button>
+      <span class="ctop-coords" id="ctop_coords_${p.id}"></span>
+      <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" title="Duplicate plot" ${dupDelDisabled}>⧉</button>
       <button class="cbtn fs-btn" data-pid="${p.id}" data-action="fullscreen" title="Full screen">⛶</button>
-      <button class="cbtn del-btn" data-pid="${p.id}" data-action="del" title="Delete plot">🗑</button>
+      <button class="cbtn del-btn" data-pid="${p.id}" data-action="del" title="Delete plot" ${dupDelDisabled}>🗑</button>
     </div>`;
 }
 
@@ -1339,37 +1342,55 @@ function duplicatePlot(pid){
 }
 
 function handleAction(action, pid){
+  // Block dup and del while in fullscreen mode (any plot)
+  const anyFs = !!document.querySelector('.plot-card.plot-fs');
+  if(anyFs && (action==='dup' || action==='del')) return;
+
   if(action==='dup')  { duplicatePlot(pid); return; }
-  if(action==='addtext') { addTextAnnotation(pid); return; }
+  if(action==='addtext'){
+    // Block annotations in matplotlib mode
+    const p = gp(pid); if(p && p.mplMode) return;
+    addTextAnnotation(pid); return;
+  }
   if(action==='fullscreen') { toggleFullscreen(pid); return; }
   if(action==='del'){
-    destroyChart(pid); plots = plots.filter(p=>p.id!==pid);
+    destroyChart(pid);
+    plots = plots.filter(p=>p.id!==pid);
     if(activePid===pid){ activePid=plots[0]?.id||null; activeCurveIdx=0; }
-    if(plots.length===0){ const np=mkPlot(); plots.push(np); activePid=np.id; }
+    // Allow zero plots — don't auto-create a new one
     renderDOM(); return;
   }
   if(action==='mpl')    { convertToMpl(pid); return; }
   if(action==='revert') { revertToJS(pid);   return; }
 }
 
+let _fullscreenPid = null;
+
 function toggleFullscreen(pid){
   const card = document.querySelector(`.plot-card[data-pid="${pid}"]`);
   if(!card) return;
   const isFs = card.classList.contains('plot-fs');
   if(isFs){
-    // Exit: play shrink animation then remove class
-    card.classList.add('plot-fs-exit');
-    card.addEventListener('animationend', ()=>{
-      card.classList.remove('plot-fs','plot-fs-exit');
-      document.getElementById('plotList')?.classList.remove('has-fullscreen');
-      setTimeout(()=>{ resizeAndRefresh(pid); }, 0);
-    }, {once:true});
+    exitFullscreen(pid);
   } else {
-    // Enter: add class, animation plays via CSS
     card.classList.add('plot-fs');
     document.getElementById('plotList')?.classList.add('has-fullscreen');
+    _fullscreenPid = pid;
     setTimeout(()=>{ resizeAndRefresh(pid); }, 30);
   }
+}
+
+function exitFullscreen(pid){
+  const fpid = pid ?? _fullscreenPid; if(fpid==null) return;
+  const card = document.querySelector(`.plot-card[data-pid="${fpid}"]`); if(!card) return;
+  if(!card.classList.contains('plot-fs')) return;
+  card.classList.add('plot-fs-exit');
+  card.addEventListener('animationend', ()=>{
+    card.classList.remove('plot-fs','plot-fs-exit');
+    document.getElementById('plotList')?.classList.remove('has-fullscreen');
+    _fullscreenPid = null;
+    setTimeout(()=>{ resizeAndRefresh(fpid); }, 0);
+  }, {once:true});
 }
 
 function resizeAndRefresh(pid){
@@ -1670,6 +1691,16 @@ function resetDomainToDefault(){
 }
 
 function wireAllCfgInputs(){
+  // Escape: exit plot fullscreen. If browser is also in F11 fullscreen,
+  // first Escape exits plot-fs; browser handles its own Escape separately.
+  document.addEventListener('keydown', e=>{
+    if(e.key === 'Escape' && _fullscreenPid !== null){
+      // Only intercept if a plot is in fullscreen
+      // Don't call e.preventDefault() — let the browser handle F11 exit too
+      exitFullscreen(_fullscreenPid);
+    }
+  });
+
   // Gear button: toggle settings panel
   const gearBtn = document.getElementById('gearBtn');
   const gearPanel = document.getElementById('gearPanel');
