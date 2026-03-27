@@ -5,8 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PlotForge</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,600;1,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;1,9..144,300&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mathquill@0.10.1/build/mathquill.css">
 <link rel="stylesheet" href="style.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mathquill@0.10.1/build/mathquill.min.js"></script>
 </head>
 <body>
 <div class="shell">
@@ -14,9 +17,12 @@
   <!-- HEADER -->
   <header>
     <div class="logo"><em>Plot</em>Forge</div>
+    <button class="tpl-modal-trigger" id="tplModalBtn" title="Browse function templates">
+      <span class="tmt-icon">⊞</span> Templates
+    </button>
     <div class="hright">
       <div class="cdot" id="cdot"></div>
-      <button class="gear-btn" id="gearBtn" title="Settings">⚙</button>
+      <button class="gear-btn" id="gearBtn" title="Settings">&#9881;</button>
       <div class="gear-panel" id="gearPanel">
         <div class="gear-panel-title">Site Settings</div>
         <div class="gear-panel-placeholder">No settings yet.</div>
@@ -24,28 +30,64 @@
     </div>
   </header>
 
-  <!-- LEFT SIDEBAR: template picker + params -->
-  <aside class="sidebar">
-    <div id="sidebarNoPlot" class="sidebar-no-plot">
-      <div style="font-size:1.4rem;opacity:.12">⊹</div>
-      <div>Select a plot<br>to edit it</div>
-    </div>
-    <div id="sidebarPlotContent" style="display:none;flex-direction:column;gap:18px">
-      <div>
-        <div class="slbl">Templates</div>
-        <div id="catBlocks" class="cat-blocks"></div>
+  <!-- ══ TEMPLATE MODAL ══════════════════════════════════════════════ -->
+  <div class="tpl-modal-backdrop" id="tplModalBackdrop">
+    <div class="tpl-modal" id="tplModal">
+      <div class="tpl-modal-header">
+        <div class="tpl-modal-title"><em>Plot</em>Forge <span>Templates</span></div>
+        <div class="tpl-modal-search-wrap">
+          <input type="text" class="tpl-search-inp" id="tplSearchInp" placeholder="Search templates..."/>
+        </div>
+        <button class="tpl-modal-close" id="tplModalClose">&#10005;</button>
       </div>
-      <div>
-        <div class="slbl">Parameters</div>
-        <div class="params-area" id="paramsArea">
-          <div style="font-size:.65rem;color:var(--muted);font-style:italic">Select a template.</div>
+      <div class="tpl-modal-body">
+        <div class="tpl-modal-nav" id="tplModalNav"></div>
+        <div class="tpl-modal-content-col">
+          <div class="tpl-modal-grid" id="tplModalGrid"></div>
+          <div class="tpl-modal-footer" id="tplModalFooter" style="display:none">
+            <div class="tpl-modal-sel-info" id="tplModalSelectedInfo"></div>
+            <div class="tpl-modal-params-row" id="tplModalParams"></div>
+            <button class="tpl-modal-add-btn" id="tplModalAddBtn" disabled>
+              <span>&#8853;</span> Add to Plot
+            </button>
+          </div>
         </div>
       </div>
-      <!-- Add to Plot button -->
-      <button class="add-to-plot-btn atp-disabled" id="addToPlotBtn" disabled>
-        <span class="atp-icon">⊕</span>
-        Add to Plot
-      </button>
+    </div>
+  </div>
+
+  <!-- LEFT SIDEBAR: Files + Variables tabs -->
+  <aside class="sidebar" id="leftSidebar">
+    <div class="sidebar-tabs">
+      <button class="sidebar-tab sidebar-tab-active" id="sbTabFiles" data-tab="files">Files</button>
+      <button class="sidebar-tab" id="sbTabVars" data-tab="vars">Variables</button>
+    </div>
+
+    <!-- FILES TAB -->
+    <div class="sb-pane" id="sbPaneFiles">
+      <div class="sb-pane-inner">
+        <div class="files-drop-zone" id="filesDropZone">
+          <div class="fdz-icon">&#8853;</div>
+          <div class="fdz-text">Drop files here<br><span>or click to browse</span></div>
+          <input type="file" id="filesInput" multiple style="display:none"/>
+        </div>
+        <div class="files-list" id="filesList"></div>
+      </div>
+    </div>
+
+    <!-- VARIABLES TAB -->
+    <div class="sb-pane" id="sbPaneVars" style="display:none">
+      <div class="sb-pane-inner">
+        <div class="vars-header">
+          <span class="slbl" style="margin-bottom:0">Variables</span>
+          <button class="vars-add-btn" id="varsAddBtn" title="Add variable">+</button>
+        </div>
+        <div class="vars-list" id="varsList"></div>
+        <div class="vars-empty" id="varsEmpty">
+          <div style="font-size:1.4rem;opacity:.13">&#8721;</div>
+          <div>Define named variables<br>using LaTeX equations</div>
+        </div>
+      </div>
     </div>
   </aside>
 
@@ -55,40 +97,39 @@
   <!-- RIGHT CFG PANEL -->
   <aside class="cfg" id="cfgPanel">
     <div class="cfg-empty" id="cfgEmpty">
-      <div style="font-size:1.5rem;opacity:.15">⊞</div>
+      <div style="font-size:1.5rem;opacity:.15">&#8862;</div>
       <div>Select a plot card<br>to configure view</div>
     </div>
 
     <div id="cfgContent" style="display:none;flex-direction:column;gap:0">
 
-      <!-- Tab bar -->
       <div class="cfg-tabs">
         <button class="cfg-tab cfg-tab-active" id="cfgTabPlot">Plot Settings</button>
         <button class="cfg-tab" id="cfgTabLine">Line Settings</button>
       </div>
 
-      <!-- ══ PLOT SETTINGS PANE ══ -->
+      <!-- PLOT SETTINGS PANE -->
       <div id="cfgPanePlot" style="display:flex;flex-direction:column;gap:14px;padding:14px 12px 20px">
 
         <div>
           <div class="slbl-row">
             <span class="slbl">Viewport Domain</span>
-            <button class="home-btn" id="domainHomeBtn" title="Reset to default view">↺ reset view</button>
+            <button class="home-btn" id="domainHomeBtn" title="Reset to default view">&#8634; reset view</button>
           </div>
           <div class="cfg-sec">
             <div class="crow">
               <label>X range</label>
               <div class="drow">
-                <input type="text" inputmode="decimal" id="c_xn" placeholder="—"/>
-                <input type="text" inputmode="decimal" id="c_xx" placeholder="—"/>
+                <input type="text" inputmode="decimal" id="c_xn" placeholder="&#8212;"/>
+                <input type="text" inputmode="decimal" id="c_xx" placeholder="&#8212;"/>
               </div>
               <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
             </div>
             <div class="crow">
               <label>Y range</label>
               <div class="drow">
-                <input type="text" inputmode="decimal" id="c_yn" placeholder="—"/>
-                <input type="text" inputmode="decimal" id="c_yx" placeholder="—"/>
+                <input type="text" inputmode="decimal" id="c_yn" placeholder="&#8212;"/>
+                <input type="text" inputmode="decimal" id="c_yx" placeholder="&#8212;"/>
               </div>
               <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
             </div>
@@ -120,7 +161,7 @@
               <label class="tog"><input type="checkbox" id="c_grid" checked><span class="tslider"></span></label>
             </div>
             <div class="crow" id="row_galpha">
-              <label>Grid opacity — <span id="c_galpha_val" style="color:var(--acc2)">50%</span></label>
+              <label>Grid opacity &#8212; <span id="c_galpha_val" style="color:var(--acc2)">50%</span></label>
               <input type="range" id="c_galpha" min="0.05" max="1" step="0.05" value="0.5"/>
             </div>
             <div class="trow">
@@ -128,7 +169,7 @@
               <label class="tog"><input type="checkbox" id="c_axis_lines" checked><span class="tslider"></span></label>
             </div>
             <div class="crow" id="row_aalpha">
-              <label>Axis opacity — <span id="c_aalpha_val" style="color:var(--acc2)">100%</span></label>
+              <label>Axis opacity &#8212; <span id="c_aalpha_val" style="color:var(--acc2)">100%</span></label>
               <input type="range" id="c_aalpha" min="0.05" max="1" step="0.05" value="1"/>
             </div>
           </div>
@@ -160,12 +201,9 @@
 
       </div><!-- #cfgPanePlot -->
 
-      <!-- ══ LINE SETTINGS PANE ══ -->
+      <!-- LINE SETTINGS PANE -->
       <div id="cfgPaneLine" style="display:none;flex-direction:column;gap:14px;padding:14px 12px 20px">
-
-        <!-- Curve selector with inline name editing and delete -->
         <div id="lineCurveSelector" class="curve-selector" style="display:none"></div>
-
         <div>
           <div class="slbl">Line Style</div>
           <div class="cfg-sec">
@@ -177,40 +215,38 @@
               </div>
             </div>
             <div class="crow">
-              <label>Width — <span id="c_lw_val" style="color:var(--acc2)">2.0</span></label>
+              <label>Width &#8212; <span id="c_lw_val" style="color:var(--acc2)">2.0</span></label>
               <input type="range" id="c_lw" min="0.5" max="6" step="0.5" value="2"/>
             </div>
             <div class="crow">
               <label>Style</label>
               <select id="c_ls">
                 <option value="none">None</option>
-                <option value="solid">── Solid</option>
+                <option value="solid">&#9472;&#9472; Solid</option>
                 <option value="dashed">- - Dashed</option>
-                <option value="dotted">··· Dotted</option>
-                <option value="dashdot">-·- Dash-dot</option>
+                <option value="dotted">&#183;&#183;&#183; Dotted</option>
+                <option value="dashdot">-&#183;- Dash-dot</option>
               </select>
             </div>
             <div class="crow">
               <label>Marker</label>
               <select id="c_mk">
                 <option value="none">None</option>
-                <option value="o">● Circle</option>
-                <option value="s">■ Square</option>
-                <option value="^">▲ Triangle</option>
-                <option value="D">◆ Diamond</option>
+                <option value="o">&#9679; Circle</option>
+                <option value="s">&#9632; Square</option>
+                <option value="^">&#9650; Triangle</option>
+                <option value="D">&#9670; Diamond</option>
                 <option value="+">+ Cross</option>
-                <option value="x">× X</option>
+                <option value="x">&#215; X</option>
               </select>
             </div>
           </div>
         </div>
-
         <div class="cdivider"></div>
-
         <div>
           <div class="slbl-row">
             <span class="slbl">Data Mask</span>
-            <button class="home-btn" id="maskResetBtn" title="Clear all mask values">↺ reset</button>
+            <button class="home-btn" id="maskResetBtn" title="Clear all mask values">&#8634; reset</button>
           </div>
           <div class="cfg-sec">
             <div class="crow">
@@ -231,7 +267,6 @@
             </div>
           </div>
         </div>
-
       </div><!-- #cfgPaneLine -->
 
     </div><!-- #cfgContent -->

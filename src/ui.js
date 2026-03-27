@@ -1,153 +1,280 @@
-// ═══ SIDEBAR ═════════════════════════════════════════════════════════════
-function refreshSidebar(){
-  const noPlot    = document.getElementById('sidebarNoPlot');
-  const plotContent = document.getElementById('sidebarPlotContent');
-  const p = activePlot();
-  if(!p){
-    if(noPlot) noPlot.style.display = 'flex';
-    if(plotContent) plotContent.style.display = 'none';
-    return;
+// ═══ LEFT SIDEBAR: Files + Variables ════════════════════════════════════
+let sbActiveTab = 'files';
+
+function initLeftSidebar(){
+  document.getElementById('sbTabFiles')?.addEventListener('click', ()=>setSbTab('files'));
+  document.getElementById('sbTabVars')?.addEventListener('click', ()=>setSbTab('vars'));
+  const dz = document.getElementById('filesDropZone');
+  const fi = document.getElementById('filesInput');
+  if(dz){
+    dz.addEventListener('click', ()=>fi?.click());
+    dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('dragover'); });
+    dz.addEventListener('dragleave', ()=>dz.classList.remove('dragover'));
+    dz.addEventListener('drop', e=>{ e.preventDefault(); dz.classList.remove('dragover'); handleFilesDrop(e.dataTransfer.files); });
   }
-  if(noPlot) noPlot.style.display = 'none';
-  if(plotContent) plotContent.style.display = 'flex';
-  updateAddToPlotBtn();
-  const curve = activeCurve();
-  const tkey  = curve?.template || null;
-  document.querySelectorAll('.tpl-item').forEach(b => b.classList.toggle('sel', b.dataset.key === tkey));
-  if(tkey){
-    document.querySelectorAll('.cat-body').forEach(b=>b.classList.remove('open'));
-    document.querySelectorAll('.cat-hdr').forEach(h=>h.classList.remove('open'));
-    document.querySelectorAll('.subfolder-body').forEach(b=>b.classList.remove('open'));
-    document.querySelectorAll('.subfolder-hdr').forEach(h=>h.classList.remove('open'));
-    document.querySelectorAll('.cat-hdr').forEach(hdr=>{
-      const body = hdr.nextElementSibling;
-      if(body?.querySelector(`[data-key="${tkey}"]`)){
-        hdr.classList.add('open'); body.classList.add('open');
-        body.querySelectorAll('.subfolder-hdr').forEach(sh=>{
-          const sb = sh.nextElementSibling;
-          if(sb?.querySelector(`[data-key="${tkey}"]`)){ sh.classList.add('open'); sb.classList.add('open'); }
-        });
-      }
-    });
-    selTpl = tkey;
-    buildParamsForTemplate(tkey, curve.params);
-  }else{
-    selTpl = null;
-    const pa = document.getElementById('paramsArea');
-    if(pa) pa.innerHTML = '<div style="font-size:.65rem;color:var(--muted);font-style:italic">Select a template.</div>';
-  }
+  fi?.addEventListener('change', ()=>handleFilesDrop(fi.files));
+  document.getElementById('varsAddBtn')?.addEventListener('click', addVariable);
 }
 
-function updateAddToPlotBtn(){
-  const btn = document.getElementById('addToPlotBtn'); if(!btn) return;
-  btn.disabled = !selTpl; btn.classList.toggle('atp-disabled', !selTpl);
+// ═══ RESIZABLE SIDEBARS ══════════════════════════════════════════════════
+function initResizableSidebars(){
+  // Left sidebar: default 260px, min 80% = 208px, max 200% = 520px
+  makeResizable('leftSidebar',  260, 208, 520, 'right', '--sidebar');
+  // Right cfg panel: default 268px, min 80% = 214px, max 200% = 536px
+  makeResizable('cfgPanel',     268, 214, 536, 'left',  '--cfg');
 }
+
+function makeResizable(elId, defaultPx, minPx, maxPx, edge, cssVar){
+  const el = document.getElementById(elId); if(!el) return;
+
+  // Create drag handle
+  const handle = document.createElement('div');
+  handle.className = 'resize-handle resize-handle-' + edge;
+  el.appendChild(handle);
+
+  let dragging = false, startX = 0, startW = 0;
+
+  handle.addEventListener('mousedown', e=>{
+    e.preventDefault();
+    dragging = true;
+    startX = e.clientX;
+    startW = el.offsetWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  window.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    const delta = edge === 'right' ? (e.clientX - startX) : (startX - e.clientX);
+    const newW = Math.max(minPx, Math.min(maxPx, startW + delta));
+    document.documentElement.style.setProperty(cssVar, newW + 'px');
+  });
+
+  window.addEventListener('mouseup', ()=>{
+    if(!dragging) return;
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+}
+
+
+function setSbTab(tab){
+  sbActiveTab = tab;
+  document.getElementById('sbTabFiles')?.classList.toggle('sidebar-tab-active', tab==='files');
+  document.getElementById('sbTabVars')?.classList.toggle('sidebar-tab-active', tab==='vars');
+  const pf = document.getElementById('sbPaneFiles'); if(pf) pf.style.display = tab==='files' ? 'flex' : 'none';
+  const pv = document.getElementById('sbPaneVars');  if(pv) pv.style.display  = tab==='vars'  ? 'flex' : 'none';
+}
+
+let uploadedFiles = [];
+
+function handleFilesDrop(fileList){
+  for(const f of fileList){
+    if(uploadedFiles.find(u=>u.name===f.name && u.size===f.size)) continue;
+    uploadedFiles.push(f);
+  }
+  renderFilesList();
+}
+
+function renderFilesList(){
+  const list = document.getElementById('filesList'); if(!list) return;
+  list.innerHTML = '';
+  uploadedFiles.forEach((f,i)=>{
+    const item = document.createElement('div'); item.className = 'file-item';
+    const ext = f.name.split('.').pop().toLowerCase();
+    const icon = ext==='csv'?'&#x1F4CA;':ext==='json'?'{}':ext==='txt'?'&#x1F4C4;':ext==='py'?'&#x1F40D;':'&#x1F4C1;';
+    const kb = f.size<1024 ? f.size+'B' : f.size<1048576 ? (f.size/1024).toFixed(1)+'KB' : (f.size/1048576).toFixed(1)+'MB';
+    item.innerHTML = `<span class="file-item-icon">${icon}</span><span class="file-item-name" title="${f.name}">${f.name}</span><span class="file-item-size">${kb}</span><button class="file-item-del" data-idx="${i}">&#10005;</button>`;
+    item.querySelector('.file-item-del').addEventListener('click', e=>{ e.stopPropagation(); uploadedFiles.splice(parseInt(e.currentTarget.dataset.idx),1); renderFilesList(); });
+    list.appendChild(item);
+  });
+}
+
+let MQ = null;
+const variables = [];
+let varIdCtr = 0;
+
+function initMathQuill(){
+  try{ MQ = MathQuill.getInterface(2); }catch(e){ MQ = null; }
+}
+
+function addVariable(){
+  const v = { id:++varIdCtr, name:'x', latex:'' };
+  variables.push(v);
+  renderVariables();
+  setTimeout(()=>{ const inp=document.getElementById(`vname_${v.id}`); if(inp){inp.select();inp.focus();} }, 30);
+}
+
+function renderVariables(){
+  const list = document.getElementById('varsList'); if(!list) return;
+  const empty = document.getElementById('varsEmpty'); if(empty) empty.style.display = variables.length ? 'none' : 'flex';
+  list.innerHTML = '';
+  variables.forEach(v=>{
+    const item = document.createElement('div'); item.className = 'var-item'; item.dataset.vid = v.id;
+    item.innerHTML = `
+      <div class="var-item-top">
+        <input class="var-name-inp" id="vname_${v.id}" type="text" value="${v.name}" placeholder="name" maxlength="12"/>
+        <span class="var-eq-label">&nbsp;=&nbsp;</span>
+        <button class="var-item-del" data-vid="${v.id}">&#10005;</button>
+      </div>
+      <div class="var-mq-wrap" id="vmq_${v.id}"></div>`;
+    list.appendChild(item);
+    const nameInp = item.querySelector(`#vname_${v.id}`);
+    nameInp.addEventListener('input', ()=>{ v.name=nameInp.value; });
+    nameInp.addEventListener('click', e=>e.stopPropagation());
+    nameInp.addEventListener('keydown', e=>{ if(e.key==='Enter') nameInp.blur(); e.stopPropagation(); });
+    item.querySelector('.var-item-del').addEventListener('click', e=>{
+      e.stopPropagation();
+      const idx=variables.findIndex(x=>x.id===v.id); if(idx>-1) variables.splice(idx,1);
+      renderVariables();
+    });
+    if(MQ){
+      const mqEl = document.getElementById(`vmq_${v.id}`);
+      try{
+        const mf = MQ.MathField(mqEl, { spaceBehavesLikeTab:true, handlers:{ edit(){ v.latex=mf.latex(); } } });
+        if(v.latex) mf.latex(v.latex);
+      }catch(e){ mqEl.textContent=v.latex||''; }
+    }
+  });
+}
+
+// ═══ TEMPLATE MODAL ══════════════════════════════════════════════════════
+let modalSelTpl = null;
 
 function buildCategories(){
-  const container = document.getElementById('catBlocks');
-  container.innerHTML = '';
+  buildModalNavAndGrid();
+}
 
-  // Build grouped structure preserving JSON insertion order.
-  // Use arrays for both category order and subfolder order.
-  const catOrder    = [];   // category keys in encounter order
-  const catMeta     = {};   // cat -> { subfolderOrder:[], subfolders:{name->[items]}, flat:[items] }
-
+function buildModalNavAndGrid(){
+  const nav  = document.getElementById('tplModalNav');
+  const grid = document.getElementById('tplModalGrid');
+  if(!nav||!grid) return;
+  nav.innerHTML=''; grid.innerHTML='';
+  const catOrder=[], catMeta={};
   for(const [key,tpl] of Object.entries(TEMPLATES)){
-    const cat = tpl.category, sub = tpl.subfolder || null;
-    if(!catMeta[cat]){
-      catOrder.push(cat);
-      catMeta[cat] = { subfolderOrder:[], subfolders:{}, flat:[] };
-    }
-    const cm = catMeta[cat];
-    if(sub){
-      if(!cm.subfolders[sub]){ cm.subfolderOrder.push(sub); cm.subfolders[sub]=[]; }
-      cm.subfolders[sub].push({key,tpl});
-    }else{
-      cm.flat.push({key,tpl});
-    }
+    const cat=tpl.category;
+    if(!catMeta[cat]){catOrder.push(cat);catMeta[cat]=[];}
+    catMeta[cat].push({key,tpl});
   }
-
+  const allBtn=document.createElement('button'); allBtn.className='tpl-nav-item active'; allBtn.dataset.cat='all';
+  allBtn.innerHTML=`<span class="tpl-nav-dot" style="background:var(--muted)"></span>All`;
+  allBtn.addEventListener('click',()=>setModalCat('all')); nav.appendChild(allBtn);
   for(const cat of catOrder){
-    const cm   = catMeta[cat];
-    const meta = CAT_META[cat] || {label:cat, dotClass:''};
-    const wrap = document.createElement('div'); wrap.className = 'cat-wrap';
-    const hdr  = document.createElement('button'); hdr.className = 'cat-hdr';
-    hdr.innerHTML = `<div class="cat-dot ${meta.dotClass}"></div><span>${meta.label}</span><span class="cat-arrow">›</span>`;
-    const body = document.createElement('div'); body.className = 'cat-body';
-    const total = cm.subfolderOrder.length + cm.flat.length; let ti = 0;
-
-    cm.subfolderOrder.forEach(subName=>{
-      const items = cm.subfolders[subName]; const isLast = (ti===total-1); ti++;
-      const sw = document.createElement('div'); sw.className = 'subfolder-wrap';
-      const sh = document.createElement('button'); sh.className = 'subfolder-hdr';
-      sh.innerHTML = `<span class="tree-connector">${isLast?'└':'├'}</span><span class="sub-label">${subName}</span><span class="sub-arrow">›</span>`;
-      const sb = document.createElement('div'); sb.className = 'subfolder-body';
-      items.forEach(({key,tpl},idx)=>{
-        const btn = document.createElement('button'); btn.className = 'tpl-item sub-item'; btn.dataset.key = key;
-        btn.innerHTML = `<span class="tree-connector sub-connector">${idx===items.length-1?'└':'├'}</span><span class="tpl-label">${tpl.label}</span><span class="tpl-eq">${tpl.equation}</span>`;
-        btn.addEventListener('click', ()=>selectTemplate(key)); sb.appendChild(btn);
-      });
-      sh.addEventListener('click', e=>{
-        e.stopPropagation();
-        const was = sb.classList.contains('open');
-        body.querySelectorAll('.subfolder-body').forEach(b=>b.classList.remove('open'));
-        body.querySelectorAll('.subfolder-hdr').forEach(h=>h.classList.remove('open'));
-        if(!was){ sb.classList.add('open'); sh.classList.add('open'); }
-      });
-      sw.appendChild(sh); sw.appendChild(sb); body.appendChild(sw);
-    });
-
-    cm.flat.forEach(({key,tpl})=>{
-      ti++; const isLast = (ti===total);
-      const btn = document.createElement('button'); btn.className = 'tpl-item'; btn.dataset.key = key;
-      btn.innerHTML = `<span class="tree-connector">${isLast?'└':'├'}</span><span class="tpl-label">${tpl.label}</span><span class="tpl-eq">${tpl.equation}</span>`;
-      btn.addEventListener('click', ()=>selectTemplate(key)); body.appendChild(btn);
-    });
-
-    hdr.addEventListener('click', ()=>{
-      const was = body.classList.contains('open');
-      document.querySelectorAll('.cat-body').forEach(b=>b.classList.remove('open'));
-      document.querySelectorAll('.cat-hdr').forEach(h=>h.classList.remove('open'));
-      if(!was){ body.classList.add('open'); hdr.classList.add('open'); }
-    });
-    wrap.appendChild(hdr); wrap.appendChild(body); container.appendChild(wrap);
+    const meta=CAT_META[cat]||{label:cat,dotClass:''};
+    const btn=document.createElement('button'); btn.className='tpl-nav-item'; btn.dataset.cat=cat;
+    btn.innerHTML=`<span class="tpl-nav-dot ${meta.dotClass}"></span>${meta.label}`;
+    btn.addEventListener('click',()=>setModalCat(cat)); nav.appendChild(btn);
+  }
+  for(const cat of catOrder){
+    const meta=CAT_META[cat]||{label:cat,dotClass:''};
+    const hdr=document.createElement('div'); hdr.className='tpl-cat-header'; hdr.dataset.cat=cat;
+    hdr.innerHTML=`<span class="cat-dot ${meta.dotClass}"></span>${meta.label}`;
+    grid.appendChild(hdr);
+    for(const {key,tpl} of catMeta[cat]){
+      const card=document.createElement('div'); card.className='tpl-card'; card.dataset.key=key; card.dataset.cat=cat;
+      card.innerHTML=`<div class="tpl-card-dot ${meta.dotClass}"></div><div class="tpl-card-label">${tpl.label}</div><div class="tpl-card-eq">${tpl.equation}</div>`;
+      card.addEventListener('click',()=>selectModalTemplate(key)); grid.appendChild(card);
+    }
   }
 }
 
-// ═══ TEMPLATE SELECTION ══════════════════════════════════════════════════
-function selectTemplate(key){
-  selTpl = key;
-  document.querySelectorAll('.tpl-item').forEach(b=>b.classList.toggle('sel', b.dataset.key===key));
-  updateAddToPlotBtn();
-  // Load params for the selected template using the active curve's existing param values
-  // (if any), but do NOT auto-assign or auto-render — user must click "Add to Plot".
-  const curve = activeCurve();
-  buildParamsForTemplate(key, curve?.template === key ? curve.params : {});
+function setModalCat(cat){
+  document.querySelectorAll('.tpl-nav-item').forEach(b=>b.classList.toggle('active',b.dataset.cat===cat));
+  const grid=document.getElementById('tplModalGrid'); if(!grid) return;
+  grid.querySelectorAll('.tpl-card,.tpl-cat-header').forEach(el=>{
+    el.style.display=(cat==='all'||el.dataset.cat===cat)?'':'none';
+  });
+  grid.scrollTop=0;
 }
 
-function addToPlot(){
-  const p = activePlot(); if(!p||!selTpl) return;
-  const autoName = TEMPLATES[selTpl]?.equation || selTpl;
-  const curve = activeCurve();
-  if(curve && !curve.template){
-    curve.template = selTpl;
-    if(!curve.name) curve.name = autoName;
-    buildParamsForTemplate(selTpl, curve.params);
-    p.view.x_min=null; p.view.x_max=null; p.view.y_min=null; p.view.y_max=null;
-    applyAndRender(p.id, true); refreshOverlayLegend(p.id); refreshLineCurveSelector(); return;
+function filterModalTemplates(query){
+  const q=query.toLowerCase().trim();
+  const grid=document.getElementById('tplModalGrid'); if(!grid) return;
+  grid.querySelectorAll('.tpl-card').forEach(card=>{
+    const tpl=TEMPLATES[card.dataset.key]; if(!tpl) return;
+    card.style.display=(!q||tpl.label.toLowerCase().includes(q)||tpl.equation.toLowerCase().includes(q))?'':'none';
+  });
+  grid.querySelectorAll('.tpl-cat-header').forEach(hdr=>{
+    const has=[...grid.querySelectorAll(`.tpl-card[data-cat="${hdr.dataset.cat}"]`)].some(c=>c.style.display!=='none');
+    hdr.style.display=has?'':'none';
+  });
+}
+
+function selectModalTemplate(key){
+  modalSelTpl=key;
+  document.querySelectorAll('.tpl-card').forEach(c=>c.classList.toggle('selected',c.dataset.key===key));
+  const footer=document.getElementById('tplModalFooter');
+  const info=document.getElementById('tplModalSelectedInfo');
+  const params=document.getElementById('tplModalParams');
+  const addBtn=document.getElementById('tplModalAddBtn');
+  if(!TEMPLATES[key]){if(footer)footer.style.display='none';return;}
+  const tpl=TEMPLATES[key];
+  footer.style.display='flex';
+  info.innerHTML=`<strong>${tpl.label}</strong><br><em>${tpl.equation}</em>`;
+  params.innerHTML='';
+  for(const [pk,pd] of Object.entries(tpl.params)){
+    const item=document.createElement('div'); item.className='tpl-mp-item';
+    item.innerHTML=`<span class="tpl-mp-label">${pd.label}</span><input class="tpl-mp-input" id="mp_${pk}" type="number" value="${pd.default}" step="${pd.step}" min="${pd.min}" max="${pd.max}"/>`;
+    params.appendChild(item);
   }
-  const nc = defCurve(p.curves); nc.template = selTpl; nc.name = autoName; p.curves.push(nc);
-  activeCurveIdx = p.curves.length - 1;
-  buildParamsForTemplate(selTpl, {});
-  applyAndRender(p.id, false);
-  updateTopbar(p.id); refreshOverlayLegend(p.id); refreshLineCurveSelector(); refreshCfg();
+  if(addBtn) addBtn.disabled=!activePid;
+}
+
+function addFromModal(){
+  if(!modalSelTpl||activePid===null) return;
+  const p=activePlot(); if(!p) return;
+  const params={};
+  for(const pk of Object.keys(TEMPLATES[modalSelTpl].params)){
+    const el=document.getElementById(`mp_${pk}`); if(el) params[pk]=parseFloat(el.value);
+  }
+  selTpl=modalSelTpl;
+  const autoName=TEMPLATES[selTpl]?.equation||selTpl;
+  const curve=activeCurve();
+  if(curve&&!curve.template){
+    curve.template=selTpl; curve.params=params;
+    if(!curve.name) curve.name=autoName;
+    p.view.x_min=null;p.view.x_max=null;p.view.y_min=null;p.view.y_max=null;
+    renderJS(p.id,true); refreshOverlayLegend(p.id); refreshLineCurveSelector();
+  }else{
+    const nc=defCurve(p.curves); nc.template=selTpl; nc.params=params; nc.name=autoName; p.curves.push(nc);
+    activeCurveIdx=p.curves.length-1;
+    renderJS(p.id,false); updateTopbar(p.id); refreshOverlayLegend(p.id); refreshLineCurveSelector(); refreshCfg();
+  }
+  closeTemplateModal();
+}
+
+function openTemplateModal(){
+  document.getElementById('tplModalBackdrop')?.classList.add('open');
+  const addBtn=document.getElementById('tplModalAddBtn');
+  if(addBtn) addBtn.disabled=!activePid||!modalSelTpl;
+  setTimeout(()=>document.getElementById('tplSearchInp')?.focus(),50);
+}
+
+function closeTemplateModal(){
+  document.getElementById('tplModalBackdrop')?.classList.remove('open');
+}
+
+function wireTemplateModal(){
+  document.getElementById('tplModalBtn')?.addEventListener('click',openTemplateModal);
+  document.getElementById('tplModalClose')?.addEventListener('click',closeTemplateModal);
+  document.getElementById('tplModalBackdrop')?.addEventListener('click',e=>{ if(e.target===document.getElementById('tplModalBackdrop')) closeTemplateModal(); });
+  document.getElementById('tplModalAddBtn')?.addEventListener('click',addFromModal);
+  document.getElementById('tplSearchInp')?.addEventListener('input',function(){filterModalTemplates(this.value);});
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeTemplateModal(); });
+}
+
+function refreshSidebar(){
+  const addBtn=document.getElementById('tplModalAddBtn');
+  if(addBtn) addBtn.disabled=!activePid||!modalSelTpl;
 }
 
 // ═══ PARAMETER PANEL ═════════════════════════════════════════════════════
 const sliderRanges = {};
 
 function buildParamsForTemplate(key, existingParams){
-  const pa = document.getElementById('paramsArea'); pa.innerHTML = '';
+  const pa = document.getElementById('paramsArea');
+  if(pa) pa.innerHTML = '';
   if(!key || !TEMPLATES[key]) return;
   for(const [pk,pd] of Object.entries(TEMPLATES[key].params)){
     const row = document.createElement('div'); row.className = 'p-row'; row.dataset.pkey = pk;
@@ -243,7 +370,7 @@ function onParamSlider(pk, val){
 }
 
 function updatePolyCoeffVisibility(deg){
-  document.getElementById('paramsArea').querySelectorAll('.p-row').forEach(row=>{
+  document.getElementById('paramsArea')?.querySelectorAll('.p-row').forEach(row=>{
     const pk = row.dataset.pkey;
     if(!pk || pk==='degree') return;
     row.style.display = parseInt(pk.replace('a',''))<=deg ? '' : 'none';
@@ -355,7 +482,7 @@ function drawChart(p){
       ch.options.scales.y.grid.display=v.show_grid; ch.options.scales.y.grid.color=gc;
       ch.options.scales.x.ticks.callback = v.x_log ? makeLogTickCb() : makeTickCb('x');
       ch.options.scales.y.ticks.callback = v.y_log ? makeLogTickCb() : makeTickCb('y');
-      applyScaleLimits(ch.options.scales, v); ch.update('none'); refreshOverlayLegend(p.id); return;
+      applyScaleLimits(ch.options.scales, v); ch.update('none'); refreshOverlayLegend(p.id); updatePlotLockedAnnotations(p.id); return;
     }
   }
 
@@ -613,12 +740,18 @@ function wireInteraction(p){
   wrap.addEventListener('mousemove', e=>{
     const ch = chartInstances[p.id]; if(!ch) return;
     const {dataX,dataY} = pixelToData(ch, e.clientX, e.clientY);
-    const cel = document.getElementById(`coords_${p.id}`);
-    if(cel) cel.textContent = `x=${sigFig(dataX,4)}  y=${sigFig(dataY,4)}`;
+    const txt = `x=${sigFig(dataX,4)}&nbsp;y=${sigFig(dataY,4)}`;
+    const tcel = document.getElementById(`ctop_coords_${p.id}`);
+    if(tcel){ tcel.innerHTML = txt; tcel.style.opacity='1'; }
     if(panState[p.id]?.dragging) onPanMove(e, p);
   });
+  wrap.addEventListener('mouseenter', ()=>{
+    const tcel = document.getElementById(`ctop_coords_${p.id}`);
+    if(tcel) tcel.style.opacity='1';
+  });
   wrap.addEventListener('mouseleave', ()=>{
-    const cel = document.getElementById(`coords_${p.id}`); if(cel) cel.textContent='x=—  y=—';
+    const tcel = document.getElementById(`ctop_coords_${p.id}`);
+    if(tcel){ tcel.innerHTML=''; tcel.style.opacity='0'; }
   });
   wrap.addEventListener('wheel', e=>{
     e.preventDefault();
@@ -681,7 +814,6 @@ function buildInnerHTML(p){
              value="${titleVal}" placeholder="Title" maxlength="80" style="font-size:${tpx}px"/>
       <div class="canvas-wrap" id="cwrap_${pid}">
         <canvas id="chart_${pid}" style="display:block;width:100%"></canvas>
-        <div class="cursor-coords" id="coords_${pid}">x=— y=—</div>
       </div>
       <div class="ax-xlabel">
         <input class="lbl-inp auto-inp" id="xlabel_${pid}" type="text"
@@ -768,11 +900,15 @@ function buildTopbarInner(p, i){
     : `<button class="cbtn mpl-btn${!canMpl?' mpl-disabled':''}" data-pid="${p.id}" data-action="mpl" ${!canMpl?'disabled':''}>▨ matplotlib</button>`;
   return `
     <span class="ctitle-text">Plot ${i+1} <span class="ctitle-curves">(${cc} curve${cc!==1?'s':''})</span></span>
-    <div class="cactions">
+    <div class="cactions-center">
       ${mplBtn}
-      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addtext" title="Add text annotation">✎ text</button>
+      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addtext" title="Add text annotation">✎ annotate</button>
+    </div>
+    <div class="cactions-right">
+      <span class="ctop-coords" id="ctop_coords_${p.id}">x=—&nbsp;y=—</span>
       <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" title="Duplicate plot">⧉</button>
-      <button class="cbtn" data-pid="${p.id}" data-action="del">✕</button>
+      <button class="cbtn fs-btn" data-pid="${p.id}" data-action="fullscreen" title="Full screen">⛶</button>
+      <button class="cbtn del-btn" data-pid="${p.id}" data-action="del" title="Delete plot">🗑</button>
     </div>`;
 }
 
@@ -854,95 +990,331 @@ function applyBgColorToCanvas(pid){
 }
 
 // ═══ TEXT ANNOTATIONS ════════════════════════════════════════════════════
+// Font size is stored/reported in "logical pt" units matching the right-panel
+// controls. JS renders at size*JS_ANN_SCALE px to match matplotlib output size.
+const JS_ANN_SCALE = 1.4;
+
+let _annMenu = null;
+
+function closeAnnMenu(){
+  if(_annMenu){ _annMenu.remove(); _annMenu=null; }
+}
+
+// Convert plot-data coords → canvas fraction for a given chart instance
+function dataToFrac(ch, dataX, dataY){
+  const sx=ch.scales.x, sy=ch.scales.y;
+  const fracX = (sx.right-sx.left)>0 ? (dataX-sx.min)/(sx.max-sx.min) : 0.5;
+  const fracY = (sy.bottom-sy.top)>0 ? 1 - (dataY-sy.min)/(sy.max-sy.min) : 0.5;
+  // canvas fraction relative to full canvas size
+  const cw=ch.canvas.width, ch_=ch.canvas.height;
+  const pxX = sx.left + fracX*(sx.right-sx.left);
+  const pxY = sy.top  + (1-fracX)*(sy.bottom-sy.top); // not used
+  const pxY2= sy.top  + (1 - (dataY-sy.min)/(sy.max-sy.min)) * (sy.bottom-sy.top);
+  return { x: pxX/cw, y: pxY2/ch_ };
+}
+
+// Convert canvas fraction → plot-data coords
+function fracToData(ch, fracX, fracY){
+  const sx=ch.scales.x, sy=ch.scales.y;
+  const cw=ch.canvas.width, ch_=ch.canvas.height;
+  const pxX = fracX*cw, pxY = fracY*ch_;
+  const dataX = sx.min + (pxX - sx.left)/(sx.right - sx.left) * (sx.max-sx.min);
+  const dataY = sy.min + (1 - (pxY - sy.top)/(sy.bottom - sy.top)) * (sy.max-sy.min);
+  return { dataX, dataY };
+}
+
+// Recalculate x_frac/y_frac for plot-locked annotations after zoom/pan
+function updatePlotLockedAnnotations(pid){
+  const p = gp(pid); if(!p||!p.textAnnotations) return;
+  const ch = chartInstances[pid]; if(!ch) return;
+  const wrap = document.getElementById(`cwrap_${pid}`); if(!wrap) return;
+  p.textAnnotations.forEach(ann=>{
+    if(ann.lock!=='plot' || ann.data_x==null) return;
+    const frac = dataToFrac(ch, ann.data_x, ann.data_y);
+    ann.x_frac = Math.max(0, Math.min(1, frac.x));
+    ann.y_frac = Math.max(0, Math.min(1, frac.y));
+    const outer = wrap.querySelector(`.text-annotation[data-ann-id="${ann.id}"]`);
+    if(outer){
+      outer.style.left = (ann.x_frac*100)+'%';
+      outer.style.top  = (ann.y_frac*100)+'%';
+    }
+  });
+}
+
+function showAnnMenu(ann, pid, menuBtnEl){
+  closeAnnMenu();
+  const p = gp(pid); if(!p) return;
+  const menu = document.createElement('div');
+  menu.className = 'ann-menu';
+  _annMenu = menu;
+
+  // ── Edit text ──────────────────────────────────────────────────
+  const editRow = document.createElement('div'); editRow.className='ann-menu-sub';
+  editRow.innerHTML = `<label>Text content</label><input class="ann-menu-inp" id="annMenuText" type="text" value="${ann.text.replace(/"/g,'&quot;')}" maxlength="120"/>`;
+  menu.appendChild(editRow);
+
+  menu.appendChild(makeSep());
+
+  // ── Font size (logical pt, displayed = pt * JS_ANN_SCALE) ──────
+  const sizeRow = document.createElement('div'); sizeRow.className='ann-menu-sub';
+  sizeRow.innerHTML = `<label>Font size (pt)</label><div class="ann-menu-inline"><input class="ann-menu-inp" id="annMenuSize" type="number" value="${ann.size}" min="6" max="52" step="1" style="width:64px;text-align:right"/></div>`;
+  menu.appendChild(sizeRow);
+
+  menu.appendChild(makeSep());
+
+  // ── Text color ────────────────────────────────────────────────
+  const colorRow = document.createElement('div'); colorRow.className='ann-menu-sub';
+  colorRow.innerHTML = `<label>Text color</label>
+    <div class="ann-menu-inline" style="gap:8px">
+      <div class="ann-color-swatch"><input type="color" id="annMenuColor" value="${ann.color}"/></div>
+      <input class="ann-menu-inp" id="annMenuColorHex" type="text" value="${ann.color}" maxlength="7" style="width:80px;font-family:var(--mono)"/>
+    </div>`;
+  menu.appendChild(colorRow);
+
+  menu.appendChild(makeSep());
+
+  // ── Lock mode ──────────────────────────────────────────────────
+  const isPlot = ann.lock==='plot';
+  const lockRow = document.createElement('div'); lockRow.className='ann-menu-sub';
+  lockRow.innerHTML = `<label>Position anchor</label>
+    <div class="ann-lock-group">
+      <button class="ann-lock-btn${isPlot?' active':''}" id="annLockPlot">Plot coords</button>
+      <button class="ann-lock-btn${!isPlot?' active':''}" id="annLockWindow">Window</button>
+    </div>`;
+  menu.appendChild(lockRow);
+
+  menu.appendChild(makeSep());
+
+  // ── Delete ────────────────────────────────────────────────────
+  const delBtn = document.createElement('button'); delBtn.className='ann-menu-item danger';
+  delBtn.innerHTML='<span class="ann-menu-icon">✕</span>Delete annotation';
+  delBtn.addEventListener('mousedown', e=>{
+    e.preventDefault(); e.stopPropagation();
+    closeAnnMenu();
+    if(!p.textAnnotations) return;
+    p.textAnnotations = p.textAnnotations.filter(a=>a.id!==ann.id);
+    document.querySelector(`.text-annotation[data-ann-id="${ann.id}"]`)?.remove();
+    scheduleMplDebounce(pid);
+  });
+  menu.appendChild(delBtn);
+
+  document.body.appendChild(menu);
+
+  // Wire inputs AFTER appending to DOM so getElementById works
+  const textInp = document.getElementById('annMenuText');
+  const sizeInp = document.getElementById('annMenuSize');
+  const colorInp    = document.getElementById('annMenuColor');
+  const colorHexInp = document.getElementById('annMenuColorHex');
+  const lockPlotBtn   = document.getElementById('annLockPlot');
+  const lockWindowBtn = document.getElementById('annLockWindow');
+
+  if(textInp){
+    textInp.focus(); textInp.select();
+    textInp.addEventListener('input', ()=>{
+      ann.text = textInp.value;
+      const el = document.querySelector(`.text-annotation[data-ann-id="${ann.id}"] .ann-text-content`);
+      if(el) el.textContent = ann.text;
+      scheduleMplDebounce(pid);
+    });
+  }
+
+  if(sizeInp){
+    sizeInp.addEventListener('input', ()=>{
+      const v = Math.max(6, parseInt(sizeInp.value)||13);
+      ann.size = v;
+      const el = document.querySelector(`.text-annotation[data-ann-id="${ann.id}"] .ann-text-content`);
+      if(el) el.style.fontSize = (v * JS_ANN_SCALE)+'px';
+      scheduleMplDebounce(pid);
+    });
+  }
+
+  function applyColor(hex){
+    if(!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+    ann.color = hex;
+    const el = document.querySelector(`.text-annotation[data-ann-id="${ann.id}"] .ann-text-content`);
+    if(el) el.style.color = hex;
+    scheduleMplDebounce(pid);
+  }
+  if(colorInp){
+    colorInp.addEventListener('input', ()=>{ colorHexInp.value=colorInp.value; applyColor(colorInp.value); });
+  }
+  if(colorHexInp){
+    colorHexInp.addEventListener('input', ()=>{ if(/^#[0-9a-fA-F]{6}$/.test(colorHexInp.value)){ colorInp.value=colorHexInp.value; applyColor(colorHexInp.value); } });
+  }
+
+  if(lockPlotBtn){
+    lockPlotBtn.addEventListener('click', ()=>{
+      ann.lock = 'plot';
+      // Save current data coords so we can track them on zoom/pan
+      const ch = chartInstances[pid];
+      if(ch){
+        const d = fracToData(ch, ann.x_frac, ann.y_frac);
+        ann.data_x = d.dataX; ann.data_y = d.dataY;
+      }
+      lockPlotBtn.classList.add('active');
+      lockWindowBtn.classList.remove('active');
+    });
+  }
+
+  if(lockWindowBtn){
+    lockWindowBtn.addEventListener('click', ()=>{
+      ann.lock = 'window';
+      ann.data_x = null; ann.data_y = null;
+      lockWindowBtn.classList.add('active');
+      lockPlotBtn.classList.remove('active');
+    });
+  }
+
+  // Position menu to the right of the hamburger button
+  const rect = menuBtnEl.getBoundingClientRect();
+  const mw = 210;
+  menu.style.visibility = 'hidden';
+  menu.style.display = 'block';
+  const mh = menu.scrollHeight || 280;
+  menu.style.visibility = '';
+  let left = rect.right + 8;
+  let top  = rect.top;
+  if(left + mw > window.innerWidth - 8) left = rect.left - mw - 8;
+  if(top  + mh > window.innerHeight - 8) top = window.innerHeight - mh - 8;
+  menu.style.left = Math.max(4,left)+'px';
+  menu.style.top  = Math.max(4,top)+'px';
+
+  // Close on outside click
+  const onOutside = e=>{
+    if(!menu.contains(e.target) && e.target!==menuBtnEl){
+      closeAnnMenu();
+      document.removeEventListener('mousedown', onOutside);
+    }
+  };
+  setTimeout(()=>document.addEventListener('mousedown', onOutside), 10);
+}
+
+function makeSep(){
+  const d=document.createElement('div'); d.className='ann-menu-sep'; return d;
+}
+
+function scheduleMplDebounce(pid){
+  const p=gp(pid); if(!p) return;
+  if(p.mplMode){clearTimeout(window._mplDebounce);window._mplDebounce=setTimeout(()=>convertToMpl(pid),350);}
+}
+
 function addTextAnnotation(pid){
   const p = gp(pid); if(!p) return;
   if(!p.textAnnotations) p.textAnnotations = [];
+  // Default size=13 pt; JS renders at 13*1.4=18.2px to match matplotlib output
+  // data_x/data_y stores plot coords when lock='plot'
   const ann = {
-    id: mkCid(),
-    text: 'Label',
-    x_frac: 0.5,
-    y_frac: 0.5,
-    color: '#eeeeff',
-    size: 13,
-    bold: false,
+    id: mkCid(), text:'Label',
+    x_frac:0.5, y_frac:0.5,
+    color:'#eeeeff', size:13, bold:false,
+    lock:'plot',
+    data_x: null, data_y: null,
   };
+  // Seed data coords from current chart view so annotation starts at center of plot
+  const ch = chartInstances[pid];
+  if(ch){
+    const d = fracToData(ch, 0.5, 0.5);
+    ann.data_x = d.dataX; ann.data_y = d.dataY;
+  }
   p.textAnnotations.push(ann);
   renderTextAnnotations(pid);
-  // Also trigger mpl re-render if in mpl mode
   if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(pid),350); }
 }
 
 function renderTextAnnotations(pid){
   const p = gp(pid); if(!p) return;
   const wrap = document.getElementById(`cwrap_${pid}`); if(!wrap) return;
-  // Remove old annotation elements
   wrap.querySelectorAll('.text-annotation').forEach(el=>el.remove());
   if(!p.textAnnotations) return;
-  p.textAnnotations.forEach(ann=>{
-    const el = document.createElement('div');
-    el.className = 'text-annotation';
-    el.dataset.annId = ann.id;
-    el.contentEditable = 'true';
-    el.textContent = ann.text;
-    el.style.cssText = `
-      position:absolute;
-      left:${ann.x_frac*100}%;
-      top:${ann.y_frac*100}%;
-      transform:translate(-50%,-50%);
-      color:${ann.color};
-      font-size:${ann.size}px;
-      font-family:var(--mono);
-      font-weight:${ann.bold?'600':'400'};
-      cursor:move;
-      user-select:none;
-      z-index:25;
-      background:transparent;
-      border:1px dashed transparent;
-      border-radius:3px;
-      padding:2px 5px;
-      min-width:20px;
-      outline:none;
-      white-space:nowrap;
-      transition:border-color .12s;
-    `;
-    // Hover border
-    el.addEventListener('mouseenter', ()=>el.style.borderColor='rgba(90,255,206,.4)');
-    el.addEventListener('mouseleave', ()=>{ if(document.activeElement!==el) el.style.borderColor='transparent'; });
-    el.addEventListener('focus', ()=>{ el.style.borderColor='var(--acc2)'; el.style.cursor='text'; });
-    el.addEventListener('blur', ()=>{ ann.text=el.textContent||'Label'; el.style.borderColor='transparent'; el.style.cursor='move'; if(p.mplMode){clearTimeout(window._mplDebounce);window._mplDebounce=setTimeout(()=>convertToMpl(pid),350);} });
-    el.addEventListener('keydown', e=>{ if(e.key==='Escape') el.blur(); e.stopPropagation(); });
-    // Delete on double-click on the × handle
-    const delBtn = document.createElement('span');
-    delBtn.textContent = '×';
-    delBtn.style.cssText = 'position:absolute;top:-6px;right:-6px;font-size:.7rem;color:#ff6faa;cursor:pointer;display:none;background:#0c0c18;border-radius:50%;width:14px;height:14px;line-height:14px;text-align:center;';
-    el.appendChild(delBtn);
-    el.addEventListener('mouseenter', ()=>delBtn.style.display='block');
-    el.addEventListener('mouseleave', ()=>{ if(document.activeElement!==el) delBtn.style.display='none'; });
-    delBtn.addEventListener('mousedown', e=>{
-      e.stopPropagation(); e.preventDefault();
-      p.textAnnotations = p.textAnnotations.filter(a=>a.id!==ann.id);
-      el.remove();
-      if(p.mplMode){clearTimeout(window._mplDebounce);window._mplDebounce=setTimeout(()=>convertToMpl(pid),350);}
+  // Update plot-locked positions before rendering
+  const ch = chartInstances[pid];
+  if(ch){
+    p.textAnnotations.forEach(ann=>{
+      if(ann.lock==='plot' && ann.data_x!=null){
+        const frac = dataToFrac(ch, ann.data_x, ann.data_y);
+        ann.x_frac = Math.max(0, Math.min(1, frac.x));
+        ann.y_frac = Math.max(0, Math.min(1, frac.y));
+      }
     });
-    // Drag to reposition
+  }
+  p.textAnnotations.forEach(ann=>{
+    const outer = document.createElement('div');
+    outer.className = 'text-annotation';
+    outer.dataset.annId = ann.id;
+    outer.style.cssText = [
+      `position:absolute`,
+      `left:${ann.x_frac*100}%`,
+      `top:${ann.y_frac*100}%`,
+      `transform:translate(-50%,-50%)`,
+      `z-index:25`,
+      `display:inline-block`,
+      `cursor:move`,
+      `user-select:none`,
+      `border:1px dashed transparent`,
+      `border-radius:4px`,
+      `padding:3px 5px`,
+      `transition:border-color .12s`,
+    ].join(';');
+
+    // Text span — the main visible content
+    const textSpan = document.createElement('span');
+    textSpan.className = 'ann-text-content';
+    textSpan.textContent = ann.text;
+    textSpan.style.cssText = [
+      `color:${ann.color}`,
+      `font-size:${Math.round(ann.size * JS_ANN_SCALE)}px`,
+      `font-family:var(--mono)`,
+      `font-weight:${ann.bold?'600':'400'}`,
+      `white-space:nowrap`,
+      `display:block`,
+    ].join(';');
+
+    // Circle menu button — top-right corner, shown on hover
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'ann-hamburger';
+    menuBtn.innerHTML = '&#8942;'; // vertical ellipsis ⋮
+    menuBtn.title = 'Annotation options';
+    menuBtn.addEventListener('mousedown', e=>{
+      e.stopPropagation(); e.preventDefault();
+      showAnnMenu(ann, pid, menuBtn);
+    });
+
+    outer.appendChild(textSpan);
+    outer.appendChild(menuBtn);
+
+    // Show/hide border and menu button on hover
+    outer.addEventListener('mouseenter', ()=>{ outer.style.borderColor='rgba(90,255,206,.35)'; });
+    outer.addEventListener('mouseleave', ()=>{ outer.style.borderColor='transparent'; });
+
+    // Drag
     let dragging=false, sx=0, sy=0;
-    el.addEventListener('mousedown', e=>{
-      if(e.target===delBtn) return;
-      // Only drag if not editing text
-      if(document.activeElement===el) return;
-      dragging=true; sx=e.clientX; sy=e.clientY; e.preventDefault(); e.stopPropagation();
+    outer.addEventListener('mousedown', e=>{
+      if(e.target===menuBtn) return;
+      dragging=true; sx=e.clientX; sy=e.clientY;
+      e.preventDefault(); e.stopPropagation();
+      outer.style.cursor='grabbing';
     });
     window.addEventListener('mousemove', e=>{
       if(!dragging) return;
       const rect=wrap.getBoundingClientRect();
-      const nx=((parseFloat(el.style.left)/100)*rect.width + (e.clientX-sx)) / rect.width;
-      const ny=((parseFloat(el.style.top)/100)*rect.height + (e.clientY-sy)) / rect.height;
-      ann.x_frac=Math.max(0,Math.min(1,nx)); ann.y_frac=Math.max(0,Math.min(1,ny));
-      el.style.left=(ann.x_frac*100)+'%'; el.style.top=(ann.y_frac*100)+'%';
+      const nx = ((parseFloat(outer.style.left)/100)*rect.width  + (e.clientX-sx)) / rect.width;
+      const ny = ((parseFloat(outer.style.top) /100)*rect.height + (e.clientY-sy)) / rect.height;
+      ann.x_frac = Math.max(0,Math.min(1,nx));
+      ann.y_frac = Math.max(0,Math.min(1,ny));
+      outer.style.left = (ann.x_frac*100)+'%';
+      outer.style.top  = (ann.y_frac*100)+'%';
+      // Update stored data coords if plot-locked
+      if(ann.lock==='plot'){
+        const ch2 = chartInstances[pid];
+        if(ch2){ const d=fracToData(ch2, ann.x_frac, ann.y_frac); ann.data_x=d.dataX; ann.data_y=d.dataY; }
+      }
       sx=e.clientX; sy=e.clientY;
     });
-    window.addEventListener('mouseup', ()=>{ if(dragging){ dragging=false; if(p.mplMode){clearTimeout(window._mplDebounce);window._mplDebounce=setTimeout(()=>convertToMpl(pid),350);} } });
-    wrap.appendChild(el);
+    window.addEventListener('mouseup', ()=>{
+      if(dragging){ dragging=false; outer.style.cursor='move'; scheduleMplDebounce(pid); }
+    });
+
+    wrap.appendChild(outer);
   });
 }
 
@@ -969,6 +1341,7 @@ function duplicatePlot(pid){
 function handleAction(action, pid){
   if(action==='dup')  { duplicatePlot(pid); return; }
   if(action==='addtext') { addTextAnnotation(pid); return; }
+  if(action==='fullscreen') { toggleFullscreen(pid); return; }
   if(action==='del'){
     destroyChart(pid); plots = plots.filter(p=>p.id!==pid);
     if(activePid===pid){ activePid=plots[0]?.id||null; activeCurveIdx=0; }
@@ -977,6 +1350,35 @@ function handleAction(action, pid){
   }
   if(action==='mpl')    { convertToMpl(pid); return; }
   if(action==='revert') { revertToJS(pid);   return; }
+}
+
+function toggleFullscreen(pid){
+  const card = document.querySelector(`.plot-card[data-pid="${pid}"]`);
+  if(!card) return;
+  const isFs = card.classList.contains('plot-fs');
+  if(isFs){
+    // Exit: play shrink animation then remove class
+    card.classList.add('plot-fs-exit');
+    card.addEventListener('animationend', ()=>{
+      card.classList.remove('plot-fs','plot-fs-exit');
+      document.getElementById('plotList')?.classList.remove('has-fullscreen');
+      setTimeout(()=>{ resizeAndRefresh(pid); }, 0);
+    }, {once:true});
+  } else {
+    // Enter: add class, animation plays via CSS
+    card.classList.add('plot-fs');
+    document.getElementById('plotList')?.classList.add('has-fullscreen');
+    setTimeout(()=>{ resizeAndRefresh(pid); }, 30);
+  }
+}
+
+function resizeAndRefresh(pid){
+  const p = gp(pid); if(!p) return;
+  if(!p.mplMode && chartInstances[pid]){
+    chartInstances[pid].resize();
+  }
+  renderTextAnnotations(pid);
+  refreshOverlayLegend(pid);
 }
 
 // ═══ CFG PANEL ═══════════════════════════════════════════════════════════
@@ -1336,5 +1738,5 @@ function wireAllCfgInputs(){
     else renderJS(p.id, false);
   });
 
-  document.getElementById('addToPlotBtn')?.addEventListener('click', addToPlot);
+  // addToPlotBtn removed — templates are now added via the modal
 }

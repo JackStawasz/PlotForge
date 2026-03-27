@@ -97,6 +97,10 @@ function activeCurve(){
 
 // ═══ BOOT ════════════════════════════════════════════════════════════════
 async function boot(){
+  initMathQuill();
+  initLeftSidebar();
+  initResizableSidebars();
+  wireTemplateModal();
   try{
     const r = await fetch(`${API}/templates`);
     TEMPLATES = await r.json();
