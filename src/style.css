@@ -246,6 +246,32 @@ header{
 .tpl-modal-add-btn:hover:not(:disabled){background:rgba(212,255,90,.2);border-color:var(--acc);box-shadow:0 0 12px rgba(212,255,90,.12);}
 .tpl-modal-add-btn:disabled{opacity:.3;cursor:not-allowed;}
 
+/* List-vs-List section inside the add-curve modal */
+.lvl-section{
+  border-top:1px solid var(--border);padding:12px 18px 14px;
+  background:var(--s0);flex-shrink:0;display:flex;flex-direction:column;gap:10px;
+}
+.lvl-title{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:#7070a0;font-weight:600;}
+.lvl-picker-row{display:flex;gap:6px;flex-wrap:wrap;}
+.lvl-var-card{
+  background:var(--s2);border:1px solid var(--border2);border-radius:6px;
+  padding:5px 10px;cursor:pointer;font-family:var(--mono);font-size:.72rem;
+  color:#a0a0cc;transition:all .12s;white-space:nowrap;
+}
+.lvl-var-card:hover:not(.lvl-disabled){border-color:var(--acc2);color:var(--acc2);background:rgba(90,255,206,.06);}
+.lvl-var-card.lvl-selected-x{border-color:var(--acc2);color:var(--acc2);background:rgba(90,255,206,.1);}
+.lvl-var-card.lvl-selected-y{border-color:var(--acc);color:var(--acc);background:rgba(212,255,90,.1);}
+.lvl-var-card.lvl-disabled{opacity:.3;cursor:not-allowed;pointer-events:none;}
+.lvl-hint{font-size:.68rem;color:#5a5a80;font-family:var(--mono);}
+.lvl-add-btn{
+  align-self:flex-start;
+  background:rgba(212,255,90,.08);border:1px solid color-mix(in srgb,var(--acc) 40%,transparent);
+  border-radius:6px;color:var(--acc);font-family:var(--mono);font-size:.72rem;font-weight:600;
+  padding:6px 14px;cursor:pointer;transition:all .15s;
+}
+.lvl-add-btn:hover:not(:disabled){background:rgba(212,255,90,.18);border-color:var(--acc);}
+.lvl-add-btn:disabled{opacity:.3;cursor:not-allowed;}
+
 /* ═══ LEFT SIDEBAR: Files + Variables ═══════════════════════════ */
 .sidebar{
   background:var(--s0);border-right:1px solid var(--border);
@@ -421,6 +447,7 @@ header{
   padding:2px 7px;border-radius:3px;flex-shrink:0;
 }
 .var-kind-constant { background:rgba(90,255,206,.12); color:#5affce; border:1px solid rgba(90,255,206,.3); }
+.var-kind-variable { background:rgba(90,255,206,.12); color:#5affce; border:1px solid rgba(90,255,206,.3); }
 .var-kind-parameter{ background:rgba(212,255,90,.10); color:#d4ff5a; border:1px solid rgba(212,255,90,.3); }
 .var-kind-equation  { background:rgba(167,139,250,.12); color:#a78bfa; border:1px solid rgba(167,139,250,.3); }
 .var-kind-list      { background:rgba(255,179,71,.10);  color:#ffb347; border:1px solid rgba(255,179,71,.3);  }
@@ -467,6 +494,18 @@ header{
 .mq-editable-field .mq-cursor{border-color:var(--acc2) !important;}
 .mq-editable-field *{color:var(--text);}
 .mq-editable-field .mq-fraction{color:var(--text);}
+/* Fix overline/underline decorations to use text color */
+.mq-editable-field .mq-overline,
+.mq-editable-field .mq-overline *,
+.mq-editable-field .mq-overline-inner{
+  color:var(--text) !important;
+  border-color:var(--text) !important;
+}
+.mq-editable-field .mq-underline,
+.mq-editable-field .mq-underline *{
+  color:var(--text) !important;
+  border-color:var(--text) !important;
+}
 
 /* constant result line */
 .var-result{
@@ -474,6 +513,7 @@ header{
   min-height:16px;padding:0 2px;transition:color .15s;
 }
 .var-result.var-result-ok{color:#5affce;opacity:.9;}
+.var-result.var-result-partial{color:#a0a8e8;opacity:.85;}
 
 /* parameter slider row (value now in MathField above) */
 .var-param-valrow{display:none;} /* hidden — value shown in MQ */
@@ -530,13 +570,20 @@ header{
 }
 /* edit-index footer for long lists */
 .var-list-editrow{
-  display:none;align-items:center;gap:7px;
+  display:none;align-items:center;gap:5px;
   padding-top:6px;border-top:1px solid var(--border);
   flex-wrap:nowrap;
 }
 .var-list-editlabel{
   font-size:.68rem;color:#5a5a80;font-family:var(--mono);white-space:nowrap;flex-shrink:0;
 }
+.var-list-editarrow{
+  background:transparent;border:1px solid var(--border2);border-radius:4px;
+  color:#7070a0;font-family:var(--mono);font-size:.85rem;font-weight:600;
+  padding:2px 6px;cursor:pointer;line-height:1;flex-shrink:0;
+  transition:all .1s;
+}
+.var-list-editarrow:hover{border-color:var(--acc2);color:var(--acc2);background:rgba(90,255,206,.07);}
 .var-list-editidx{
   background:var(--s1);border:1px solid var(--border2);border-radius:4px;
   color:var(--acc2);font-family:var(--mono);font-size:.78rem;font-weight:600;

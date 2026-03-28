@@ -109,6 +109,7 @@ function openTemplateModal(){
   document.getElementById('tplModalBackdrop')?.classList.add('open');
   const addBtn=document.getElementById('tplModalAddBtn');
   if(addBtn) addBtn.disabled=!activePid||!modalSelTpl;
+  refreshLvlSection();
   setTimeout(()=>document.getElementById('tplSearchInp')?.focus(),50);
 }
 
@@ -122,6 +123,106 @@ function wireTemplateModal(){
   document.getElementById('tplModalAddBtn')?.addEventListener('click',addFromModal);
   document.getElementById('tplSearchInp')?.addEventListener('input',function(){filterModalTemplates(this.value);});
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeTemplateModal(); });
+  document.getElementById('lvlAddBtn')?.addEventListener('click', addListCurve);
+}
+
+// ─── List vs List ──────────────────────────────────────────────────────────
+let _lvlXName = null; // selected X list variable name
+let _lvlYName = null; // selected Y list variable name
+
+function refreshLvlSection(){
+  const section = document.getElementById('lvlSection'); if(!section) return;
+  const lists = (typeof variables !== 'undefined') ? variables.filter(v=>v.kind==='list' && v.name) : [];
+  if(!lists.length){ section.style.display='none'; return; }
+  section.style.display = 'flex';
+
+  // Reset if previously selected vars were removed
+  if(_lvlXName && !lists.find(v=>v.name===_lvlXName)) _lvlXName = null;
+  if(_lvlYName && !lists.find(v=>v.name===_lvlYName)) _lvlYName = null;
+
+  const hint = document.getElementById('lvlHint');
+  const xRow = document.getElementById('lvlXRow');
+  const yRow = document.getElementById('lvlYRow');
+  const addBtn = document.getElementById('lvlAddBtn');
+
+  // Build X picker (all lists)
+  xRow.innerHTML = '';
+  lists.forEach(v=>{
+    const card = document.createElement('button');
+    card.className = 'lvl-var-card' + (v.name===_lvlXName ? ' lvl-selected-x' : '');
+    card.textContent = `${v.name} [${v.listItems.length}]`;
+    card.addEventListener('click', ()=>{
+      _lvlXName = (_lvlXName === v.name) ? null : v.name; // toggle
+      if(_lvlXName === _lvlYName) _lvlYName = null;
+      refreshLvlSection();
+    });
+    xRow.appendChild(card);
+  });
+
+  if(!_lvlXName){
+    hint.textContent = 'Select an X variable';
+    yRow.style.display = 'none';
+    addBtn.disabled = true;
+    return;
+  }
+
+  // Build Y picker (same-length lists only, not X itself)
+  const xLen = lists.find(v=>v.name===_lvlXName)?.listItems.length ?? 0;
+  const yLists = lists.filter(v=>v.name !== _lvlXName);
+  yRow.style.display = 'flex';
+  yRow.innerHTML = '';
+  yLists.forEach(v=>{
+    const sameLen = v.listItems.length === xLen;
+    const card = document.createElement('button');
+    card.className = 'lvl-var-card'
+      + (v.name===_lvlYName ? ' lvl-selected-y' : '')
+      + (!sameLen ? ' lvl-disabled' : '');
+    card.textContent = `${v.name} [${v.listItems.length}]`;
+    if(sameLen){
+      card.addEventListener('click', ()=>{
+        _lvlYName = (_lvlYName === v.name) ? null : v.name;
+        refreshLvlSection();
+      });
+    }
+    yRow.appendChild(card);
+  });
+
+  if(!_lvlYName){
+    hint.textContent = `X = ${_lvlXName} (${xLen} pts) — select Y`;
+    addBtn.disabled = true;
+  } else {
+    hint.textContent = `${_lvlXName} vs ${_lvlYName} (${xLen} pts)`;
+    addBtn.disabled = !activePid;
+  }
+}
+
+function addListCurve(){
+  if(!_lvlXName || !_lvlYName || activePid === null) return;
+  const xVar = variables.find(v=>v.name===_lvlXName);
+  const yVar = variables.find(v=>v.name===_lvlYName);
+  if(!xVar||!yVar) return;
+
+  const p = activePlot(); if(!p) return;
+  const nc = defCurve(p.curves);
+  nc.name = `${_lvlYName} vs ${_lvlXName}`;
+  nc.jsData = { x: [...xVar.listItems], y: [...yVar.listItems], discrete: false };
+  nc.listXName = _lvlXName;
+  nc.listYName = _lvlYName;
+  p.curves.push(nc);
+  activeCurveIdx = p.curves.length - 1;
+
+  // Set view bounds from the data
+  const xs = xVar.listItems, ys = yVar.listItems;
+  const xPad = (Math.max(...xs)-Math.min(...xs))*0.06||0.5;
+  const yPad = (Math.max(...ys)-Math.min(...ys))*0.06||0.5;
+  if(p.view.x_min==null){
+    p.view.x_min=Math.min(...xs)-xPad; p.view.x_max=Math.max(...xs)+xPad;
+    p.view.y_min=Math.min(...ys)-yPad; p.view.y_max=Math.max(...ys)+yPad;
+  }
+
+  closeTemplateModal();
+  drawChart(p); updateTopbar(p.id); refreshOverlayLegend(p.id); refreshLineCurveSelector(); refreshCfg();
+  snapshotForUndo();
 }
 
 function refreshSidebar(){
@@ -765,7 +866,7 @@ function buildCard(p, i){
 }
 
 function buildTopbarInner(p, i){
-  const cc = p.curves.filter(c=>c.template).length, canMpl = cc>0;
+  const cc = p.curves.filter(c=>c.template).length, canMpl = true;
   const inFs = !!document.querySelector('.plot-card.plot-fs');
   const mplBtn = p.mplMode
     ? `<button class="cbtn revert-btn" data-pid="${p.id}" data-action="revert">⟲ interactive</button>`

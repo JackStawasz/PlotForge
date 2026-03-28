@@ -21,6 +21,8 @@ Note: If it's the first startup, python dependencies will be installed into a ne
 - Fix grid lines appearing/disappearing by merely panning. Grid lines should only adjust when zooming in/out.
 - Fix x-axis being hidden (off screen?) when in full screen mode
 - Either make hover-over-line displaying coordinates easier to hover over or remove entirely
+--Fix lines between points disappearing when one or both points are off-screen
+--Make "render matplotlib" work when 0 curves are present
 
 ### Failed Prompts
 
@@ -31,6 +33,7 @@ These are bugs that still persist despite being asked of the AI generator
 - Fix bug where data points that locally go to infinity still attempt to connect lines with adjacent points instead of creating a true discontinuity. Fix by using a mix of numerical sampling, clipping, and smart rendering without breaking functionality.
 - Fix bug where there are missing leftmost and rightmost vertical grid lines when they should be in display
 --When I type 'pi' as a variable it doesn't turn into the symbol (which is good, the user must type \pi). However, typing 'sin' appears as text as it auto recognizes the sine function (which is inconsistent with requiring \pi). Fix this inconsistency by requiring all commands to include '\'
+- Make \text variables be recognized. Ex: \text{var_name}=2 should make a=\text{var_name}\cdot 2 report "4"
 
 ### Long-Term Features
 
@@ -43,3 +46,4 @@ These are bugs that still persist despite being asked of the AI generator
 - Add about page for mission statement, tutorial(s), and author contacting
 - Add plot tabs, each containing a list of plots
 - Add user statistics such as plots created (must have had a curve in it), curves generated, and longest list (only include nonzero aka default values)
+- Add list operations (interpolation, indexing y[i], union/intersection with \cup \cap, max and argmax, element-wise operations)
