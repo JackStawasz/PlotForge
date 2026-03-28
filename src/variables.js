@@ -158,16 +158,40 @@ function parseVarLatex(fullLatex){
   if(eqIdx < 0) return { name: '', exprLatex: fullLatex };
   const lhs = fullLatex.slice(0, eqIdx).trim();
   const rhs = fullLatex.slice(eqIdx + 1).trim();
-  const name = lhs.replace(/[\\{}^_\s]/g, '').replace(/left|right/g,'').trim();
+  // Check for \text{name} on LHS — extract the name inside braces
+  const textMatch = lhs.match(/\\text\{([^}]+)\}/);
+  let name;
+  if(textMatch){
+    name = textMatch[1]; // e.g. "var_name"
+  } else {
+    name = lhs.replace(/[\\{}^_\s]/g, '').replace(/left|right/g,'').trim();
+  }
   return { name, exprLatex: rhs };
 }
 
 // ═══ VARIABLE CONTEXT ════════════════════════════════════════════════════
 function buildVarContext(){
   const ctx = {};
+  // Parameters: always numeric (value stored on v.value)
   for(const v of variables){
     if(v.kind === 'parameter' && v.name) ctx[v.name] = v.value;
   }
+  // Variables (merged kind): if pure numeric → use v.value; else evaluate exprLatex
+  for(const v of variables){
+    if(v.kind === 'variable' && v.name){
+      try{
+        if(v._isNumeric){
+          ctx[v.name] = v.value;
+        } else {
+          const localCtx = {...ctx};
+          delete localCtx[v.name];
+          const val = evalLatexExpr(v.exprLatex || '', localCtx);
+          if(val !== null) ctx[v.name] = val;
+        }
+      }catch(e){}
+    }
+  }
+  // Constants (legacy kind — keep for backward compat)
   for(const v of variables){
     if(v.kind === 'constant' && v.name){
       try{
@@ -198,8 +222,7 @@ function showVarTypePicker(){
   ].join(';');
   _varTypePicker = picker;
   const types = [
-    { key:'constant',  icon:'π',   label:'Constant',  desc:'Math expression, evaluates' },
-    { key:'parameter', icon:'α',   label:'Parameter', desc:'Numeric with slider' },
+    { key:'variable',  icon:'α',   label:'Variable',  desc:'Number or expression' },
     { key:'equation',  icon:'ƒ',   label:'Equation',  desc:'Function of x' },
     { key:'list',      icon:'[ ]', label:'List',      desc:'Fixed-length sequence' },
   ];
@@ -358,6 +381,7 @@ function renderVariables(){
       item.appendChild(header);
 
       if(v.kind === 'constant')       buildConstantBody(item, v);
+      else if(v.kind === 'variable')  buildVariableBody(item, v);
       else if(v.kind === 'parameter') buildParameterBody(item, v);
       else if(v.kind === 'equation')  buildEquationBody(item, v);
     }
@@ -368,11 +392,11 @@ function renderVariables(){
 
 function reEvalAllConstants(){
   for(const v of variables){
-    if(v.kind === 'constant') evaluateConstant(v);
+    if(v.kind === 'constant' || v.kind === 'variable') evaluateConstant(v);
   }
 }
 
-// ─── CONSTANT ─────────────────────────────────────────────────────────────
+// ─── CONSTANT (legacy) ─────────────────────────────────────────────────────
 function buildConstantBody(item, v){
   const mqWrap = document.createElement('div');
   mqWrap.className = 'var-mq-wrap var-mq-single-line';
@@ -407,19 +431,227 @@ function buildConstantBody(item, v){
   });
 }
 
+// ─── VARIABLE (merged constant+parameter) ──────────────────────────────────
+// One MathField for "name = expr". If the RHS is a plain number → show slider.
+// If the RHS is an expression → show evaluated result beneath.
+function buildVariableBody(item, v){
+  const mqWrap = document.createElement('div');
+  mqWrap.className = 'var-mq-wrap var-mq-single-line';
+  mqWrap.id = `vmq_${v.id}`;
+  item.appendChild(mqWrap);
+
+  // Result line — shows either "= <value>" (expression mode) or nothing (slider mode)
+  const resultEl = document.createElement('div');
+  resultEl.className = 'var-result';
+  resultEl.id = `vres_${v.id}`;
+  item.appendChild(resultEl);
+
+  // Slider row — shown only in numeric mode
+  const sliderWrap = document.createElement('div');
+  sliderWrap.className = 'var-param-sliderrow';
+  sliderWrap.id = `vslrow_${v.id}`;
+  sliderWrap.style.display = 'none'; // hidden until we know mode
+
+  const minInp = document.createElement('input');
+  minInp.type = 'text'; minInp.className = 'var-param-bound';
+  minInp.id = `vpmin_${v.id}`; minInp.value = v.paramMin;
+
+  const slider = document.createElement('input');
+  slider.type = 'range'; slider.className = 'var-param-slider';
+  slider.id = `vpslider_${v.id}`;
+  slider.min = v.paramMin; slider.max = v.paramMax;
+  slider.step = niceParamStep(v.paramMin, v.paramMax);
+  slider.value = v.value;
+
+  const maxInp = document.createElement('input');
+  maxInp.type = 'text'; maxInp.className = 'var-param-bound';
+  maxInp.id = `vpmax_${v.id}`; maxInp.value = v.paramMax;
+
+  sliderWrap.appendChild(minInp);
+  sliderWrap.appendChild(slider);
+  sliderWrap.appendChild(maxInp);
+  item.appendChild(sliderWrap);
+
+  // Determine whether the RHS is a pure number (slider mode) or expression (eval mode)
+  function isNumericRhs(expr){
+    if(!expr || !expr.trim()) return false;
+    // A "pure number" is just digits, optional minus, optional decimal, optional whitespace
+    // and no latex commands other than a leading minus
+    const stripped = expr.replace(/\s+/g,'').replace(/^-/,'');
+    return /^\d+\.?\d*$/.test(stripped) || /^\d*\.\d+$/.test(stripped);
+  }
+
+  function updateMode(mf){
+    const numericRhs = isNumericRhs(v.exprLatex);
+    v._isNumeric = numericRhs;
+    if(numericRhs){
+      // Slider mode
+      sliderWrap.style.display = 'flex';
+      resultEl.textContent = '';
+      resultEl.className = 'var-result';
+      // Parse the numeric value from exprLatex
+      const num = parseFloat(v.exprLatex.replace(/[^\d.\-]/g,''));
+      if(!isNaN(num)){
+        v.value = num;
+        syncParamSlider(v);
+      }
+    } else {
+      // Expression mode
+      sliderWrap.style.display = 'none';
+      evaluateConstant(v);
+    }
+  }
+
+  requestAnimationFrame(()=>{
+    let _mf = null;
+    _mf = makeMathField(mqWrap, {
+      spaceBehavesLikeTab: true,
+      handlers:{
+        edit(){
+          v.fullLatex = _mf.latex();
+          const parsed = parseVarLatex(v.fullLatex);
+          v.name = parsed.name;
+          v.exprLatex = parsed.exprLatex;
+          updateMode(_mf);
+          updateLatexDropdown(_mf, mqWrap);
+        }
+      }
+    });
+    if(_mf){
+      const initLatex = v.fullLatex || (v.name ? `${v.name}=${v._isNumeric ? formatParamVal(v.value) : (v.exprLatex||'')}` : '');
+      if(initLatex) _mf.latex(initLatex);
+      updateMode(_mf);
+      wrapMathFieldWithAC(mqWrap, _mf);
+    }
+
+    // Slider changes update the MathField and value
+    slider.addEventListener('input', ()=>{
+      v.value = parseFloat(slider.value);
+      if(_mf){
+        const name = v.name || 'a';
+        _mf.latex(`${name}=${formatParamVal(v.value)}`);
+        v.fullLatex = _mf.latex();
+        v.exprLatex = formatParamVal(v.value);
+      }
+      reEvalAllConstants();
+    });
+
+    minInp.addEventListener('change', ()=>{
+      const n = parseFloat(minInp.value);
+      if(!isNaN(n)){ v.paramMin = n; rebuildParamSlider(v); }
+      else minInp.value = v.paramMin;
+    });
+    minInp.addEventListener('click', e=>e.stopPropagation());
+
+    maxInp.addEventListener('change', ()=>{
+      const n = parseFloat(maxInp.value);
+      if(!isNaN(n)){ v.paramMax = n; rebuildParamSlider(v); }
+      else maxInp.value = v.paramMax;
+    });
+    maxInp.addEventListener('click', e=>e.stopPropagation());
+  });
+}
+
 function evaluateConstant(v){
   const el = document.getElementById(`vres_${v.id}`); if(!el) return;
   try{
     const ctx = buildVarContext();
     delete ctx[v.name];
     const val = evalLatexExpr(v.exprLatex || '', ctx);
-    if(val === null || val === undefined){ el.textContent = ''; el.className='var-result'; return; }
-    const formatted = Number.isInteger(val) ? String(val) : parseFloat(val.toPrecision(6)).toString();
-    el.textContent = '= ' + formatted;
-    el.className = 'var-result var-result-ok';
+    if(val !== null && val !== undefined){
+      const formatted = Number.isInteger(val) ? String(val) : parseFloat(val.toPrecision(6)).toString();
+      el.textContent = '= ' + formatted;
+      el.className = 'var-result var-result-ok';
+      return;
+    }
+    // Full eval failed — try partial: substitute knowns, report simplified form
+    const partial = partialEvalLatex(v.exprLatex || '', ctx);
+    if(partial !== null){
+      el.textContent = '= ' + partial;
+      el.className = 'var-result var-result-partial';
+    } else {
+      el.textContent = ''; el.className = 'var-result';
+    }
   } catch(e){
     el.textContent = ''; el.className = 'var-result';
   }
+}
+
+// Partial evaluator: substitute known vars, collect unknown single-letter symbols,
+// compute the numeric coefficient, return a readable string like "18c" or "9bc".
+function partialEvalLatex(latex, ctx){
+  if(!latex || !latex.trim()) return null;
+  let expr = latex;
+
+  // Resolve \text{name} from ctx
+  expr = expr.replace(/\\text\{([^}]+)\}/g, (match, name) => {
+    if(name in ctx) return `(${ctx[name]})`;
+    return match;
+  });
+
+  // Collect unknown single-letter names from the raw latex (before substitution)
+  // These are bare single letters not in ctx and not math commands
+  const allLetters = new Set();
+  // Find single latin letters used as variables (not preceded by \)
+  const rawLetterRe = /(?<!\\)(?<![a-zA-Z])([a-zA-Z])(?![a-zA-Z])/g;
+  let m;
+  while((m = rawLetterRe.exec(expr)) !== null){
+    const ch = m[1];
+    // Skip if it's a known ctx variable — those will be substituted
+    if(!(ch in ctx)) allLetters.add(ch);
+  }
+
+  // Substitute known ctx vars
+  const ctxNames = Object.keys(ctx).filter(n=>n).sort((a,b)=>b.length-a.length);
+  for(const name of ctxNames){
+    const safeRe = new RegExp(`(?<!\\\\)\\b${escapeRegex(name)}\\b`, 'g');
+    expr = expr.replace(safeRe, `(${ctx[name]})`);
+  }
+
+  // Now compute numeric coefficient: substitute all remaining unknown letters with 1
+  let coeffExpr = expr;
+  for(const ch of allLetters){
+    const re = new RegExp(`(?<![a-zA-Z(])${ch}(?![a-zA-Z])`, 'g');
+    coeffExpr = coeffExpr.replace(re, '(1)');
+  }
+
+  // Apply standard latex→JS transforms to the coefficient expression
+  const toJS = e => e
+    .replace(/\\pi/g,   '(Math.PI)')
+    .replace(/\\e(?![a-zA-Z])/g, '(Math.E)')
+    .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '(($1)/($2))')
+    .replace(/\\sqrt\{([^}]*)\}/g, 'Math.sqrt($1)')
+    .replace(/\\sin/g,'Math.sin').replace(/\\cos/g,'Math.cos').replace(/\\tan/g,'Math.tan')
+    .replace(/\\ln/g,'Math.log').replace(/\\log/g,'Math.log10').replace(/\\exp/g,'Math.exp')
+    .replace(/\\left\(/g,'(').replace(/\\right\)/g,')')
+    .replace(/\^\{([^}]*)\}/g,'**($1)').replace(/\^(\w)/g,'**$1')
+    .replace(/\_\{[^}]*\}/g,'').replace(/\_\w/g,'')
+    .replace(/\\cdot/g,'*').replace(/\\times/g,'*')
+    .replace(/\{/g,'(').replace(/\}/g,')')
+    .replace(/\\[a-zA-Z]+/g,'');
+
+  let coeff = null;
+  try{
+    const jsExpr = toJS(coeffExpr);
+    // eslint-disable-next-line no-new-func
+    coeff = Function('"use strict"; return (' + jsExpr + ')')();
+  }catch(e){ return null; }
+
+  if(typeof coeff !== 'number' || !isFinite(coeff)) return null;
+  if(allLetters.size === 0) return null; // would have been caught by full eval
+
+  // Format coefficient — omit "1" if it's a bare multiplier
+  let coeffStr = Number.isInteger(coeff)
+    ? String(coeff)
+    : parseFloat(coeff.toPrecision(5)).toString();
+  if(coeffStr === '1') coeffStr = '';
+  else if(coeffStr === '-1') coeffStr = '-';
+
+  // Build unknown part: sort letters for deterministic output
+  const unknownPart = [...allLetters].sort().join('');
+
+  if(!unknownPart) return null;
+  return coeffStr + unknownPart;
 }
 
 function escapeRegex(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
@@ -428,7 +660,14 @@ function evalLatexExpr(latex, ctx={}){
   if(!latex || !latex.trim()) return null;
   let expr = latex;
 
-  // Substitute user variables (longest names first to avoid partial matches)
+  // First: resolve \text{name} patterns from context
+  // e.g. \text{var_name} → replaced with its numeric value if known
+  expr = expr.replace(/\\text\{([^}]+)\}/g, (match, name) => {
+    if(name in ctx) return `(${ctx[name]})`;
+    return match; // leave unknown \text{} for later stripping
+  });
+
+  // Substitute plain user variables (longest names first to avoid partial matches)
   const ctxNames = Object.keys(ctx).filter(n=>n).sort((a,b)=>b.length-a.length);
   for(const name of ctxNames){
     const safeRe = new RegExp(`(?<!\\\\)\\b${escapeRegex(name)}\\b`, 'g');
@@ -461,7 +700,7 @@ function evalLatexExpr(latex, ctx={}){
     .replace(/\_\{[^}]*\}/g,'').replace(/\_\w/g,'')
     .replace(/\\cdot/g,'*').replace(/\\times/g,'*')
     .replace(/\{/g,'(').replace(/\}/g,')')
-    .replace(/\\[a-zA-Z]+/g, '');
+    .replace(/\\[a-zA-Z]+/g, ''); // strip remaining unknown commands
 
   const stripped = expr.replace(/Math\.[a-z]+/g,'').replace(/Infinity/g,'');
   if(/[a-df-wyzA-DF-WYZ_$]/.test(stripped)) return null;
@@ -670,18 +909,30 @@ function rebuildEditIndex(v, editRow){
   if(n <= THRESH) return;
 
   editRow.style.display = 'flex';
-  const midIdx = Math.floor((n - 1) / 2); // 0-based midpoint
+  const midIdx = Math.floor((n - 1) / 2);
   if(v._editIdx === undefined || v._editIdx >= n) v._editIdx = midIdx;
 
   const label = document.createElement('span');
   label.className = 'var-list-editlabel';
   label.textContent = 'edit index';
 
+  // ← arrow
+  const leftBtn = document.createElement('button');
+  leftBtn.className = 'var-list-editarrow';
+  leftBtn.textContent = '‹';
+  leftBtn.title = 'Previous index';
+
   const idxInp = document.createElement('input');
   idxInp.type = 'number'; idxInp.className = 'var-list-editidx';
-  idxInp.min = 1; idxInp.max = n; idxInp.step = 1;
-  idxInp.value = v._editIdx + 1; // display 1-based
-  idxInp.title = `Index (1–${n})`;
+  idxInp.min = 0; idxInp.max = n - 1; idxInp.step = 1;
+  idxInp.placeholder = 'idx';
+  idxInp.value = v._editIdx;
+
+  // → arrow
+  const rightBtn = document.createElement('button');
+  rightBtn.className = 'var-list-editarrow';
+  rightBtn.textContent = '›';
+  rightBtn.title = 'Next index';
 
   const valInp = document.createElement('input');
   valInp.type = 'number'; valInp.className = 'var-list-editval';
@@ -689,17 +940,22 @@ function rebuildEditIndex(v, editRow){
   valInp.value = v.listItems[v._editIdx];
   valInp.placeholder = 'value';
 
-  // Index change → update valInp to show that slot's current value
+  function setIdx(idx){
+    const clamped = Math.max(0, Math.min(n - 1, idx));
+    v._editIdx = clamped;
+    idxInp.value = clamped;
+    valInp.value = v.listItems[clamped];
+  }
+
+  leftBtn.addEventListener('click', e=>{ e.stopPropagation(); setIdx(v._editIdx - 1); });
+  rightBtn.addEventListener('click', e=>{ e.stopPropagation(); setIdx(v._editIdx + 1); });
+
   idxInp.addEventListener('input', ()=>{
-    const raw = parseInt(idxInp.value) - 1;
-    if(raw >= 0 && raw < n){
-      v._editIdx = raw;
-      valInp.value = v.listItems[raw];
-    }
+    const raw = parseInt(idxInp.value);
+    if(!isNaN(raw)) setIdx(raw);
   });
   idxInp.addEventListener('click', e=>e.stopPropagation());
 
-  // Value change → write into listItems at _editIdx
   valInp.addEventListener('input', ()=>{
     const num = parseFloat(valInp.value);
     if(!isNaN(num) && v._editIdx >= 0 && v._editIdx < n){
@@ -709,7 +965,9 @@ function rebuildEditIndex(v, editRow){
   valInp.addEventListener('click', e=>e.stopPropagation());
 
   editRow.appendChild(label);
+  editRow.appendChild(leftBtn);
   editRow.appendChild(idxInp);
+  editRow.appendChild(rightBtn);
   editRow.appendChild(valInp);
 }
 
@@ -747,7 +1005,7 @@ function rebuildListCells(v, cellsWrap){
 
     const idx = document.createElement('span');
     idx.className = 'var-list-idx';
-    idx.textContent = i + 1; // 1-based, always the real index
+    idx.textContent = i; // 0-based index
 
     const cell = document.createElement('input');
     cell.type = 'number'; cell.className = 'var-list-cell';
@@ -780,13 +1038,17 @@ function syncTemplateParamsToVars(tplKey, params){
     const existing = variables.find(v=>v.fromTemplate && v.templateKey===tplKey && v.paramKey===pk);
     if(existing){
       existing.value = currentVal;
-      const vi = document.getElementById(`vpval_${existing.id}`);
-      if(vi) vi.value = formatParamVal(currentVal);
-      syncParamSlider(existing);
+      existing.exprLatex = String(currentVal);
+      existing.fullLatex = `${pk}=${currentVal}`;
+      existing._isNumeric = true;
+      const slider = document.getElementById(`vpslider_${existing.id}`);
+      if(slider) syncParamSlider(existing);
     } else {
-      addVariable('parameter', {
+      addVariable('variable', {
         name: pk,
         value: currentVal,
+        exprLatex: String(currentVal),
+        fullLatex: `${pk}=${currentVal}`,
         paramMin: pd.min,
         paramMax: pd.max,
         fromTemplate: true,
@@ -818,12 +1080,15 @@ function importPickleVars(data, sourceName){
       if(existing){
         existing.exprLatex = String(info.value);
         existing.fullLatex = `${latexName}=${info.value}`;
+        existing._isNumeric = true;
+        existing.value = info.value;
         renderVariables();
       } else {
-        addVariable('constant', {
+        addVariable('variable', {
           name,
           exprLatex: String(info.value),
           fullLatex: `${latexName}=${info.value}`,
+          value: info.value,
           pickleSource: sourceName,
           silent: true,
         });
