@@ -21,6 +21,10 @@
       <span class="tmt-icon">⊞</span> Templates
     </button>
     <div class="hright">
+      <div class="undo-redo-group">
+        <button class="undo-redo-btn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
+        <button class="undo-redo-btn" id="redoBtn" title="Redo (Ctrl+Y)" disabled>&#8631;</button>
+      </div>
       <div class="cdot" id="cdot"></div>
       <button class="gear-btn" id="gearBtn" title="Settings">&#9881;</button>
       <div class="gear-panel" id="gearPanel">
@@ -221,11 +225,19 @@
             <div class="crow">
               <label>Style</label>
               <select id="c_ls">
-                <option value="none">None</option>
                 <option value="solid">&#9472;&#9472; Solid</option>
                 <option value="dashed">- - Dashed</option>
                 <option value="dotted">&#183;&#183;&#183; Dotted</option>
                 <option value="dashdot">-&#183;- Dash-dot</option>
+              </select>
+            </div>
+            <div class="crow">
+              <label>Connection</label>
+              <select id="c_lconn">
+                <option value="none">&#9898; None</option>
+                <option value="linear" selected>&#9135; Linear</option>
+                <option value="cubic">&#8767; Cubic</option>
+                <option value="bezier">&#8767;&#8767; Bézier</option>
               </select>
             </div>
             <div class="crow">

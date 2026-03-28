@@ -28,6 +28,59 @@ const chartFirstRender = {};
 const chartInstances   = {};
 const panState         = {};
 
+// ═══ UNDO / REDO ═════════════════════════════════════════════════════════
+const undoStack = [];
+const redoStack = [];
+const MAX_HISTORY = 60;
+
+function snapshotForUndo(){
+  const snap = JSON.stringify(plots.map(p=>({
+    ...p,
+    curves: p.curves.map(c=>({...c, jsData:null}))
+  })));
+  if(undoStack.length && undoStack[undoStack.length-1]===snap) return;
+  undoStack.push(snap);
+  if(undoStack.length > MAX_HISTORY) undoStack.shift();
+  redoStack.length = 0;
+  updateUndoRedoBtns();
+}
+
+function performUndo(){
+  if(undoStack.length < 2) return;
+  const current = undoStack.pop();
+  redoStack.push(current);
+  restoreSnapshot(undoStack[undoStack.length-1]);
+  updateUndoRedoBtns();
+}
+
+function performRedo(){
+  if(!redoStack.length) return;
+  const snap = redoStack.pop();
+  undoStack.push(snap);
+  restoreSnapshot(snap);
+  updateUndoRedoBtns();
+}
+
+function restoreSnapshot(snap){
+  const restored = JSON.parse(snap);
+  plots.length = 0;
+  for(const rp of restored) plots.push(rp);
+  if(!plots.find(p=>p.id===activePid)) activePid = plots[0]?.id ?? null;
+  const ap = plots.find(p=>p.id===activePid);
+  if(ap && activeCurveIdx >= ap.curves.length) activeCurveIdx = 0;
+  renderDOM();
+  for(const p of plots){
+    if(p.curves.some(c=>c.template)) renderJS(p.id, false);
+  }
+  refreshCfg();
+}
+
+function updateUndoRedoBtns(){
+  const ub = document.getElementById('undoBtn'), rb = document.getElementById('redoBtn');
+  if(ub) ub.disabled = undoStack.length < 2;
+  if(rb) rb.disabled = redoStack.length === 0;
+}
+
 // ═══ STATE FACTORIES ═════════════════════════════════════════════════════
 function mkPid(){ return ++pid_ctr; }
 function mkCid(){ return ++curve_ctr; }
@@ -64,6 +117,7 @@ function defCurve(existingCurves = []){
     line_color: pickCurveColor(existingCurves),
     line_width: 2,
     line_style: 'solid',
+    line_connection: 'linear',
     marker: 'none',
     marker_size: 4,
     fill_under: false,
@@ -107,6 +161,7 @@ async function boot(){
   activePid = p.id; activeCurveIdx = 0;
   renderDOM();
   wireAllCfgInputs();
+  snapshotForUndo(); // initial state
   if(!connected) startReconnectPoller();
 }
 

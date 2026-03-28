@@ -45,6 +45,29 @@ header{
 .tmt-icon{font-size:.9rem;}
 
 .hright{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.72rem;color:#9898c8;position:relative;}
+
+/* Undo / Redo buttons */
+.undo-redo-group{display:flex;align-items:center;gap:2px;margin-right:4px;}
+.undo-redo-btn{
+  background:transparent;border:1px solid transparent;border-radius:5px;
+  color:#7070a0;font-size:1.05rem;cursor:pointer;padding:4px 8px;
+  transition:color .13s,border-color .13s,background .13s;line-height:1;
+  display:flex;align-items:center;font-weight:600;
+}
+.undo-redo-btn:hover:not(:disabled){color:#d0d0ee;border-color:var(--border2);background:rgba(255,255,255,.04);}
+.undo-redo-btn:disabled{opacity:.28;cursor:not-allowed;}
+
+/* LaTeX autocomplete dropdown */
+#latex-ac-dropdown .latex-ac-item{
+  padding:5px 12px;cursor:pointer;color:#c8c8ee;
+  transition:background .08s;white-space:nowrap;
+  font-family:var(--mono);font-size:.73rem;
+}
+#latex-ac-dropdown .latex-ac-item:hover,
+#latex-ac-dropdown .latex-ac-item.active{
+  background:rgba(90,255,206,.12);color:#5affce;
+}
+
 .cdot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:background .3s}
 .cdot.ok{background:#5aff9a;box-shadow:0 0 6px #5aff9a55}
 .cdot.err{background:var(--acc3)}
@@ -519,14 +542,14 @@ header{
 .text-annotation:hover,.text-annotation:focus-within{border-color:rgba(90,255,206,.35);}
 .ann-hamburger{
   position:absolute;
-  top:-10px;right:-10px;
-  width:18px;height:18px;
+  top:-14px;right:-14px;
+  width:27px;height:27px;
   border-radius:50%;
   background:var(--s1);
-  border:1px solid var(--border2);
+  border:1.5px solid var(--border2);
   cursor:pointer;
-  color:rgba(90,255,206,.8);
-  font-size:.7rem;
+  color:rgba(90,255,206,.85);
+  font-size:.85rem;
   line-height:1;
   display:flex;align-items:center;justify-content:center;
   opacity:0;
@@ -552,14 +575,15 @@ header{
   border-radius:8px;
   box-shadow:0 8px 32px rgba(0,0,0,.5);
   z-index:9000;
-  min-width:190px;
+  min-width:220px;
   overflow:hidden;
   animation:menuIn .12s ease;
+  padding:6px 0 4px;
 }
 @keyframes menuIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
 .ann-menu-item{
   display:flex;align-items:center;gap:9px;
-  padding:8px 14px;
+  padding:7px 14px;
   font-family:var(--mono);font-size:.71rem;color:#c8c8e8;
   cursor:pointer;transition:background .1s;border:none;background:transparent;width:100%;text-align:left;
 }
@@ -567,20 +591,49 @@ header{
 .ann-menu-item.danger{color:var(--acc3);}
 .ann-menu-item.danger:hover{background:rgba(255,111,170,.08);}
 .ann-menu-icon{width:16px;text-align:center;flex-shrink:0;font-size:.8rem;}
-.ann-menu-sep{height:1px;background:var(--border);margin:3px 0;}
-/* Inline edit sub-row inside menu */
-.ann-menu-sub{padding:6px 14px 10px;display:flex;flex-direction:column;gap:6px;}
-.ann-menu-sub label{font-size:.62rem;color:#7070a0;letter-spacing:.06em;text-transform:uppercase;}
+/* No more separators — use spacing instead */
+.ann-menu-sep{display:none;}
+/* Full-width sub-section (text content) */
+.ann-menu-sub{padding:6px 14px 4px;display:flex;flex-direction:column;gap:5px;}
+.ann-menu-sub label{font-size:.61rem;color:#7070a0;letter-spacing:.06em;text-transform:uppercase;}
 .ann-menu-inp{
   background:var(--s2);border:1px solid var(--border2);border-radius:4px;
   color:var(--text);font-family:var(--mono);font-size:.72rem;
   padding:4px 7px;outline:none;width:100%;transition:border-color .12s;
 }
 .ann-menu-inp:focus{border-color:var(--acc2);}
+/* Inline row: label left-justified, control right-justified */
+.ann-menu-row-inline{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:5px 14px;gap:10px;
+}
+.ann-menu-row-inline label{
+  font-size:.70rem;color:#b0b0d8;flex:1;min-width:0;
+  white-space:nowrap;letter-spacing:.02em;
+}
+.ann-menu-inp-sm{
+  background:var(--s2);border:1px solid var(--border2);border-radius:4px;
+  color:var(--acc2);font-family:var(--mono);font-size:.72rem;font-weight:600;
+  padding:3px 6px;outline:none;width:56px;text-align:right;flex-shrink:0;
+  transition:border-color .12s;
+  -moz-appearance:textfield;
+}
+.ann-menu-inp-sm::-webkit-outer-spin-button,
+.ann-menu-inp-sm::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+.ann-menu-inp-sm:focus{border-color:var(--acc2);}
+/* Color group: swatch + hex input side by side */
+.ann-menu-color-group{display:flex;align-items:center;gap:5px;flex-shrink:0;}
+.ann-menu-inp-hex{
+  background:var(--s2);border:1px solid var(--border2);border-radius:4px;
+  color:var(--text);font-family:var(--mono);font-size:.68rem;
+  padding:3px 6px;outline:none;width:72px;text-align:right;
+  transition:border-color .12s;
+}
+.ann-menu-inp-hex:focus{border-color:var(--acc2);}
 .ann-menu-inline{display:flex;gap:6px;align-items:center;}
-.ann-lock-group{display:flex;gap:4px;}
+.ann-lock-group{display:flex;gap:4px;flex-shrink:0;}
 .ann-lock-btn{
-  flex:1;padding:4px 6px;
+  padding:3px 8px;
   background:transparent;border:1px solid var(--border2);border-radius:4px;
   color:#8080a8;font-family:var(--mono);font-size:.64rem;cursor:pointer;
   transition:all .12s;

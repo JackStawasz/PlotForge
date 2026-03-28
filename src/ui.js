@@ -715,12 +715,14 @@ function removeCurve(pid, idx){
   if(p.curves.length <= 1){
     p.curves[0] = defCurve([]); activeCurveIdx=0; selTpl=null;
     destroyChart(pid); updateCardContent(pid); updateTopbar(pid);
-    refreshSidebar(); refreshLineCurveSelector(); refreshCfg(); return;
+    refreshSidebar(); refreshLineCurveSelector(); refreshCfg();
+    snapshotForUndo(); return;
   }
   p.curves.splice(idx, 1);
   if(activeCurveIdx >= p.curves.length) activeCurveIdx = p.curves.length-1;
   renderJS(pid, false); updateTopbar(pid); refreshOverlayLegend(pid);
   refreshLineCurveSelector(); refreshSidebar(); refreshCfg();
+  snapshotForUndo();
 }
 
 // ═══ CHART INTERACTIONS ══════════════════════════════════════════════════
@@ -856,7 +858,7 @@ function renderDOM(){
   ghost.innerHTML = `<div class="add-plus">+</div><span>Add new plot</span>`;
   ghost.addEventListener('click', ()=>{
     const np = mkPlot(); plots.push(np); activePid=np.id; activeCurveIdx=0;
-    renderDOM(); refreshCfg(); refreshSidebar();
+    renderDOM(); refreshCfg(); refreshSidebar(); snapshotForUndo();
   });
   list.appendChild(ghost);
   list.addEventListener('click', e=>{
@@ -1358,7 +1360,7 @@ function handleAction(action, pid){
     plots = plots.filter(p=>p.id!==pid);
     if(activePid===pid){ activePid=plots[0]?.id||null; activeCurveIdx=0; }
     // Allow zero plots — don't auto-create a new one
-    renderDOM(); return;
+    renderDOM(); snapshotForUndo(); return;
   }
   if(action==='mpl')    { convertToMpl(pid); return; }
   if(action==='revert') { revertToJS(pid);   return; }
@@ -1768,6 +1770,10 @@ function wireAllCfgInputs(){
     if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(p.id),350); }
     else renderJS(p.id, false);
   });
+
+  document.getElementById('undoBtn')?.addEventListener('click', performUndo);
+  document.getElementById('redoBtn')?.addEventListener('click', performRedo);
+  updateUndoRedoBtns();
 
   // addToPlotBtn removed — templates are now added via the modal
 }
