@@ -13,19 +13,14 @@ Note: If it's the first startup, python dependencies will be installed into a ne
 ### Simple Add-ons
 
 - Create new "python to latex" converter js file to read, store, and interpret equations in the variables tab
-- Add undo/redo buttons to revert changes. Pressing ctrl+z and ctrl+y have the same effect (properly translate for Mac and windows which controls do this).
 - Add fill under curve and between curves
-- Add dropdown menu when creating latex command using '\'. The menu will provide a list of 5 possible commands to complete the command's argument. The list updates for every character the user enters, so '\r' would suggest \rightarrow \right \rho etc, but then after the user types the next character to make '\ri' the options would reduce down to \rightarrow and \right.
 - Add saved & recommended plot presets that bundle plot settings (such as colors and figsizing) into saved configs.
-- Reformat annotation customization menu to be more simplistic
-- Make "full screen" cover the title bar as well
-- Allow deleting of "Plot 1" such that there are no plots and just an "add new plot" box
 
 ### Bugs
 - Fix interactive js element behaviors when rescaling browser
 - Fix grid lines appearing/disappearing by merely panning. Grid lines should only adjust when zooming in/out.
-- Block annotations when in matplotlib mode (they are inherently an interactive feature)
-- Block duplicate / delete plot options when in full screen (buggy and not intentional)
+- Fix x-axis being hidden (off screen?) when in full screen mode
+- Either make hover-over-line displaying coordinates easier to hover over or remove entirely
 
 ### Failed Prompts
 

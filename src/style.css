@@ -416,12 +416,17 @@ header{
   font-family:var(--serif);font-size:1.32rem;font-weight:700;
   color:#d0d0ee;letter-spacing:.01em;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  justify-self:start;
+  flex-shrink:0;
 }
-.ctitle-curves{
-  font-family:var(--mono);font-size:.82rem;font-weight:400;
-  color:var(--muted);letter-spacing:.04em;
+.ctitle-left{
+  display:flex;align-items:center;gap:10px;
+  justify-self:start;overflow:hidden;
 }
+.cbtn.addcurve-btn{
+  border-color:color-mix(in srgb,var(--acc) 45%,transparent);
+  color:var(--acc);font-size:.73rem;padding:4px 10px;
+}
+.cbtn.addcurve-btn:hover{background:rgba(212,255,90,.1);border-color:var(--acc);color:var(--acc);}
 .cactions-center{
   display:flex;gap:7px;align-items:center;justify-content:center;
 }
@@ -456,11 +461,13 @@ header{
 .cbtn.del-btn{border-color:color-mix(in srgb,var(--acc3) 40%,transparent);color:#a05070;font-size:1rem;padding:4px 10px;}
 .cbtn.del-btn:hover{border-color:var(--acc3);color:var(--acc3);background:rgba(255,111,170,.06);}
 .cbody{position:relative}
-.plot-empty{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  min-height:260px;gap:7px;color:var(--muted);font-size:.68rem;font-style:italic;
+.plot-empty-grid{
+  width:100%;min-height:260px;display:flex;align-items:stretch;overflow:hidden;
 }
-.plot-empty .ei{font-size:1.8rem;opacity:.18}
+.empty-grid-svg{
+  width:100%;height:100%;min-height:260px;display:block;
+  opacity:.85;
+}
 
 /* ── chart region ── */
 .chart-region{
