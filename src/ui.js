@@ -1,324 +1,3 @@
-// ═══ LEFT SIDEBAR: Files + Variables ════════════════════════════════════
-let sbActiveTab = 'files';
-
-function initLeftSidebar(){
-  document.getElementById('sbTabFiles')?.addEventListener('click', ()=>setSbTab('files'));
-  document.getElementById('sbTabVars')?.addEventListener('click', ()=>setSbTab('vars'));
-  const dz = document.getElementById('filesDropZone');
-  const fi = document.getElementById('filesInput');
-  if(dz){
-    dz.addEventListener('click', ()=>fi?.click());
-    dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('dragover'); });
-    dz.addEventListener('dragleave', ()=>dz.classList.remove('dragover'));
-    dz.addEventListener('drop', e=>{ e.preventDefault(); dz.classList.remove('dragover'); handleFilesDrop(e.dataTransfer.files); });
-  }
-  fi?.addEventListener('change', ()=>handleFilesDrop(fi.files));
-  document.getElementById('varsAddBtn')?.addEventListener('click', addVariable);
-}
-
-// ═══ RESIZABLE SIDEBARS ══════════════════════════════════════════════════
-function initResizableSidebars(){
-  // Left sidebar: default 260px, min 80% = 208px, max 200% = 520px
-  makeResizable('leftSidebar',  260, 208, 520, 'right', '--sidebar');
-  // Right cfg panel: default 268px, min 80% = 214px, max 200% = 536px
-  makeResizable('cfgPanel',     268, 214, 536, 'left',  '--cfg');
-}
-
-function makeResizable(elId, defaultPx, minPx, maxPx, edge, cssVar){
-  const el = document.getElementById(elId); if(!el) return;
-
-  // Create drag handle
-  const handle = document.createElement('div');
-  handle.className = 'resize-handle resize-handle-' + edge;
-  el.appendChild(handle);
-
-  let dragging = false, startX = 0, startW = 0;
-
-  handle.addEventListener('mousedown', e=>{
-    e.preventDefault();
-    dragging = true;
-    startX = e.clientX;
-    startW = el.offsetWidth;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  });
-
-  window.addEventListener('mousemove', e=>{
-    if(!dragging) return;
-    const delta = edge === 'right' ? (e.clientX - startX) : (startX - e.clientX);
-    const newW = Math.max(minPx, Math.min(maxPx, startW + delta));
-    document.documentElement.style.setProperty(cssVar, newW + 'px');
-  });
-
-  window.addEventListener('mouseup', ()=>{
-    if(!dragging) return;
-    dragging = false;
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-  });
-}
-
-
-function setSbTab(tab){
-  sbActiveTab = tab;
-  document.getElementById('sbTabFiles')?.classList.toggle('sidebar-tab-active', tab==='files');
-  document.getElementById('sbTabVars')?.classList.toggle('sidebar-tab-active', tab==='vars');
-  const pf = document.getElementById('sbPaneFiles'); if(pf) pf.style.display = tab==='files' ? 'flex' : 'none';
-  const pv = document.getElementById('sbPaneVars');  if(pv) pv.style.display  = tab==='vars'  ? 'flex' : 'none';
-}
-
-let uploadedFiles = [];
-
-function handleFilesDrop(fileList){
-  for(const f of fileList){
-    if(uploadedFiles.find(u=>u.name===f.name && u.size===f.size)) continue;
-    uploadedFiles.push(f);
-  }
-  renderFilesList();
-}
-
-function renderFilesList(){
-  const list = document.getElementById('filesList'); if(!list) return;
-  list.innerHTML = '';
-  uploadedFiles.forEach((f,i)=>{
-    const item = document.createElement('div'); item.className = 'file-item';
-    const ext = f.name.split('.').pop().toLowerCase();
-    const icon = ext==='csv'?'&#x1F4CA;':ext==='json'?'{}':ext==='txt'?'&#x1F4C4;':ext==='py'?'&#x1F40D;':'&#x1F4C1;';
-    const kb = f.size<1024 ? f.size+'B' : f.size<1048576 ? (f.size/1024).toFixed(1)+'KB' : (f.size/1048576).toFixed(1)+'MB';
-    item.innerHTML = `<span class="file-item-icon">${icon}</span><span class="file-item-name" title="${f.name}">${f.name}</span><span class="file-item-size">${kb}</span><button class="file-item-del" data-idx="${i}">&#10005;</button>`;
-    item.querySelector('.file-item-del').addEventListener('click', e=>{ e.stopPropagation(); uploadedFiles.splice(parseInt(e.currentTarget.dataset.idx),1); renderFilesList(); });
-    list.appendChild(item);
-  });
-}
-
-let MQ = null;
-const variables = [];
-let varIdCtr = 0;
-
-function initMathQuill(){
-  try{ MQ = MathQuill.getInterface(2); }catch(e){ MQ = null; }
-}
-
-// ═══ LATEX AUTOCOMPLETE ══════════════════════════════════════════════════
-const LATEX_COMMANDS = [
-  '\\alpha','\\beta','\\gamma','\\delta','\\epsilon','\\varepsilon',
-  '\\zeta','\\eta','\\theta','\\vartheta','\\iota','\\kappa','\\lambda',
-  '\\mu','\\nu','\\xi','\\pi','\\varpi','\\rho','\\varrho','\\sigma',
-  '\\tau','\\upsilon','\\phi','\\varphi','\\chi','\\psi','\\omega',
-  '\\Gamma','\\Delta','\\Theta','\\Lambda','\\Xi','\\Pi','\\Sigma',
-  '\\Upsilon','\\Phi','\\Psi','\\Omega',
-  '\\sin','\\cos','\\tan','\\cot','\\sec','\\csc',
-  '\\arcsin','\\arccos','\\arctan',
-  '\\sinh','\\cosh','\\tanh',
-  '\\log','\\ln','\\exp','\\sqrt','\\frac','\\cdot','\\times','\\div',
-  '\\pm','\\mp','\\leq','\\geq','\\neq','\\approx','\\equiv','\\sim',
-  '\\infty','\\partial','\\nabla','\\sum','\\prod','\\int','\\oint',
-  '\\lim','\\max','\\min','\\sup','\\inf',
-  '\\rightarrow','\\leftarrow','\\Rightarrow','\\Leftarrow',
-  '\\leftrightarrow','\\Leftrightarrow',
-  '\\uparrow','\\downarrow','\\updownarrow',
-  '\\forall','\\exists','\\in','\\notin','\\subset','\\supset',
-  '\\cup','\\cap','\\emptyset','\\mathbb','\\mathrm','\\mathbf',
-  '\\hat','\\bar','\\vec','\\tilde','\\dot','\\ddot',
-  '\\left','\\right','\\big','\\bigg',
-  '\\overline','\\underline','\\overbrace','\\underbrace',
-];
-
-let _latexDropdown = null;
-let _latexDropdownMF = null;
-let _latexDropdownIdx = -1;
-
-function getLatexDropdown(){
-  if(!_latexDropdown){
-    _latexDropdown = document.createElement('div');
-    _latexDropdown.id = 'latex-ac-dropdown';
-    _latexDropdown.style.cssText = [
-      'position:fixed',
-      'z-index:99999',
-      'background:#0e0e1c',
-      'border:1px solid #3a3a6a',
-      'border-radius:6px',
-      'box-shadow:0 6px 24px rgba(0,0,0,.55)',
-      'font-family:var(--mono,monospace)',
-      'font-size:.73rem',
-      'min-width:160px',
-      'max-width:260px',
-      'overflow:hidden',
-      'display:none',
-    ].join(';');
-    document.body.appendChild(_latexDropdown);
-
-    // Close on outside click
-    document.addEventListener('mousedown', e=>{
-      if(!_latexDropdown.contains(e.target)) hideLatexDropdown();
-    }, true);
-  }
-  return _latexDropdown;
-}
-
-function showLatexDropdown(mf, items, anchorEl){
-  const dd = getLatexDropdown();
-  _latexDropdownMF = mf;
-  _latexDropdownIdx = 0;  // pre-highlight first item so Tab immediately selects it
-  dd.innerHTML = '';
-  items.forEach((cmd, i)=>{
-    const row = document.createElement('div');
-    row.className = 'latex-ac-item';
-    row.textContent = cmd;
-    row.style.cssText = 'padding:5px 12px;cursor:pointer;color:#c8c8ee;transition:background .08s;white-space:nowrap;';
-    row.addEventListener('mouseenter', ()=>{ _latexDropdownIdx=i; highlightLatexItem(); });
-    row.addEventListener('mousedown', e=>{
-      e.preventDefault();
-      applyLatexCompletion(mf, cmd);
-    });
-    dd.appendChild(row);
-  });
-  dd.style.display = 'block';
-  // Highlight first item immediately
-  requestAnimationFrame(()=>highlightLatexItem());
-  // Position below the anchor element
-  const rect = anchorEl.getBoundingClientRect();
-  dd.style.top  = (rect.bottom + 4) + 'px';
-  dd.style.left = rect.left + 'px';
-  // Flip up if off-screen
-  requestAnimationFrame(()=>{
-    const ddH = dd.offsetHeight;
-    if(rect.bottom + 4 + ddH > window.innerHeight - 8){
-      dd.style.top = (rect.top - ddH - 4) + 'px';
-    }
-  });
-}
-
-function hideLatexDropdown(){
-  if(_latexDropdown) _latexDropdown.style.display = 'none';
-  _latexDropdownMF = null;
-  _latexDropdownIdx = -1;
-}
-
-function highlightLatexItem(){
-  const items = _latexDropdown?.querySelectorAll('.latex-ac-item');
-  if(!items) return;
-  items.forEach((el, i)=>{
-    el.style.background = i===_latexDropdownIdx ? 'rgba(90,255,206,.12)' : '';
-    el.style.color = i===_latexDropdownIdx ? '#5affce' : '#c8c8ee';
-  });
-}
-
-function navigateLatexDropdown(dir){
-  const items = _latexDropdown?.querySelectorAll('.latex-ac-item');
-  if(!items||!items.length) return false;
-  // If dir is +1 and we're at 0 (the auto-highlighted first), move to 1
-  const next = _latexDropdownIdx + dir;
-  _latexDropdownIdx = Math.max(0, Math.min(items.length-1, next));
-  highlightLatexItem();
-  return true;
-}
-
-function applyLatexCompletion(mf, fullCmd){
-  // Get current latex, find the partial \command being typed
-  const latex = mf.latex();
-  // Find the last backslash that starts an incomplete command
-  const match = latex.match(/\\([a-zA-Z]*)$/);
-  if(match){
-    // Replace the partial command with the full command (strip leading \)
-    const cmdName = fullCmd.slice(1); // e.g. 'rightarrow'
-    // Type backspace for each char of the partial command + the backslash
-    const partial = match[0]; // e.g. '\ri'
-    for(let i=0; i<partial.length; i++) mf.keystroke('Backspace');
-    mf.cmd(fullCmd);
-  } else {
-    mf.cmd(fullCmd);
-  }
-  hideLatexDropdown();
-  mf.focus();
-}
-
-function updateLatexDropdown(mf, anchorEl){
-  const latex = mf.latex();
-  // Find a trailing partial \command
-  const match = latex.match(/\\([a-zA-Z]*)$/);
-  if(!match){ hideLatexDropdown(); return; }
-  const partial = '\\' + match[1];
-  if(partial === '\\'){ hideLatexDropdown(); return; } // just the backslash, no letters yet
-  const suggestions = LATEX_COMMANDS
-    .filter(c => c.startsWith(partial))
-    .slice(0, 5);
-  if(!suggestions.length){ hideLatexDropdown(); return; }
-  showLatexDropdown(mf, suggestions, anchorEl);
-}
-
-function wrapMathFieldWithAC(mqEl, mf){
-  // Intercept keydown on the MathQuill element to support arrow/enter/escape nav
-  mqEl.addEventListener('keydown', e=>{
-    const dd = _latexDropdown;
-    const open = dd && dd.style.display !== 'none';
-    if(open){
-      if(e.key === 'ArrowDown'){ e.preventDefault(); navigateLatexDropdown(1); return; }
-      if(e.key === 'ArrowUp'){  e.preventDefault(); navigateLatexDropdown(-1); return; }
-      if(e.key === 'Enter' || e.key === 'Tab'){
-        const items = dd.querySelectorAll('.latex-ac-item');
-        const idx = _latexDropdownIdx >= 0 ? _latexDropdownIdx : 0;
-        if(items[idx]){
-          e.preventDefault();
-          applyLatexCompletion(mf, items[idx].textContent);
-          return;
-        }
-      }
-      if(e.key === 'Escape'){ e.preventDefault(); hideLatexDropdown(); return; }
-    }
-  }, true);
-}
-
-function addVariable(){
-  const v = { id:++varIdCtr, name:'x', latex:'' };
-  variables.push(v);
-  renderVariables();
-  setTimeout(()=>{ const inp=document.getElementById(`vname_${v.id}`); if(inp){inp.select();inp.focus();} }, 30);
-}
-
-function renderVariables(){
-  const list = document.getElementById('varsList'); if(!list) return;
-  const empty = document.getElementById('varsEmpty'); if(empty) empty.style.display = variables.length ? 'none' : 'flex';
-  list.innerHTML = '';
-  variables.forEach(v=>{
-    const item = document.createElement('div'); item.className = 'var-item'; item.dataset.vid = v.id;
-    item.innerHTML = `
-      <div class="var-item-top">
-        <input class="var-name-inp" id="vname_${v.id}" type="text" value="${v.name}" placeholder="name" maxlength="12"/>
-        <span class="var-eq-label">&nbsp;=&nbsp;</span>
-        <button class="var-item-del" data-vid="${v.id}">&#10005;</button>
-      </div>
-      <div class="var-mq-wrap" id="vmq_${v.id}"></div>`;
-    list.appendChild(item);
-    const nameInp = item.querySelector(`#vname_${v.id}`);
-    nameInp.addEventListener('input', ()=>{ v.name=nameInp.value; });
-    nameInp.addEventListener('click', e=>e.stopPropagation());
-    nameInp.addEventListener('keydown', e=>{ if(e.key==='Enter') nameInp.blur(); e.stopPropagation(); });
-    item.querySelector('.var-item-del').addEventListener('click', e=>{
-      e.stopPropagation();
-      const idx=variables.findIndex(x=>x.id===v.id); if(idx>-1) variables.splice(idx,1);
-      renderVariables();
-    });
-    if(MQ){
-      const mqEl = document.getElementById(`vmq_${v.id}`);
-      try{
-        const mf = MQ.MathField(mqEl, {
-          spaceBehavesLikeTab:true,
-          autoOperatorNames: '',    // require \ for all commands (sin→\sin, cos→\cos, etc.)
-          handlers:{
-            edit(){
-              v.latex=mf.latex();
-              updateLatexDropdown(mf, mqEl);
-            }
-          }
-        });
-        if(v.latex) mf.latex(v.latex);
-        wrapMathFieldWithAC(mqEl, mf);
-      }catch(e){ mqEl.textContent=v.latex||''; }
-    }
-  });
-}
-
 // ═══ TEMPLATE MODAL ══════════════════════════════════════════════════════
 let modalSelTpl = null;
 
@@ -422,6 +101,7 @@ function addFromModal(){
     renderJS(p.id,false); updateTopbar(p.id); refreshOverlayLegend(p.id); refreshLineCurveSelector(); refreshCfg();
   }
   closeTemplateModal();
+  syncTemplateParamsToVars(selTpl, params);
   snapshotForUndo();
 }
 
@@ -575,7 +255,6 @@ function renderJS(pid, firstRender=false){
   for(const curve of p.curves){
     if(!curve.template) continue;
     const result = evalTemplate(curve.template, curve.params, p.view); if(!result) continue;
-    // Adaptive sampling: re-evaluate in high-|dy/dx| regions to preserve narrow peaks
     let sampled = result;
     if(!result.discrete){
       const evalFn = x => {
@@ -593,7 +272,17 @@ function renderJS(pid, firstRender=false){
     if(gyMin===null||result.autoYMin<gyMin) gyMin=result.autoYMin;
     if(gyMax===null||result.autoYMax>gyMax) gyMax=result.autoYMax;
   }
-  if(!anyData) return;
+  if(!anyData){
+    // No curves yet — still draw the empty interactive grid
+    const innerEl = document.getElementById(`cinner_${pid}`); if(!innerEl) return;
+    if(!document.getElementById(`chart_${pid}`)){
+      innerEl.innerHTML = buildInnerHTML(p);
+      setTimeout(()=>{ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); applyBgColorToCanvas(pid); syncCfgDomain(); updateTopbar(pid); }, 0);
+    } else {
+      drawChart(p); syncCfgDomain(); applyBgColorToCanvas(pid);
+    }
+    return;
+  }
   if(firstRender || p.view.x_min==null){
     p.view.x_min = gxMin; p.view.x_max = gxMax;
     const yPad = (gyMax-gyMin)*0.08 || 0.1;
@@ -617,6 +306,10 @@ function destroyChart(pid){
 function drawChart(p){
   const canvas = document.getElementById(`chart_${p.id}`); if(!canvas) return;
   const shouldAnimate = !!chartFirstRender[p.id]; if(shouldAnimate) delete chartFirstRender[p.id];
+
+  // Set default view bounds for empty plots so axes display sensibly
+  if(p.view.x_min==null){ p.view.x_min=-10; p.view.x_max=10; p.view.y_min=-7; p.view.y_max=7; }
+
   const v = p.view, animOpts = shouldAnimate ? {duration:500,easing:'easeOutQuart'} : {duration:0};
   const scales = buildScales(v);
   const datasets = []; let hasDiscrete = false;
@@ -641,21 +334,17 @@ function drawChart(p){
       });
     }
   }
-  if(!datasets.length) return;
-
-  // Axis lines at x=0 and y=0
   const axisDatasets = buildAxisLineDatasets(v);
+  const allDatasets = [...axisDatasets, ...datasets];
 
   if(chartInstances[p.id] && !shouldAnimate){
     const ch = chartInstances[p.id];
-    // If scale type changed (log toggle), must destroy and recreate
     const xTypeChanged = ch.options.scales.x.type !== (v.x_log ? 'logarithmic' : 'linear');
     const yTypeChanged = ch.options.scales.y.type !== (v.y_log ? 'logarithmic' : 'linear');
     if(xTypeChanged || yTypeChanged){
       destroyChart(p.id);
-      // Fall through to full rebuild below
     } else {
-      ch.data.datasets = [...axisDatasets, ...datasets];
+      ch.data.datasets = allDatasets;
       if(hasDiscrete) ch.data.labels = p.curves.find(c=>c.jsData?.discrete)?.jsData.x.map(n=>n) || [];
       const galpha = v.grid_alpha ?? 0.5, gc = `rgba(60,60,100,${galpha})`;
       ch.options.scales.x.grid.display=v.show_grid; ch.options.scales.x.grid.color=gc;
@@ -670,15 +359,14 @@ function drawChart(p){
   if(hasDiscrete){
     const dc = p.curves.find(c=>c.jsData?.discrete);
     chartInstances[p.id] = new Chart(ctx, {
-      type:'bar', data:{labels:dc?.jsData.x.map(n=>n)||[], datasets:[...axisDatasets,...datasets]},
+      type:'bar', data:{labels:dc?.jsData.x.map(n=>n)||[], datasets:allDatasets},
       options:{responsive:true,maintainAspectRatio:true,animation:animOpts,
         plugins:{legend:{display:false},tooltip:tooltipOpts()},scales}
     });
   }else{
-    // For continuous plots, override x type from the default 'category' to linear/log
     scales.x.type = v.x_log ? 'logarithmic' : 'linear';
     chartInstances[p.id] = new Chart(ctx, {
-      type:'line', data:{datasets:[...axisDatasets,...datasets]},
+      type:'line', data:{datasets:allDatasets},
       options:{responsive:true,maintainAspectRatio:true,animation:animOpts,
         plugins:{legend:{display:false},tooltip:{...tooltipOpts(),callbacks:{
           title:items=>`x = ${Number(items[0].parsed.x).toFixed(4)}`,
@@ -985,42 +673,6 @@ function endPan(p){
 // ═══ CARD / PLOT HTML ════════════════════════════════════════════════════
 function buildInnerHTML(p){
   const pid = p.id;
-  if(!p.curves.some(c=>c.jsData||c.template)){
-    // Empty state: show a static grid centered at origin
-    return `<div class="plot-empty-grid" id="cempty_${pid}">
-      <svg class="empty-grid-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid meet">
-        <defs>
-          <pattern id="eg-minor-${pid}" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-            <path d="M20 0 L0 0 0 20" fill="none" stroke="rgba(60,60,100,0.45)" stroke-width="0.5"/>
-          </pattern>
-          <pattern id="eg-major-${pid}" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
-            <rect width="40" height="40" fill="url(#eg-minor-${pid})"/>
-            <path d="M40 0 L0 0 0 40" fill="none" stroke="rgba(60,60,100,0.75)" stroke-width="1"/>
-          </pattern>
-        </defs>
-        <!-- grid background -->
-        <rect width="320" height="220" fill="url(#eg-major-${pid})"/>
-        <!-- x axis -->
-        <line x1="0" y1="110" x2="320" y2="110" stroke="rgba(180,180,220,0.55)" stroke-width="1.5"/>
-        <!-- y axis -->
-        <line x1="160" y1="0" x2="160" y2="220" stroke="rgba(180,180,220,0.55)" stroke-width="1.5"/>
-        <!-- tick labels x -->
-        <text x="202" y="123" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="middle">2</text>
-        <text x="242" y="123" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="middle">4</text>
-        <text x="282" y="123" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="middle">6</text>
-        <text x="118" y="123" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="middle">-2</text>
-        <text x="78"  y="123" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="middle">-4</text>
-        <text x="38"  y="123" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="middle">-6</text>
-        <!-- tick labels y -->
-        <text x="150" y="72"  fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="end">2</text>
-        <text x="150" y="32"  fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="end">4</text>
-        <text x="150" y="152" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="end">-2</text>
-        <text x="150" y="192" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="end">-4</text>
-        <!-- origin dot -->
-        <circle cx="160" cy="110" r="2" fill="rgba(180,180,220,0.4)"/>
-      </svg>
-    </div>`;
-  }
   if(p.mplMode && p.mplImage)
     return `<div class="mpl-body"><img class="mpl-img" src="data:image/png;base64,${p.mplImage}" alt="plot"/></div>`;
   const titleVal=p.labels.title||'', xlabelVal=p.labels.xlabel||'', ylabelVal=p.labels.ylabel||'';
@@ -1047,8 +699,10 @@ function updateCardContent(pid){
   const p = gp(pid); if(!p) return;
   const innerEl = document.getElementById(`cinner_${pid}`); if(!innerEl) return;
   destroyChart(pid); innerEl.innerHTML = buildInnerHTML(p);
-  if(!p.mplMode && p.curves.some(c=>c.jsData)){
-    setTimeout(()=>{ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); }, 0);
+  if(!p.mplMode){
+    setTimeout(()=>{
+      drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id);
+    }, 0);
   }
 }
 
@@ -1083,7 +737,7 @@ function renderDOM(){
   refreshCfg(); refreshSidebar();
   setTimeout(()=>{
     for(const p of plots){
-      if(p.curves.some(c=>c.jsData)){ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); }
+      drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id);
     }
   }, 0);
 }

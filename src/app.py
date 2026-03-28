@@ -294,6 +294,47 @@ def render_matplotlib_multi(curves_data, view, labels, text_annotations=None):
 @app.route("/api/templates")
 def get_templates(): return jsonify(TEMPLATES)
 
+@app.route("/api/unpickle", methods=["POST"])
+def unpickle_file():
+    """Accept a .pkl file upload, unpickle it, and return its contents as JSON.
+    The pickle object must be a dict. Values that are numeric scalars become
+    'constant' variables; array-like values become 'list' variables.
+    """
+    import pickle, numbers
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    f = request.files["file"]
+    if not f.filename.lower().endswith(".pkl"):
+        return jsonify({"error": "File must be a .pkl file"}), 400
+    try:
+        data = pickle.load(f.stream)
+    except Exception as e:
+        return jsonify({"error": f"Failed to unpickle: {e}"}), 400
+    if not isinstance(data, dict):
+        return jsonify({"error": f"Pickle must contain a dict, got {type(data).__name__}"}), 400
+
+    result = {}
+    for key, val in data.items():
+        name = str(key)
+        # Numeric scalar → constant
+        if isinstance(val, (int, float, numbers.Number, np.integer, np.floating)):
+            result[name] = {"kind": "constant", "value": float(val)}
+        # NumPy array or list → list variable
+        elif isinstance(val, np.ndarray):
+            flat = val.flatten().tolist()
+            result[name] = {"kind": "list", "items": [float(x) if not isinstance(x, str) else x for x in flat]}
+        elif isinstance(val, (list, tuple)):
+            try:
+                items = [float(x) for x in val]
+                result[name] = {"kind": "list", "items": items}
+            except (TypeError, ValueError):
+                # Skip non-numeric lists
+                continue
+        # Skip other types silently
+    if not result:
+        return jsonify({"error": "No supported values found in dict (need floats or arrays)"}), 400
+    return jsonify({"variables": result})
+
 @app.route("/api/data", methods=["POST"])
 def get_data():
     body=request.get_json(silent=True) or {}; tkey=body.get("template")
