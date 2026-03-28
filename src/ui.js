@@ -99,6 +99,176 @@ function initMathQuill(){
   try{ MQ = MathQuill.getInterface(2); }catch(e){ MQ = null; }
 }
 
+// ═══ LATEX AUTOCOMPLETE ══════════════════════════════════════════════════
+const LATEX_COMMANDS = [
+  '\\alpha','\\beta','\\gamma','\\delta','\\epsilon','\\varepsilon',
+  '\\zeta','\\eta','\\theta','\\vartheta','\\iota','\\kappa','\\lambda',
+  '\\mu','\\nu','\\xi','\\pi','\\varpi','\\rho','\\varrho','\\sigma',
+  '\\tau','\\upsilon','\\phi','\\varphi','\\chi','\\psi','\\omega',
+  '\\Gamma','\\Delta','\\Theta','\\Lambda','\\Xi','\\Pi','\\Sigma',
+  '\\Upsilon','\\Phi','\\Psi','\\Omega',
+  '\\sin','\\cos','\\tan','\\cot','\\sec','\\csc',
+  '\\arcsin','\\arccos','\\arctan',
+  '\\sinh','\\cosh','\\tanh',
+  '\\log','\\ln','\\exp','\\sqrt','\\frac','\\cdot','\\times','\\div',
+  '\\pm','\\mp','\\leq','\\geq','\\neq','\\approx','\\equiv','\\sim',
+  '\\infty','\\partial','\\nabla','\\sum','\\prod','\\int','\\oint',
+  '\\lim','\\max','\\min','\\sup','\\inf',
+  '\\rightarrow','\\leftarrow','\\Rightarrow','\\Leftarrow',
+  '\\leftrightarrow','\\Leftrightarrow',
+  '\\uparrow','\\downarrow','\\updownarrow',
+  '\\forall','\\exists','\\in','\\notin','\\subset','\\supset',
+  '\\cup','\\cap','\\emptyset','\\mathbb','\\mathrm','\\mathbf',
+  '\\hat','\\bar','\\vec','\\tilde','\\dot','\\ddot',
+  '\\left','\\right','\\big','\\bigg',
+  '\\overline','\\underline','\\overbrace','\\underbrace',
+];
+
+let _latexDropdown = null;
+let _latexDropdownMF = null;
+let _latexDropdownIdx = -1;
+
+function getLatexDropdown(){
+  if(!_latexDropdown){
+    _latexDropdown = document.createElement('div');
+    _latexDropdown.id = 'latex-ac-dropdown';
+    _latexDropdown.style.cssText = [
+      'position:fixed',
+      'z-index:99999',
+      'background:#0e0e1c',
+      'border:1px solid #3a3a6a',
+      'border-radius:6px',
+      'box-shadow:0 6px 24px rgba(0,0,0,.55)',
+      'font-family:var(--mono,monospace)',
+      'font-size:.73rem',
+      'min-width:160px',
+      'max-width:260px',
+      'overflow:hidden',
+      'display:none',
+    ].join(';');
+    document.body.appendChild(_latexDropdown);
+
+    // Close on outside click
+    document.addEventListener('mousedown', e=>{
+      if(!_latexDropdown.contains(e.target)) hideLatexDropdown();
+    }, true);
+  }
+  return _latexDropdown;
+}
+
+function showLatexDropdown(mf, items, anchorEl){
+  const dd = getLatexDropdown();
+  _latexDropdownMF = mf;
+  _latexDropdownIdx = 0;  // pre-highlight first item so Tab immediately selects it
+  dd.innerHTML = '';
+  items.forEach((cmd, i)=>{
+    const row = document.createElement('div');
+    row.className = 'latex-ac-item';
+    row.textContent = cmd;
+    row.style.cssText = 'padding:5px 12px;cursor:pointer;color:#c8c8ee;transition:background .08s;white-space:nowrap;';
+    row.addEventListener('mouseenter', ()=>{ _latexDropdownIdx=i; highlightLatexItem(); });
+    row.addEventListener('mousedown', e=>{
+      e.preventDefault();
+      applyLatexCompletion(mf, cmd);
+    });
+    dd.appendChild(row);
+  });
+  dd.style.display = 'block';
+  // Highlight first item immediately
+  requestAnimationFrame(()=>highlightLatexItem());
+  // Position below the anchor element
+  const rect = anchorEl.getBoundingClientRect();
+  dd.style.top  = (rect.bottom + 4) + 'px';
+  dd.style.left = rect.left + 'px';
+  // Flip up if off-screen
+  requestAnimationFrame(()=>{
+    const ddH = dd.offsetHeight;
+    if(rect.bottom + 4 + ddH > window.innerHeight - 8){
+      dd.style.top = (rect.top - ddH - 4) + 'px';
+    }
+  });
+}
+
+function hideLatexDropdown(){
+  if(_latexDropdown) _latexDropdown.style.display = 'none';
+  _latexDropdownMF = null;
+  _latexDropdownIdx = -1;
+}
+
+function highlightLatexItem(){
+  const items = _latexDropdown?.querySelectorAll('.latex-ac-item');
+  if(!items) return;
+  items.forEach((el, i)=>{
+    el.style.background = i===_latexDropdownIdx ? 'rgba(90,255,206,.12)' : '';
+    el.style.color = i===_latexDropdownIdx ? '#5affce' : '#c8c8ee';
+  });
+}
+
+function navigateLatexDropdown(dir){
+  const items = _latexDropdown?.querySelectorAll('.latex-ac-item');
+  if(!items||!items.length) return false;
+  // If dir is +1 and we're at 0 (the auto-highlighted first), move to 1
+  const next = _latexDropdownIdx + dir;
+  _latexDropdownIdx = Math.max(0, Math.min(items.length-1, next));
+  highlightLatexItem();
+  return true;
+}
+
+function applyLatexCompletion(mf, fullCmd){
+  // Get current latex, find the partial \command being typed
+  const latex = mf.latex();
+  // Find the last backslash that starts an incomplete command
+  const match = latex.match(/\\([a-zA-Z]*)$/);
+  if(match){
+    // Replace the partial command with the full command (strip leading \)
+    const cmdName = fullCmd.slice(1); // e.g. 'rightarrow'
+    // Type backspace for each char of the partial command + the backslash
+    const partial = match[0]; // e.g. '\ri'
+    for(let i=0; i<partial.length; i++) mf.keystroke('Backspace');
+    mf.cmd(fullCmd);
+  } else {
+    mf.cmd(fullCmd);
+  }
+  hideLatexDropdown();
+  mf.focus();
+}
+
+function updateLatexDropdown(mf, anchorEl){
+  const latex = mf.latex();
+  // Find a trailing partial \command
+  const match = latex.match(/\\([a-zA-Z]*)$/);
+  if(!match){ hideLatexDropdown(); return; }
+  const partial = '\\' + match[1];
+  if(partial === '\\'){ hideLatexDropdown(); return; } // just the backslash, no letters yet
+  const suggestions = LATEX_COMMANDS
+    .filter(c => c.startsWith(partial))
+    .slice(0, 5);
+  if(!suggestions.length){ hideLatexDropdown(); return; }
+  showLatexDropdown(mf, suggestions, anchorEl);
+}
+
+function wrapMathFieldWithAC(mqEl, mf){
+  // Intercept keydown on the MathQuill element to support arrow/enter/escape nav
+  mqEl.addEventListener('keydown', e=>{
+    const dd = _latexDropdown;
+    const open = dd && dd.style.display !== 'none';
+    if(open){
+      if(e.key === 'ArrowDown'){ e.preventDefault(); navigateLatexDropdown(1); return; }
+      if(e.key === 'ArrowUp'){  e.preventDefault(); navigateLatexDropdown(-1); return; }
+      if(e.key === 'Enter' || e.key === 'Tab'){
+        const items = dd.querySelectorAll('.latex-ac-item');
+        const idx = _latexDropdownIdx >= 0 ? _latexDropdownIdx : 0;
+        if(items[idx]){
+          e.preventDefault();
+          applyLatexCompletion(mf, items[idx].textContent);
+          return;
+        }
+      }
+      if(e.key === 'Escape'){ e.preventDefault(); hideLatexDropdown(); return; }
+    }
+  }, true);
+}
+
 function addVariable(){
   const v = { id:++varIdCtr, name:'x', latex:'' };
   variables.push(v);
@@ -132,8 +302,18 @@ function renderVariables(){
     if(MQ){
       const mqEl = document.getElementById(`vmq_${v.id}`);
       try{
-        const mf = MQ.MathField(mqEl, { spaceBehavesLikeTab:true, handlers:{ edit(){ v.latex=mf.latex(); } } });
+        const mf = MQ.MathField(mqEl, {
+          spaceBehavesLikeTab:true,
+          autoOperatorNames: '',    // require \ for all commands (sin→\sin, cos→\cos, etc.)
+          handlers:{
+            edit(){
+              v.latex=mf.latex();
+              updateLatexDropdown(mf, mqEl);
+            }
+          }
+        });
         if(v.latex) mf.latex(v.latex);
+        wrapMathFieldWithAC(mqEl, mf);
       }catch(e){ mqEl.textContent=v.latex||''; }
     }
   });
@@ -242,6 +422,7 @@ function addFromModal(){
     renderJS(p.id,false); updateTopbar(p.id); refreshOverlayLegend(p.id); refreshLineCurveSelector(); refreshCfg();
   }
   closeTemplateModal();
+  snapshotForUndo();
 }
 
 function openTemplateModal(){
@@ -256,7 +437,6 @@ function closeTemplateModal(){
 }
 
 function wireTemplateModal(){
-  document.getElementById('tplModalBtn')?.addEventListener('click',openTemplateModal);
   document.getElementById('tplModalClose')?.addEventListener('click',closeTemplateModal);
   document.getElementById('tplModalBackdrop')?.addEventListener('click',e=>{ if(e.target===document.getElementById('tplModalBackdrop')) closeTemplateModal(); });
   document.getElementById('tplModalAddBtn')?.addEventListener('click',addFromModal);
@@ -457,7 +637,7 @@ function drawChart(p){
         borderColor:lc, borderWidth:borderWidthFor(curve), borderDash:dashFor(curve.line_style),
         pointRadius:curve.marker!=='none' ? curve.marker_size||4 : 0, pointBackgroundColor:lc,
         fill:curve.fill_under, backgroundColor:hexAlpha(lc,curve.fill_alpha||.15),
-        tension:0, spanGaps:false, parsing:false,
+        tension:tensionFor(curve.line_connection||'linear'), spanGaps:false, parsing:false,
       });
     }
   }
@@ -510,7 +690,8 @@ function drawChart(p){
 }
 
 function dashFor(ls){ return ls==='dashed'?[6,3]:ls==='dotted'?[2,3]:ls==='dashdot'?[6,3,2,3]:[]; }
-function borderWidthFor(curve){ return curve.line_style==='none' ? 0 : (curve.line_width||2); }
+function borderWidthFor(curve){ return curve.line_connection==='none' ? 0 : (curve.line_width||2); }
+function tensionFor(lc){ return lc==='cubic'?0.4:lc==='bezier'?0.6:0; }
 
 function buildAxisLineDatasets(v){
   if(!v.show_axis_lines) return [];
@@ -613,7 +794,7 @@ function makeCurveSymbolSVG(curve, w=32, h=10){
   else if(ls==='dotted')  dashAttr = `stroke-dasharray="1,3"`;
   else if(ls==='dashdot') dashAttr = `stroke-dasharray="5,2,1,2"`;
 
-  const lineVis = ls==='none' ? 'visibility="hidden"' : '';
+  const lineVis = curve.line_connection==='none' ? 'visibility="hidden"' : '';
 
   let markerSVG = '';
   if(mk !== 'none'){
@@ -804,8 +985,42 @@ function endPan(p){
 // ═══ CARD / PLOT HTML ════════════════════════════════════════════════════
 function buildInnerHTML(p){
   const pid = p.id;
-  if(!p.curves.some(c=>c.jsData||c.template))
-    return `<div class="plot-empty"><div class="ei">⊹</div><span>Insert Plot</span></div>`;
+  if(!p.curves.some(c=>c.jsData||c.template)){
+    // Empty state: show a static grid centered at origin
+    return `<div class="plot-empty-grid" id="cempty_${pid}">
+      <svg class="empty-grid-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <pattern id="eg-minor-${pid}" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M20 0 L0 0 0 20" fill="none" stroke="rgba(60,60,100,0.45)" stroke-width="0.5"/>
+          </pattern>
+          <pattern id="eg-major-${pid}" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+            <rect width="40" height="40" fill="url(#eg-minor-${pid})"/>
+            <path d="M40 0 L0 0 0 40" fill="none" stroke="rgba(60,60,100,0.75)" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <!-- grid background -->
+        <rect width="320" height="220" fill="url(#eg-major-${pid})"/>
+        <!-- x axis -->
+        <line x1="0" y1="110" x2="320" y2="110" stroke="rgba(180,180,220,0.55)" stroke-width="1.5"/>
+        <!-- y axis -->
+        <line x1="160" y1="0" x2="160" y2="220" stroke="rgba(180,180,220,0.55)" stroke-width="1.5"/>
+        <!-- tick labels x -->
+        <text x="202" y="123" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="middle">2</text>
+        <text x="242" y="123" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="middle">4</text>
+        <text x="282" y="123" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="middle">6</text>
+        <text x="118" y="123" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="middle">-2</text>
+        <text x="78"  y="123" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="middle">-4</text>
+        <text x="38"  y="123" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="middle">-6</text>
+        <!-- tick labels y -->
+        <text x="150" y="72"  fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="end">2</text>
+        <text x="150" y="32"  fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="end">4</text>
+        <text x="150" y="152" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="end">-2</text>
+        <text x="150" y="192" fill="rgba(140,140,200,0.6)" font-size="9" font-family="IBM Plex Mono,monospace" text-anchor="end">-4</text>
+        <!-- origin dot -->
+        <circle cx="160" cy="110" r="2" fill="rgba(180,180,220,0.4)"/>
+      </svg>
+    </div>`;
+  }
   if(p.mplMode && p.mplImage)
     return `<div class="mpl-body"><img class="mpl-img" src="data:image/png;base64,${p.mplImage}" alt="plot"/></div>`;
   const titleVal=p.labels.title||'', xlabelVal=p.labels.xlabel||'', ylabelVal=p.labels.ylabel||'';
@@ -904,16 +1119,19 @@ function buildTopbarInner(p, i){
   const annDisabled = p.mplMode ? 'disabled style="opacity:.3;pointer-events:none"' : '';
   const dupDelDisabled = inFs ? 'disabled style="opacity:.3;pointer-events:none;cursor:not-allowed"' : '';
   return `
-    <span class="ctitle-text">Plot ${i+1} <span class="ctitle-curves">(${cc} curve${cc!==1?'s':''})</span></span>
+    <div class="ctitle-left">
+      <span class="ctitle-text">Plot ${i+1}</span>
+      <button class="cbtn addcurve-btn" data-pid="${p.id}" data-action="addcurve">⊕ add curve</button>
+    </div>
     <div class="cactions-center">
       ${mplBtn}
-      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addtext" title="Add text annotation" ${annDisabled}>✎ annotate</button>
+      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addtext" ${annDisabled}>✎ annotate</button>
     </div>
     <div class="cactions-right">
       <span class="ctop-coords" id="ctop_coords_${p.id}"></span>
-      <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" title="Duplicate plot" ${dupDelDisabled}>⧉</button>
-      <button class="cbtn fs-btn" data-pid="${p.id}" data-action="fullscreen" title="Full screen">⛶</button>
-      <button class="cbtn del-btn" data-pid="${p.id}" data-action="del" title="Delete plot" ${dupDelDisabled}>🗑</button>
+      <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" ${dupDelDisabled}>⧉</button>
+      <button class="cbtn fs-btn" data-pid="${p.id}" data-action="fullscreen">⛶</button>
+      <button class="cbtn del-btn" data-pid="${p.id}" data-action="del" ${dupDelDisabled}>🗑</button>
     </div>`;
 }
 
@@ -1058,37 +1276,29 @@ function showAnnMenu(ann, pid, menuBtnEl){
   editRow.innerHTML = `<label>Text content</label><input class="ann-menu-inp" id="annMenuText" type="text" value="${ann.text.replace(/"/g,'&quot;')}" maxlength="120"/>`;
   menu.appendChild(editRow);
 
-  menu.appendChild(makeSep());
-
-  // ── Font size (logical pt, displayed = pt * JS_ANN_SCALE) ──────
-  const sizeRow = document.createElement('div'); sizeRow.className='ann-menu-sub';
-  sizeRow.innerHTML = `<label>Font size (pt)</label><div class="ann-menu-inline"><input class="ann-menu-inp" id="annMenuSize" type="number" value="${ann.size}" min="6" max="52" step="1" style="width:64px;text-align:right"/></div>`;
+  // ── Font size — inline label left / number right (no separator) ──
+  const sizeRow = document.createElement('div'); sizeRow.className='ann-menu-row-inline';
+  sizeRow.innerHTML = `<label>Font size (pt)</label><input class="ann-menu-inp ann-menu-inp-sm" id="annMenuSize" type="number" value="${ann.size}" min="6" max="52" step="1"/>`;
   menu.appendChild(sizeRow);
 
-  menu.appendChild(makeSep());
-
-  // ── Text color ────────────────────────────────────────────────
-  const colorRow = document.createElement('div'); colorRow.className='ann-menu-sub';
+  // ── Text color — label left / swatch+hex right ──────────────────
+  const colorRow = document.createElement('div'); colorRow.className='ann-menu-row-inline';
   colorRow.innerHTML = `<label>Text color</label>
-    <div class="ann-menu-inline" style="gap:8px">
+    <div class="ann-menu-color-group">
       <div class="ann-color-swatch"><input type="color" id="annMenuColor" value="${ann.color}"/></div>
-      <input class="ann-menu-inp" id="annMenuColorHex" type="text" value="${ann.color}" maxlength="7" style="width:80px;font-family:var(--mono)"/>
+      <input class="ann-menu-inp ann-menu-inp-hex" id="annMenuColorHex" type="text" value="${ann.color}" maxlength="7"/>
     </div>`;
   menu.appendChild(colorRow);
 
-  menu.appendChild(makeSep());
-
-  // ── Lock mode ──────────────────────────────────────────────────
+  // ── Lock mode — label left / buttons right ────────────────────
   const isPlot = ann.lock==='plot';
-  const lockRow = document.createElement('div'); lockRow.className='ann-menu-sub';
-  lockRow.innerHTML = `<label>Position anchor</label>
+  const lockRow = document.createElement('div'); lockRow.className='ann-menu-row-inline';
+  lockRow.innerHTML = `<label>Anchor</label>
     <div class="ann-lock-group">
-      <button class="ann-lock-btn${isPlot?' active':''}" id="annLockPlot">Plot coords</button>
+      <button class="ann-lock-btn${isPlot?' active':''}" id="annLockPlot">Plot</button>
       <button class="ann-lock-btn${!isPlot?' active':''}" id="annLockWindow">Window</button>
     </div>`;
   menu.appendChild(lockRow);
-
-  menu.appendChild(makeSep());
 
   // ── Delete ────────────────────────────────────────────────────
   const delBtn = document.createElement('button'); delBtn.className='ann-menu-item danger';
@@ -1100,27 +1310,44 @@ function showAnnMenu(ann, pid, menuBtnEl){
     p.textAnnotations = p.textAnnotations.filter(a=>a.id!==ann.id);
     document.querySelector(`.text-annotation[data-ann-id="${ann.id}"]`)?.remove();
     scheduleMplDebounce(pid);
+    snapshotForUndo();
   });
   menu.appendChild(delBtn);
 
   document.body.appendChild(menu);
 
-  // Wire inputs AFTER appending to DOM so getElementById works
-  const textInp = document.getElementById('annMenuText');
-  const sizeInp = document.getElementById('annMenuSize');
-  const colorInp    = document.getElementById('annMenuColor');
-  const colorHexInp = document.getElementById('annMenuColorHex');
-  const lockPlotBtn   = document.getElementById('annLockPlot');
-  const lockWindowBtn = document.getElementById('annLockWindow');
+  const textInp      = document.getElementById('annMenuText');
+  const sizeInp      = document.getElementById('annMenuSize');
+  const colorInp     = document.getElementById('annMenuColor');
+  const colorHexInp  = document.getElementById('annMenuColorHex');
+  const lockPlotBtn  = document.getElementById('annLockPlot');
+  const lockWindowBtn= document.getElementById('annLockWindow');
 
+  // Snapshot text on open — revert if user clears the field
+  let textOnOpen = ann.text;
   if(textInp){
     textInp.focus(); textInp.select();
     textInp.addEventListener('input', ()=>{
-      ann.text = textInp.value;
+      const val = textInp.value;
       const el = document.querySelector(`.text-annotation[data-ann-id="${ann.id}"] .ann-text-content`);
-      if(el) el.textContent = ann.text;
+      if(el) el.textContent = val || textOnOpen;
+      ann.text = val || textOnOpen;
       scheduleMplDebounce(pid);
+      clearTimeout(window._annUndoDebounce); window._annUndoDebounce=setTimeout(snapshotForUndo,600);
     });
+    textInp.addEventListener('blur', ()=>{
+      if(!textInp.value.trim()){
+        textInp.value = textOnOpen;
+        ann.text = textOnOpen;
+        const el = document.querySelector(`.text-annotation[data-ann-id="${ann.id}"] .ann-text-content`);
+        if(el) el.textContent = textOnOpen;
+        scheduleMplDebounce(pid);
+      } else {
+        textOnOpen = textInp.value;
+        snapshotForUndo();
+      }
+    });
+    textInp.addEventListener('keydown', e=>{ if(e.key==='Enter') textInp.blur(); });
   }
 
   if(sizeInp){
@@ -1130,6 +1357,7 @@ function showAnnMenu(ann, pid, menuBtnEl){
       const el = document.querySelector(`.text-annotation[data-ann-id="${ann.id}"] .ann-text-content`);
       if(el) el.style.fontSize = (v * JS_ANN_SCALE)+'px';
       scheduleMplDebounce(pid);
+      clearTimeout(window._annUndoDebounce); window._annUndoDebounce=setTimeout(snapshotForUndo,600);
     });
   }
 
@@ -1139,44 +1367,34 @@ function showAnnMenu(ann, pid, menuBtnEl){
     const el = document.querySelector(`.text-annotation[data-ann-id="${ann.id}"] .ann-text-content`);
     if(el) el.style.color = hex;
     scheduleMplDebounce(pid);
+    clearTimeout(window._annUndoDebounce); window._annUndoDebounce=setTimeout(snapshotForUndo,600);
   }
-  if(colorInp){
-    colorInp.addEventListener('input', ()=>{ colorHexInp.value=colorInp.value; applyColor(colorInp.value); });
-  }
-  if(colorHexInp){
-    colorHexInp.addEventListener('input', ()=>{ if(/^#[0-9a-fA-F]{6}$/.test(colorHexInp.value)){ colorInp.value=colorHexInp.value; applyColor(colorHexInp.value); } });
-  }
+  if(colorInp)    colorInp.addEventListener('input',    ()=>{ colorHexInp.value=colorInp.value; applyColor(colorInp.value); });
+  if(colorHexInp) colorHexInp.addEventListener('input', ()=>{ if(/^#[0-9a-fA-F]{6}$/.test(colorHexInp.value)){ colorInp.value=colorHexInp.value; applyColor(colorHexInp.value); } });
 
   if(lockPlotBtn){
     lockPlotBtn.addEventListener('click', ()=>{
-      ann.lock = 'plot';
-      // Save current data coords so we can track them on zoom/pan
-      const ch = chartInstances[pid];
-      if(ch){
-        const d = fracToData(ch, ann.x_frac, ann.y_frac);
-        ann.data_x = d.dataX; ann.data_y = d.dataY;
-      }
-      lockPlotBtn.classList.add('active');
-      lockWindowBtn.classList.remove('active');
+      ann.lock='plot';
+      const ch=chartInstances[pid];
+      if(ch){ const d=fracToData(ch,ann.x_frac,ann.y_frac); ann.data_x=d.dataX; ann.data_y=d.dataY; }
+      lockPlotBtn.classList.add('active'); lockWindowBtn.classList.remove('active');
+      snapshotForUndo();
     });
   }
-
   if(lockWindowBtn){
     lockWindowBtn.addEventListener('click', ()=>{
-      ann.lock = 'window';
-      ann.data_x = null; ann.data_y = null;
-      lockWindowBtn.classList.add('active');
-      lockPlotBtn.classList.remove('active');
+      ann.lock='window'; ann.data_x=null; ann.data_y=null;
+      lockWindowBtn.classList.add('active'); lockPlotBtn.classList.remove('active');
+      snapshotForUndo();
     });
   }
 
-  // Position menu to the right of the hamburger button
+  // Position to the right of the circle button
   const rect = menuBtnEl.getBoundingClientRect();
-  const mw = 210;
-  menu.style.visibility = 'hidden';
-  menu.style.display = 'block';
-  const mh = menu.scrollHeight || 280;
-  menu.style.visibility = '';
+  const mw = 220;
+  menu.style.visibility='hidden'; menu.style.display='block';
+  const mh = menu.scrollHeight || 240;
+  menu.style.visibility='';
   let left = rect.right + 8;
   let top  = rect.top;
   if(left + mw > window.innerWidth - 8) left = rect.left - mw - 8;
@@ -1184,14 +1402,10 @@ function showAnnMenu(ann, pid, menuBtnEl){
   menu.style.left = Math.max(4,left)+'px';
   menu.style.top  = Math.max(4,top)+'px';
 
-  // Close on outside click
   const onOutside = e=>{
-    if(!menu.contains(e.target) && e.target!==menuBtnEl){
-      closeAnnMenu();
-      document.removeEventListener('mousedown', onOutside);
-    }
+    if(!menu.contains(e.target) && e.target!==menuBtnEl){ closeAnnMenu(); document.removeEventListener('mousedown',onOutside); }
   };
-  setTimeout(()=>document.addEventListener('mousedown', onOutside), 10);
+  setTimeout(()=>document.addEventListener('mousedown',onOutside), 10);
 }
 
 function makeSep(){
@@ -1224,6 +1438,7 @@ function addTextAnnotation(pid){
   p.textAnnotations.push(ann);
   renderTextAnnotations(pid);
   if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(pid),350); }
+  snapshotForUndo();
 }
 
 function renderTextAnnotations(pid){
@@ -1278,7 +1493,6 @@ function renderTextAnnotations(pid){
     const menuBtn = document.createElement('button');
     menuBtn.className = 'ann-hamburger';
     menuBtn.innerHTML = '&#8942;'; // vertical ellipsis ⋮
-    menuBtn.title = 'Annotation options';
     menuBtn.addEventListener('mousedown', e=>{
       e.stopPropagation(); e.preventDefault();
       showAnnMenu(ann, pid, menuBtn);
@@ -1316,7 +1530,7 @@ function renderTextAnnotations(pid){
       sx=e.clientX; sy=e.clientY;
     });
     window.addEventListener('mouseup', ()=>{
-      if(dragging){ dragging=false; outer.style.cursor='move'; scheduleMplDebounce(pid); }
+      if(dragging){ dragging=false; outer.style.cursor='move'; scheduleMplDebounce(pid); snapshotForUndo(); }
     });
 
     wrap.appendChild(outer);
@@ -1349,6 +1563,12 @@ function handleAction(action, pid){
   if(anyFs && (action==='dup' || action==='del')) return;
 
   if(action==='dup')  { duplicatePlot(pid); return; }
+  if(action==='addcurve'){
+    // Set this plot active first so the modal adds to the right plot
+    activePid = pid; activeCurveIdx = 0;
+    syncActiveHighlight(); refreshCfg(); refreshSidebar();
+    openTemplateModal(); return;
+  }
   if(action==='addtext'){
     // Block annotations in matplotlib mode
     const p = gp(pid); if(p && p.mplMode) return;
@@ -1578,7 +1798,9 @@ function refreshCfg(){
     document.getElementById('c_lchex').value = curve.line_color;
     sv('c_lw', curve.line_width);
     document.getElementById('c_lw_val').textContent = parseFloat(curve.line_width).toFixed(1);
-    sv('c_ls', curve.line_style); sv('c_mk', curve.marker);
+    sv('c_ls', curve.line_style);
+    sv('c_lconn', curve.line_connection || 'linear');
+    sv('c_mk', curve.marker);
     syncDataMaskInputs();
   }
 }
@@ -1652,6 +1874,8 @@ function triggerCfgRender(){
   applyLabelFontSizes(activePid);
   if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(activePid),350); }
   else if(p.curves.some(c=>c.jsData)) renderJS(activePid, false);
+  clearTimeout(window._undoDebounce);
+  window._undoDebounce = setTimeout(snapshotForUndo, 600);
 }
 
 function readCfgIntoActive(){
@@ -1671,10 +1895,11 @@ function readCfgIntoActive(){
   v.surface_color    = v.bg_color;
   const curve = activeCurve();
   if(curve){
-    curve.line_color = document.getElementById('c_lc').value;
-    curve.line_width = parseFloat(document.getElementById('c_lw').value);
-    curve.line_style = document.getElementById('c_ls').value;
-    curve.marker     = document.getElementById('c_mk').value;
+    curve.line_color      = document.getElementById('c_lc').value;
+    curve.line_width      = parseFloat(document.getElementById('c_lw').value);
+    curve.line_style      = document.getElementById('c_ls').value;
+    curve.line_connection = document.getElementById('c_lconn')?.value || 'linear';
+    curve.marker          = document.getElementById('c_mk').value;
   }
 }
 
@@ -1692,14 +1917,100 @@ function resetDomainToDefault(){
   renderJS(p.id, true);
 }
 
+// ═══ CUSTOM TOPBAR TOOLTIPS ══════════════════════════════════════════════
+(function initTopbarTooltips(){
+  const tip = document.createElement('div');
+  tip.id = 'ctop-tip';
+  tip.style.cssText = [
+    'position:fixed',
+    'background:#0c0c18',
+    'border:1px solid #3c3c6a',
+    'border-radius:5px',
+    'padding:4px 10px',
+    'font-family:var(--mono,monospace)',
+    'font-size:.68rem',
+    'color:#c8c8e8',
+    'pointer-events:none',
+    'z-index:9999',
+    'opacity:0',
+    'transition:opacity .12s',
+    'white-space:nowrap',
+    'box-shadow:0 4px 16px rgba(0,0,0,.4)',
+    'letter-spacing:.03em',
+  ].join(';');
+  document.body.appendChild(tip);
+
+  let showTimer = null;
+
+  // Tooltip labels for each data-action value
+  const LABELS = {
+    addcurve:   '⊕  Add a curve to this plot',
+    mpl:        '▨  Render with Matplotlib',
+    revert:     '⟲  Switch back to interactive',
+    addtext:    '✎  Add text annotation',
+    dup:        '⧉  Duplicate this plot',
+    fullscreen: '⛶  Toggle full screen',
+    del:        '🗑  Delete this plot',
+  };
+
+  document.addEventListener('mouseover', e=>{
+    const btn = e.target.closest('[data-action]');
+    if(!btn) return;
+    const action = btn.dataset.action;
+    const label = LABELS[action];
+    if(!label) return;
+    clearTimeout(showTimer);
+    showTimer = setTimeout(()=>{
+      tip.textContent = label;
+      tip.style.opacity = '1';
+      positionTip(btn);
+    }, 380);
+  });
+
+  document.addEventListener('mouseout', e=>{
+    const btn = e.target.closest('[data-action]');
+    if(!btn) return;
+    clearTimeout(showTimer);
+    tip.style.opacity = '0';
+  });
+
+  document.addEventListener('mousedown', ()=>{
+    clearTimeout(showTimer);
+    tip.style.opacity = '0';
+  });
+
+  function positionTip(btn){
+    const r = btn.getBoundingClientRect();
+    const tw = tip.offsetWidth || 160, th = tip.offsetHeight || 26;
+    // Prefer below the button; flip above if no room
+    let top = r.bottom + 7;
+    let left = r.left + r.width/2 - tw/2;
+    if(top + th > window.innerHeight - 8) top = r.top - th - 7;
+    left = Math.max(8, Math.min(window.innerWidth - tw - 8, left));
+    tip.style.top  = top  + 'px';
+    tip.style.left = left + 'px';
+  }
+})();
+
 function wireAllCfgInputs(){
   // Escape: exit plot fullscreen. If browser is also in F11 fullscreen,
   // first Escape exits plot-fs; browser handles its own Escape separately.
   document.addEventListener('keydown', e=>{
     if(e.key === 'Escape' && _fullscreenPid !== null){
-      // Only intercept if a plot is in fullscreen
-      // Don't call e.preventDefault() — let the browser handle F11 exit too
       exitFullscreen(_fullscreenPid);
+    }
+    // Undo: Ctrl+Z (Win/Linux) or Cmd+Z (Mac)
+    const mod = e.ctrlKey || e.metaKey;
+    if(mod && e.key === 'z' && !e.shiftKey){
+      const tag = document.activeElement?.tagName;
+      if(tag === 'INPUT' || tag === 'TEXTAREA') return;
+      e.preventDefault(); performUndo();
+    }
+    // Redo: Ctrl+Y (Win/Linux) or Cmd+Shift+Z (Mac) or Ctrl+Shift+Z
+    if(mod && (e.key === 'y' || (e.key === 'z' && e.shiftKey))){
+      const tag = document.activeElement?.tagName;
+      if(tag === 'INPUT' || tag === 'TEXTAREA') return;
+      e.preventDefault(); performRedo();
     }
   });
 
@@ -1751,7 +2062,7 @@ function wireAllCfgInputs(){
   document.getElementById('c_galpha').addEventListener('input', function(){ document.getElementById('c_galpha_val').textContent=Math.round(parseFloat(this.value)*100)+'%'; triggerCfgRender(); });
   document.getElementById('c_aalpha')?.addEventListener('input', function(){ document.getElementById('c_aalpha_val').textContent=Math.round(parseFloat(this.value)*100)+'%'; triggerCfgRender(); });
 
-  ['c_lw','c_ls','c_mk'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input',triggerCfgRender); el.addEventListener('change',triggerCfgRender); } });
+  ['c_lw','c_ls','c_lconn','c_mk'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input',triggerCfgRender); el.addEventListener('change',triggerCfgRender); } });
   document.getElementById('c_lc').addEventListener('input', function(){ document.getElementById('c_lchex').value=this.value; triggerCfgRender(); refreshOverlayLegend(activePid); refreshLineCurveSelector(); });
   document.getElementById('c_lchex').addEventListener('input', function(){ if(/^#[0-9a-fA-F]{6}$/.test(this.value)){ document.getElementById('c_lc').value=this.value; triggerCfgRender(); refreshOverlayLegend(activePid); refreshLineCurveSelector(); } });
   document.getElementById('c_lw').addEventListener('input', function(){ document.getElementById('c_lw_val').textContent=parseFloat(this.value).toFixed(1); });
