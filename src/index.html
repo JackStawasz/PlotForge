@@ -228,34 +228,34 @@
               <input type="range" id="c_lw" min="0.5" max="6" step="0.5" value="2"/>
             </div>
             <div class="crow">
-              <label>Style</label>
-              <select id="c_ls">
-                <option value="solid">&#9472;&#9472; Solid</option>
-                <option value="dashed">- - Dashed</option>
-                <option value="dotted">&#183;&#183;&#183; Dotted</option>
-                <option value="dashdot">-&#183;- Dash-dot</option>
+              <label>Marker</label>
+              <select id="c_mk">
+                <option value="none">None</option>
+                <option value="o">● Circle</option>
+                <option value="s">■ Square</option>
+                <option value="^">▲ Triangle</option>
+                <option value="D">◆ Diamond</option>
+                <option value="+">+ Cross</option>
+                <option value="x">✕ X</option>
               </select>
             </div>
             <div class="crow">
               <label>Connection</label>
               <select id="c_lconn">
-                <option value="none">&#9898; None</option>
-                <option value="linear" selected>&#9135; Linear</option>
-                <option value="cubic">&#8767; Cubic</option>
-                <option value="bezier">&#8767;&#8767; Bézier</option>
-                <option value="step">&#8866; Step</option>
+                <option value="none">○ None</option>
+                <option value="linear" selected>─ Linear</option>
+                <option value="cubic">∿ Cubic</option>
+                <option value="bezier">∿∿ Bézier</option>
+                <option value="step">⊢ Step</option>
               </select>
             </div>
-            <div class="crow">
-              <label>Marker</label>
-              <select id="c_mk">
-                <option value="none">None</option>
-                <option value="o">&#9679; Circle</option>
-                <option value="s">&#9632; Square</option>
-                <option value="^">&#9650; Triangle</option>
-                <option value="D">&#9670; Diamond</option>
-                <option value="+">+ Cross</option>
-                <option value="x">&#215; X</option>
+            <div class="crow" id="row_ls">
+              <label>Style</label>
+              <select id="c_ls">
+                <option value="solid">── Solid</option>
+                <option value="dashed">- - Dashed</option>
+                <option value="dotted">··· Dotted</option>
+                <option value="dashdot">-·- Dash-dot</option>
               </select>
             </div>
           </div>

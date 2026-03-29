@@ -207,6 +207,16 @@ def render_matplotlib_multi(curves_data, view, labels, text_annotations=None):
         lbl=cd.get("label","")
         mpl_mk=None if mk=="none" else mk
         mpl_ls = "None" if ls=="none" else ls
+        # Stroke-only markers (+, x, 1, 2, 3, 4) need edge color, not face color
+        stroke_only_markers = {'+', 'x', '1', '2', '3', '4', '|', '_'}
+        if mpl_mk in stroke_only_markers:
+            mpl_markerfacecolor = 'none'
+            mpl_markeredgecolor = rgb
+            mpl_markeredgewidth = max(1.0, lw * 0.6)
+        else:
+            mpl_markerfacecolor = rgb
+            mpl_markeredgecolor = 'none'
+            mpl_markeredgewidth = 0
         try: rgb=_hex_to_rgb01(lc)
         except: rgb=(0.35,1.0,0.81)
         if is_d:
@@ -214,13 +224,17 @@ def render_matplotlib_multi(curves_data, view, labels, text_annotations=None):
         elif lconn == "step":
             ax.step(x,y,where='pre',color=rgb,linewidth=lw,linestyle=mpl_ls,
                     marker=mpl_mk,markersize=ms,
-                    markerfacecolor=rgb,markeredgecolor="none",
+                    markerfacecolor=mpl_markerfacecolor,
+                    markeredgecolor=mpl_markeredgecolor,
+                    markeredgewidth=mpl_markeredgewidth,
                     zorder=3,label=lbl)
             if fill: ax.fill_between(x,y,alpha=falp,color=rgb,step='pre',zorder=2)
         else:
             ax.plot(x,y,color=rgb,linewidth=lw,linestyle=mpl_ls,
                     marker=mpl_mk,markersize=ms,
-                    markerfacecolor=rgb,markeredgecolor="none",
+                    markerfacecolor=mpl_markerfacecolor,
+                    markeredgecolor=mpl_markeredgecolor,
+                    markeredgewidth=mpl_markeredgewidth,
                     zorder=3,label=lbl)
             if fill: ax.fill_between(x,y,alpha=falp,color=rgb,zorder=2)
 

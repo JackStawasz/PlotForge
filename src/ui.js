@@ -445,11 +445,24 @@ function drawChart(p){
       });
     }else{
       const isStep = (curve.line_connection||'linear') === 'step';
+      const mk = curve.marker || 'none';
+      const hasMarker = mk !== 'none';
+      // Map matplotlib marker codes to Chart.js pointStyle
+      const pointStyleMap = { 'o':'circle', 's':'rect', '^':'triangle', 'D':'rectRot', '+':'cross', 'x':'crossRot' };
+      const chartPointStyle = pointStyleMap[mk] || 'circle';
+      // Stroke-only markers need borderColor set; fill markers use backgroundColor
+      const strokeOnlyMarkers = new Set(['+', 'x']);
+      const isStrokeOnly = strokeOnlyMarkers.has(mk);
       const ds = {
         label: curve.name || (curve.template ? (TEMPLATES[curve.template]?.equation||'Curve') : 'Curve'),
         type:'line', data:curve.jsData.x.map((xv,i)=>({x:xv,y:curve.jsData.y[i]})),
         borderColor:lc, borderWidth:borderWidthFor(curve), borderDash:dashFor(curve.line_style),
-        pointRadius:curve.marker!=='none' ? curve.marker_size||4 : 0, pointBackgroundColor:lc,
+        pointStyle: hasMarker ? chartPointStyle : false,
+        pointRadius: hasMarker ? (curve.marker_size||4) : 0,
+        pointHoverRadius: hasMarker ? (curve.marker_size||4) + 2 : 0,
+        pointBackgroundColor: isStrokeOnly ? 'transparent' : lc,
+        pointBorderColor: lc,
+        pointBorderWidth: isStrokeOnly ? 2 : 0,
         fill:curve.fill_under, backgroundColor:hexAlpha(lc,curve.fill_alpha||.15),
         tension:isStep ? 0 : tensionFor(curve.line_connection||'linear'),
         stepped: isStep ? 'before' : false,
@@ -1572,6 +1585,14 @@ function refreshCfg(){
     sv('c_lconn', curve.line_connection || 'linear');
     sv('c_mk', curve.marker);
     syncDataMaskInputs();
+    // Update greyed-out state of Style row based on connection type
+    const lconn = document.getElementById('c_lconn');
+    const lsRow = document.getElementById('row_ls');
+    if(lconn && lsRow){
+      const disabled = lconn.value === 'none';
+      lsRow.style.opacity = disabled ? '0.35' : '1';
+      lsRow.style.pointerEvents = disabled ? 'none' : '';
+    }
   }
 }
 
@@ -1833,6 +1854,18 @@ function wireAllCfgInputs(){
   document.getElementById('c_aalpha')?.addEventListener('input', function(){ document.getElementById('c_aalpha_val').textContent=Math.round(parseFloat(this.value)*100)+'%'; triggerCfgRender(); });
 
   ['c_lw','c_ls','c_lconn','c_mk'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input',triggerCfgRender); el.addEventListener('change',triggerCfgRender); } });
+
+  // Grey-out Style row when line connection is "none"
+  function updateLineStyleRowState(){
+    const lconn = document.getElementById('c_lconn');
+    const lsRow = document.getElementById('row_ls');
+    if(!lconn||!lsRow) return;
+    const disabled = lconn.value === 'none';
+    lsRow.style.opacity = disabled ? '0.35' : '1';
+    lsRow.style.pointerEvents = disabled ? 'none' : '';
+  }
+  document.getElementById('c_lconn')?.addEventListener('change', updateLineStyleRowState);
+  document.getElementById('c_lconn')?.addEventListener('input', updateLineStyleRowState);
   document.getElementById('c_lc').addEventListener('input', function(){ document.getElementById('c_lchex').value=this.value; triggerCfgRender(); refreshOverlayLegend(activePid); refreshLineCurveSelector(); });
   document.getElementById('c_lchex').addEventListener('input', function(){ if(/^#[0-9a-fA-F]{6}$/.test(this.value)){ document.getElementById('c_lc').value=this.value; triggerCfgRender(); refreshOverlayLegend(activePid); refreshLineCurveSelector(); } });
   document.getElementById('c_lw').addEventListener('input', function(){ document.getElementById('c_lw_val').textContent=parseFloat(this.value).toFixed(1); });
