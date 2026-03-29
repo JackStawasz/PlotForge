@@ -202,25 +202,33 @@ function setConn(s, _msg){
 
 // ═══ MATPLOTLIB CALLS ════════════════════════════════════════════════════
 async function convertToMpl(pid){
-  const p = gp(pid); if(!p||!p.curves.some(c=>c.template)) return;
+  const p = gp(pid); if(!p) return;
+  // Allow rendering even with no template curves (list-only or empty)
   p.loading = true; p.converting = true; updateSpinner(pid);
 
-  const curvesPayload = p.curves.filter(c=>c.template).map(c=>({
-    template:    c.template,
-    params:      c.params,
-    line_color:  c.line_color,
-    line_width:  c.line_width,
-    line_style:  c.line_style,
-    marker:      c.marker,
-    marker_size: c.marker_size,
-    fill_under:  c.fill_under,
-    fill_alpha:  c.fill_alpha,
-    label:       c.name || (TEMPLATES[c.template]?.equation || c.template),
-    mask_x_min:  c.mask_x_min,
-    mask_x_max:  c.mask_x_max,
-    mask_y_min:  c.mask_y_min,
-    mask_y_max:  c.mask_y_max,
-  }));
+  const curvesPayload = p.curves
+    .filter(c => c.template || (c.jsData && !c.jsData.discrete))
+    .map(c => {
+      const base = {
+        line_color:  c.line_color,
+        line_width:  c.line_width,
+        line_style:  c.line_style,
+        line_connection: c.line_connection || 'linear',
+        marker:      c.marker,
+        marker_size: c.marker_size,
+        fill_under:  c.fill_under,
+        fill_alpha:  c.fill_alpha,
+        label:       c.name || (c.template ? (TEMPLATES[c.template]?.equation || c.template) : 'List curve'),
+      };
+      if(c.template){
+        return { ...base, template: c.template, params: c.params,
+          mask_x_min: c.mask_x_min, mask_x_max: c.mask_x_max,
+          mask_y_min: c.mask_y_min, mask_y_max: c.mask_y_max };
+      } else {
+        // List curve — send raw data directly
+        return { ...base, x: c.jsData.x, y: c.jsData.y };
+      }
+    });
 
   try{
     const r = await fetch(`${API}/plot`, {

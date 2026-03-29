@@ -34,8 +34,8 @@ Updating ```app.py``` does not require a server reboot: the server package ```fl
 - Fix grid lines appearing/disappearing by merely panning. Grid lines should only adjust when zooming in/out.
 - Fix x-axis being hidden (off screen?) when in full screen mode
 - Either make hover-over-line displaying coordinates easier to hover over or remove entirely
---Fix lines between points disappearing when one or both points are off-screen
---Make "render matplotlib" work when 0 curves are present
+- Make "render matplotlib" work when 0 curves are present
+- Make matplotlib render cubic and bezier connected curves
 
 ### Failed Prompts
 

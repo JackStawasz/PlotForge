@@ -197,20 +197,26 @@ def render_matplotlib_multi(curves_data, view, labels, text_annotations=None):
     show_legend=view.get("show_legend",True)
 
     for cd in curves_data:
-        x=cd["x"]; y=cd["y"]; is_d=cd.get("is_discrete",False)
+        x=np.array(cd["x"]); y=np.array(cd["y"]); is_d=cd.get("is_discrete",False)
         lc=cd.get("line_color","#5affce")
         lw=cd.get("line_width",2.0)
         ls=cd.get("line_style","solid")
+        lconn=cd.get("line_connection","linear")
         mk=cd.get("marker","none"); ms=cd.get("marker_size",4)
         fill=cd.get("fill_under",False); falp=cd.get("fill_alpha",.15)
         lbl=cd.get("label","")
         mpl_mk=None if mk=="none" else mk
-        # line_style "none" means no line (markers only)
         mpl_ls = "None" if ls=="none" else ls
         try: rgb=_hex_to_rgb01(lc)
         except: rgb=(0.35,1.0,0.81)
         if is_d:
             ax.bar(x,y,color=rgb+(0.75,),width=0.6,zorder=3,label=lbl)
+        elif lconn == "step":
+            ax.step(x,y,where='pre',color=rgb,linewidth=lw,linestyle=mpl_ls,
+                    marker=mpl_mk,markersize=ms,
+                    markerfacecolor=rgb,markeredgecolor="none",
+                    zorder=3,label=lbl)
+            if fill: ax.fill_between(x,y,alpha=falp,color=rgb,step='pre',zorder=2)
         else:
             ax.plot(x,y,color=rgb,linewidth=lw,linestyle=mpl_ls,
                     marker=mpl_mk,markersize=ms,
@@ -366,16 +372,33 @@ def plot_matplotlib():
             "fill_alpha":view.get("fill_alpha",.15),
             "label":body.get("label",""),
         }]
-    if not curves_in:
-        return jsonify({"error":"No curves provided"}),400
+    if not curves_in and not body.get("template"):
+        # Allow empty plot — render axes only
+        curves_in = []
     try:
         curves_data=[]
         for ci in curves_in:
             tkey=ci.get("template")
+            # Raw x/y list curve (no template)
+            if not tkey and "x" in ci and "y" in ci:
+                x=np.array(ci["x"],dtype=float); y=np.array(ci["y"],dtype=float)
+                curves_data.append({
+                    "x":x,"y":y,"is_discrete":False,
+                    "line_color":ci.get("line_color","#5affce"),
+                    "line_width":ci.get("line_width",2.0),
+                    "line_style":ci.get("line_style","solid"),
+                    "line_connection":ci.get("line_connection","linear"),
+                    "marker":ci.get("marker","none"),
+                    "marker_size":ci.get("marker_size",4),
+                    "fill_under":ci.get("fill_under",False),
+                    "fill_alpha":ci.get("fill_alpha",.15),
+                    "label":ci.get("label",""),
+                })
+                continue
             if not tkey or tkey not in TEMPLATES:
                 continue
             x,y=generate_xy(tkey,ci.get("params",{}),view)
-            x,y=_apply_mask(x,y,ci)  # apply data mask
+            x,y=_apply_mask(x,y,ci)
             is_d=tkey in ("binomial","poisson")
             y_clean=np.where(np.isnan(y),np.nan,y)
             curves_data.append({
@@ -383,14 +406,13 @@ def plot_matplotlib():
                 "line_color":ci.get("line_color","#5affce"),
                 "line_width":ci.get("line_width",2.0),
                 "line_style":ci.get("line_style","solid"),
+                "line_connection":ci.get("line_connection","linear"),
                 "marker":ci.get("marker","none"),
                 "marker_size":ci.get("marker_size",4),
                 "fill_under":ci.get("fill_under",False),
                 "fill_alpha":ci.get("fill_alpha",.15),
                 "label":ci.get("label",""),
             })
-        if not curves_data:
-            return jsonify({"error":"No valid curves"}),400
         img=render_matplotlib_multi(curves_data,view,labels,text_annotations)
         return jsonify({"image":img})
     except Exception as e:

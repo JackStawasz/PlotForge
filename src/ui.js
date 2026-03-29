@@ -353,6 +353,8 @@ function applyAndRender(pid, isNewTemplate=false){
 function renderJS(pid, firstRender=false){
   const p = gp(pid); if(!p) return;
   let anyData=false, gxMin=null, gxMax=null, gyMin=null, gyMax=null;
+
+  // Template-based curves: evaluate and store jsData
   for(const curve of p.curves){
     if(!curve.template) continue;
     const result = evalTemplate(curve.template, curve.params, p.view); if(!result) continue;
@@ -372,6 +374,23 @@ function renderJS(pid, firstRender=false){
     if(gxMax===null||result.autoXMax>gxMax) gxMax=result.autoXMax;
     if(gyMin===null||result.autoYMin<gyMin) gyMin=result.autoYMin;
     if(gyMax===null||result.autoYMax>gyMax) gyMax=result.autoYMax;
+  }
+
+  // List-data curves: jsData already set directly, just count bounds
+  for(const curve of p.curves){
+    if(curve.template || !curve.jsData) continue;
+    anyData = true;
+    const xs = curve.jsData.x, ys = curve.jsData.y.filter(v=>v!=null&&!isNaN(v));
+    if(xs.length){
+      const xMin=Math.min(...xs), xMax=Math.max(...xs);
+      if(gxMin===null||xMin<gxMin) gxMin=xMin;
+      if(gxMax===null||xMax>gxMax) gxMax=xMax;
+    }
+    if(ys.length){
+      const yMin=Math.min(...ys), yMax=Math.max(...ys);
+      if(gyMin===null||yMin<gyMin) gyMin=yMin;
+      if(gyMax===null||yMax>gyMax) gyMax=yMax;
+    }
   }
   if(!anyData){
     // No curves yet — still draw the empty interactive grid
@@ -425,14 +444,18 @@ function drawChart(p){
         backgroundColor:hexAlpha(lc,.7), borderColor:lc, borderWidth:1,
       });
     }else{
-      datasets.push({
+      const isStep = (curve.line_connection||'linear') === 'step';
+      const ds = {
         label: curve.name || (curve.template ? (TEMPLATES[curve.template]?.equation||'Curve') : 'Curve'),
         type:'line', data:curve.jsData.x.map((xv,i)=>({x:xv,y:curve.jsData.y[i]})),
         borderColor:lc, borderWidth:borderWidthFor(curve), borderDash:dashFor(curve.line_style),
         pointRadius:curve.marker!=='none' ? curve.marker_size||4 : 0, pointBackgroundColor:lc,
         fill:curve.fill_under, backgroundColor:hexAlpha(lc,curve.fill_alpha||.15),
-        tension:tensionFor(curve.line_connection||'linear'), spanGaps:false, parsing:false,
-      });
+        tension:isStep ? 0 : tensionFor(curve.line_connection||'linear'),
+        stepped: isStep ? 'before' : false,
+        spanGaps:false, parsing:false,
+      };
+      datasets.push(ds);
     }
   }
   const axisDatasets = buildAxisLineDatasets(v);
@@ -1407,14 +1430,18 @@ function getEffectiveDomain(pid){
 function refreshLineCurveSelector(){
   const container = document.getElementById('lineCurveSelector'); if(!container) return;
   const p = activePlot();
-  if(!p || !p.curves.some(c=>c.template)){ container.innerHTML=''; container.style.display='none'; return; }
+  // Show for any curve that has data (template OR raw jsData from list-vs-list)
+  const hasAnyCurve = p && p.curves.some(c=>c.template || c.jsData);
+  if(!p || !hasAnyCurve){ container.innerHTML=''; container.style.display='none'; return; }
   container.style.display = 'flex'; container.innerHTML = '';
 
   let dragSrcIdx = null;
 
   p.curves.forEach((curve, idx)=>{
-    if(!curve.template) return;
-    const label = curve.name || (TEMPLATES[curve.template]?.label || `Curve ${idx+1}`);
+    // Show template curves and list-data curves; skip empty placeholder curves
+    if(!curve.template && !curve.jsData) return;
+    const label = curve.name
+      || (curve.template ? (TEMPLATES[curve.template]?.label || `Curve ${idx+1}`) : `List ${idx+1}`);
 
     const pill = document.createElement('div');
     pill.className = 'curve-pill' + (idx===activeCurveIdx ? ' curve-pill-active' : '');
@@ -1430,38 +1457,32 @@ function refreshLineCurveSelector(){
     symWrap.className = 'pill-sym';
     symWrap.innerHTML = makeCurveSymbolSVG(curve, 28, 10);
 
-    // Inline name input — required, falls back to equation as placeholder
-    const autoName = TEMPLATES[curve.template]?.equation || `Curve ${idx+1}`;
+    // Fallback name for list curves
+    const autoName = curve.template
+      ? (TEMPLATES[curve.template]?.equation || `Curve ${idx+1}`)
+      : (curve.name || `${curve.listYName||'y'} vs ${curve.listXName||'x'}`);
     const nameInp = document.createElement('input');
     nameInp.type = 'text';
     nameInp.className = 'pill-name-inp';
     nameInp.value = curve.name || autoName;
     nameInp.maxLength = 40;
 
-    let nameOnFocus = '';  // snapshot taken when user starts editing
-
-    nameInp.addEventListener('focus', ()=>{
-      nameOnFocus = nameInp.value;
-    });
+    let nameOnFocus = '';
+    nameInp.addEventListener('focus', ()=>{ nameOnFocus = nameInp.value; });
     nameInp.addEventListener('click', e=>e.stopPropagation());
     nameInp.addEventListener('input', ()=>{
       curve.name = nameInp.value || autoName;
       refreshOverlayLegend(p.id);
     });
     nameInp.addEventListener('blur', ()=>{
-      // Enforce non-empty: if blank, restore to pre-edit value (or autoName)
       if(!nameInp.value.trim()){
         const fallback = nameOnFocus.trim() || autoName;
-        nameInp.value = fallback;
-        curve.name = fallback;
+        nameInp.value = fallback; curve.name = fallback;
         refreshOverlayLegend(p.id);
-      } else {
-        curve.name = nameInp.value;
-      }
+      } else { curve.name = nameInp.value; }
     });
     nameInp.addEventListener('keydown', e=>{ if(e.key==='Enter') nameInp.blur(); e.stopPropagation(); });
 
-    // X delete button, right-justified
     const delBtn = document.createElement('button');
     delBtn.className = 'pill-del-btn';
     delBtn.textContent = '✕';
@@ -1477,16 +1498,13 @@ function refreshLineCurveSelector(){
     pill.appendChild(nameInp);
     pill.appendChild(delBtn);
 
-    // Select curve on click (but not when dragging or clicking name/del)
     pill.addEventListener('click', e=>{
       if(e.target === handle || e.target === nameInp || e.target === delBtn) return;
       activeCurveIdx = idx; refreshLineCurveSelector(); refreshCfg();
     });
 
-    // Drag-to-reorder
     pill.addEventListener('dragstart', e=>{
-      dragSrcIdx = idx;
-      e.dataTransfer.effectAllowed = 'move';
+      dragSrcIdx = idx; e.dataTransfer.effectAllowed = 'move';
       setTimeout(()=>pill.style.opacity='0.4', 0);
     });
     pill.addEventListener('dragend', ()=>{
@@ -1504,16 +1522,13 @@ function refreshLineCurveSelector(){
       const destIdx = parseInt(pill.dataset.idx);
       if(dragSrcIdx === null || dragSrcIdx === destIdx) return;
       const ap = activePlot(); if(!ap) return;
-      // Reorder curves array
       const [moved] = ap.curves.splice(dragSrcIdx, 1);
       ap.curves.splice(destIdx, 0, moved);
-      // Update activeCurveIdx to follow the moved curve
       if(activeCurveIdx === dragSrcIdx) activeCurveIdx = destIdx;
       else if(activeCurveIdx > dragSrcIdx && activeCurveIdx <= destIdx) activeCurveIdx--;
       else if(activeCurveIdx < dragSrcIdx && activeCurveIdx >= destIdx) activeCurveIdx++;
       dragSrcIdx = null;
-      refreshLineCurveSelector();
-      refreshOverlayLegend(ap.id);
+      refreshLineCurveSelector(); refreshOverlayLegend(ap.id);
       if(ap.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(ap.id),350); }
     });
 
