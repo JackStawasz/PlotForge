@@ -205,9 +205,10 @@ def render_matplotlib_multi(curves_data, view, labels, text_annotations=None):
         mk=cd.get("marker","none"); ms=cd.get("marker_size",4)
         fill=cd.get("fill_under",False); falp=cd.get("fill_alpha",.15)
         lbl=cd.get("label","")
+        try: rgb=_hex_to_rgb01(lc)
+        except: rgb=(0.35,1.0,0.81)
         mpl_mk=None if mk=="none" else mk
         mpl_ls = "None" if ls=="none" else ls
-        # Stroke-only markers (+, x, 1, 2, 3, 4) need edge color, not face color
         stroke_only_markers = {'+', 'x', '1', '2', '3', '4', '|', '_'}
         if mpl_mk in stroke_only_markers:
             mpl_markerfacecolor = 'none'
@@ -217,26 +218,38 @@ def render_matplotlib_multi(curves_data, view, labels, text_annotations=None):
             mpl_markerfacecolor = rgb
             mpl_markeredgecolor = 'none'
             mpl_markeredgewidth = 0
-        try: rgb=_hex_to_rgb01(lc)
-        except: rgb=(0.35,1.0,0.81)
+        # Smooth curve for cubic/bezier connections
+        px, py = x, y
+        if lconn in ("cubic", "bezier") and not is_d and len(x) >= 4:
+            from scipy.interpolate import make_interp_spline
+            try:
+                order = 3
+                finite = np.isfinite(x) & np.isfinite(y)
+                xf, yf = x[finite], y[finite]
+                if len(xf) >= 4:
+                    spl = make_interp_spline(xf, yf, k=order)
+                    px = np.linspace(xf[0], xf[-1], max(500, len(xf)*4))
+                    py = spl(px)
+            except Exception:
+                pass
         if is_d:
             ax.bar(x,y,color=rgb+(0.75,),width=0.6,zorder=3,label=lbl)
         elif lconn == "step":
-            ax.step(x,y,where='pre',color=rgb,linewidth=lw,linestyle=mpl_ls,
+            ax.step(px,py,where='pre',color=rgb,linewidth=lw,linestyle=mpl_ls,
                     marker=mpl_mk,markersize=ms,
                     markerfacecolor=mpl_markerfacecolor,
                     markeredgecolor=mpl_markeredgecolor,
                     markeredgewidth=mpl_markeredgewidth,
                     zorder=3,label=lbl)
-            if fill: ax.fill_between(x,y,alpha=falp,color=rgb,step='pre',zorder=2)
+            if fill: ax.fill_between(px,py,alpha=falp,color=rgb,step='pre',zorder=2)
         else:
-            ax.plot(x,y,color=rgb,linewidth=lw,linestyle=mpl_ls,
+            ax.plot(px,py,color=rgb,linewidth=lw,linestyle=mpl_ls,
                     marker=mpl_mk,markersize=ms,
                     markerfacecolor=mpl_markerfacecolor,
                     markeredgecolor=mpl_markeredgecolor,
                     markeredgewidth=mpl_markeredgewidth,
                     zorder=3,label=lbl)
-            if fill: ax.fill_between(x,y,alpha=falp,color=rgb,zorder=2)
+            if fill: ax.fill_between(px,py,alpha=falp,color=rgb,zorder=2)
 
     if view.get("x_min") is not None or view.get("x_max") is not None:
         all_x=np.concatenate([cd["x"] for cd in curves_data]) if curves_data else np.array([0,1])

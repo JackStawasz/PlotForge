@@ -146,7 +146,11 @@ function gp(pid){ return plots.find(p => p.id === pid); }
 function activePlot(){ return activePid !== null ? gp(activePid) : null; }
 function activeCurve(){
   const p = activePlot(); if(!p) return null;
-  return p.curves[activeCurveIdx] || p.curves[0] || null;
+  const real = p.curves.filter(c => c.template || c.jsData);
+  if(!real.length) return null;
+  const c = p.curves[activeCurveIdx];
+  if(c && (c.template || c.jsData)) return c;
+  return real[0];
 }
 
 // ═══ BOOT ════════════════════════════════════════════════════════════════
@@ -161,6 +165,7 @@ async function boot(){
   activePid = p.id; activeCurveIdx = 0;
   renderDOM();
   wireAllCfgInputs();
+  initCfgPanel();
   snapshotForUndo(); // initial state
   if(!connected) startReconnectPoller();
 }
@@ -207,28 +212,21 @@ async function convertToMpl(pid){
   p.loading = true; p.converting = true; updateSpinner(pid);
 
   const curvesPayload = p.curves
-    .filter(c => c.template || (c.jsData && !c.jsData.discrete))
-    .map(c => {
-      const base = {
-        line_color:  c.line_color,
-        line_width:  c.line_width,
-        line_style:  c.line_style,
-        line_connection: c.line_connection || 'linear',
-        marker:      c.marker,
-        marker_size: c.marker_size,
-        fill_under:  c.fill_under,
-        fill_alpha:  c.fill_alpha,
-        label:       c.name || (c.template ? (TEMPLATES[c.template]?.equation || c.template) : 'List curve'),
-      };
-      if(c.template){
-        return { ...base, template: c.template, params: c.params,
-          mask_x_min: c.mask_x_min, mask_x_max: c.mask_x_max,
-          mask_y_min: c.mask_y_min, mask_y_max: c.mask_y_max };
-      } else {
-        // List curve — send raw data directly
-        return { ...base, x: c.jsData.x, y: c.jsData.y };
-      }
-    });
+    .filter(c => c.jsData && c.jsData.x && c.jsData.x.length)
+    .map(c => ({
+      x:            c.jsData.x,
+      y:            c.jsData.y,
+      is_discrete:  c.jsData.discrete || false,
+      line_color:   c.line_color,
+      line_width:   c.line_width,
+      line_style:   c.line_style,
+      line_connection: c.line_connection || 'linear',
+      marker:       c.marker,
+      marker_size:  c.marker_size,
+      fill_under:   c.fill_under,
+      fill_alpha:   c.fill_alpha,
+      label:        c.name || (c.template ? (TEMPLATES[c.template]?.equation || c.template) : 'List curve'),
+    }));
 
   try{
     const r = await fetch(`${API}/plot`, {

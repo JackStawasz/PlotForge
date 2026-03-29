@@ -6,7 +6,8 @@
 <title>PlotForge</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,600;1,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;1,9..144,300&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mathquill@0.10.1/build/mathquill.css">
-<link rel="stylesheet" href="style.css"/>
+<link rel="stylesheet" href="layout.css"/>
+<link rel="stylesheet" href="components.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mathquill@0.10.1/build/mathquill.min.js"></script>
@@ -142,18 +143,13 @@
               </div>
               <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
             </div>
-            <div class="log-scale-row">
-              <span class="log-scale-lbl">Log scale:</span>
-              <div class="log-scale-pair">
-                <div class="log-scale-item log-scale-item--left">
-                  <label class="tog"><input type="checkbox" id="c_x_log"><span class="tslider"></span></label>
-                  <span>X-axis</span>
-                </div>
-                <div class="log-scale-item log-scale-item--right">
-                  <span>Y-axis</span>
-                  <label class="tog"><input type="checkbox" id="c_y_log"><span class="tslider"></span></label>
-                </div>
-              </div>
+            <div class="trow">
+              <label>Log scale X</label>
+              <label class="tog"><input type="checkbox" id="c_x_log"><span class="tslider"></span></label>
+            </div>
+            <div class="trow">
+              <label>Log scale Y</label>
+              <label class="tog"><input type="checkbox" id="c_y_log"><span class="tslider"></span></label>
             </div>
           </div>
         </div>
@@ -301,7 +297,8 @@
 <script src="API.js"></script>
 <script src="sidebars.js"></script>
 <script src="variables.js"></script>
-<script src="UI.js"></script>
+<script src="plot-render.js"></script>
+<script src="plot-ui.js"></script>
 <script>boot();</script>
 </body>
 </html>

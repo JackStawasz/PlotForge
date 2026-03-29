@@ -194,3 +194,358 @@ function showPickleConfirmModal(filename, varsData, onConfirm, onCancel){
   const onKey = e=>{ if(e.key==='Escape'){ close(); onCancel?.(); document.removeEventListener('keydown',onKey); } };
   document.addEventListener('keydown', onKey);
 }
+// ═══ RIGHT SIDEBAR: CFG PANEL ════════════════════════════════════════════
+let cfgActiveTab = 'plot';
+
+function setCfgTab(tab){
+  cfgActiveTab = tab;
+  document.getElementById('cfgTabPlot')?.classList.toggle('cfg-tab-active', tab==='plot');
+  document.getElementById('cfgTabLine')?.classList.toggle('cfg-tab-active', tab==='line');
+  document.getElementById('cfgPanePlot')?.style.setProperty('display', tab==='plot'?'flex':'none');
+  document.getElementById('cfgPaneLine')?.style.setProperty('display', tab==='line'?'flex':'none');
+}
+
+function fmtDomain(v){ if(v==null||!isFinite(v)) return ''; return parseFloat(v.toPrecision(5)).toString(); }
+
+function getEffectiveDomain(pid){
+  const p = gp(pid); if(!p) return {xMin:0,xMax:1,yMin:0,yMax:1};
+  const v = p.view;
+  if(v.x_min!=null && v.x_max!=null && v.y_min!=null && v.y_max!=null)
+    return {xMin:v.x_min, xMax:v.x_max, yMin:v.y_min, yMax:v.y_max};
+  if(p.curves[0]?.template){
+    const res = evalTemplate(p.curves[0].template, p.curves[0].params, {});
+    if(res){ const yp=(res.autoYMax-res.autoYMin)*0.08||0.1; return {xMin:res.autoXMin,xMax:res.autoXMax,yMin:res.autoYMin-yp,yMax:res.autoYMax+yp}; }
+  }
+  return {xMin:0,xMax:1,yMin:0,yMax:1};
+}
+
+function refreshLineCurveSelector(){
+  const container = document.getElementById('lineCurveSelector'); if(!container) return;
+  const p = activePlot();
+  const hasAnyCurve = p && p.curves.some(c=>c.template || c.jsData);
+  if(!p || !hasAnyCurve){ container.innerHTML=''; container.style.display='none'; return; }
+  container.style.display = 'flex'; container.innerHTML = '';
+
+  let dragSrcIdx = null;
+
+  p.curves.forEach((curve, idx)=>{
+    if(!curve.template && !curve.jsData) return;
+    const label = curve.name
+      || (curve.template ? (TEMPLATES[curve.template]?.label || `Curve ${idx+1}`) : `List ${idx+1}`);
+
+    const pill = document.createElement('div');
+    pill.className = 'curve-pill' + (idx===activeCurveIdx ? ' curve-pill-active' : '');
+    pill.dataset.idx = idx;
+    pill.draggable = true;
+
+    const handle = document.createElement('span');
+    handle.className = 'pill-drag-handle';
+    handle.textContent = '⠿';
+    handle.title = 'Drag to reorder';
+
+    const symWrap = document.createElement('span');
+    symWrap.className = 'pill-sym';
+    symWrap.innerHTML = makeCurveSymbolSVG(curve, 28, 10);
+
+    const autoName = curve.template
+      ? (TEMPLATES[curve.template]?.equation || `Curve ${idx+1}`)
+      : (curve.name || `${curve.listYName||'y'} vs ${curve.listXName||'x'}`);
+    const nameInp = document.createElement('input');
+    nameInp.type = 'text';
+    nameInp.className = 'pill-name-inp';
+    nameInp.value = curve.name || autoName;
+    nameInp.maxLength = 40;
+
+    let nameOnFocus = '';
+    nameInp.addEventListener('focus', ()=>{ nameOnFocus = nameInp.value; });
+    nameInp.addEventListener('click', e=>e.stopPropagation());
+    nameInp.addEventListener('input', ()=>{
+      curve.name = nameInp.value || autoName;
+      refreshOverlayLegend(p.id);
+    });
+    nameInp.addEventListener('blur', ()=>{
+      if(!nameInp.value.trim()){
+        const fallback = nameOnFocus.trim() || autoName;
+        nameInp.value = fallback; curve.name = fallback;
+        refreshOverlayLegend(p.id);
+      } else { curve.name = nameInp.value; }
+    });
+    nameInp.addEventListener('keydown', e=>{ if(e.key==='Enter') nameInp.blur(); e.stopPropagation(); });
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'pill-del-btn';
+    delBtn.textContent = '✕';
+    delBtn.title = 'Remove curve';
+    delBtn.addEventListener('click', e=>{
+      e.stopPropagation();
+      const ap = activePlot(); if(!ap) return;
+      removeCurve(ap.id, idx);
+    });
+
+    pill.appendChild(handle);
+    pill.appendChild(symWrap);
+    pill.appendChild(nameInp);
+    pill.appendChild(delBtn);
+
+    pill.addEventListener('click', e=>{
+      if(e.target === handle || e.target === nameInp || e.target === delBtn) return;
+      activeCurveIdx = idx; refreshLineCurveSelector(); refreshCfg();
+    });
+
+    pill.addEventListener('dragstart', e=>{
+      dragSrcIdx = idx; e.dataTransfer.effectAllowed = 'move';
+      setTimeout(()=>pill.style.opacity='0.4', 0);
+    });
+    pill.addEventListener('dragend', ()=>{
+      pill.style.opacity='';
+      container.querySelectorAll('.curve-pill').forEach(p=>p.classList.remove('drag-over'));
+    });
+    pill.addEventListener('dragover', e=>{
+      e.preventDefault(); e.dataTransfer.dropEffect='move';
+      pill.classList.add('drag-over');
+    });
+    pill.addEventListener('dragleave', ()=>pill.classList.remove('drag-over'));
+    pill.addEventListener('drop', e=>{
+      e.preventDefault();
+      pill.classList.remove('drag-over');
+      const destIdx = parseInt(pill.dataset.idx);
+      if(dragSrcIdx === null || dragSrcIdx === destIdx) return;
+      const ap = activePlot(); if(!ap) return;
+      const [moved] = ap.curves.splice(dragSrcIdx, 1);
+      ap.curves.splice(destIdx, 0, moved);
+      if(activeCurveIdx === dragSrcIdx) activeCurveIdx = destIdx;
+      else if(activeCurveIdx > dragSrcIdx && activeCurveIdx <= destIdx) activeCurveIdx--;
+      else if(activeCurveIdx < dragSrcIdx && activeCurveIdx >= destIdx) activeCurveIdx++;
+      dragSrcIdx = null;
+      refreshLineCurveSelector(); refreshOverlayLegend(ap.id);
+      if(ap.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(ap.id),350); }
+    });
+
+    container.appendChild(pill);
+  });
+}
+
+function refreshCfg(){
+  const empty=document.getElementById('cfgEmpty'), content=document.getElementById('cfgContent');
+  const p = activePid!==null ? gp(activePid) : null;
+  if(!p){ empty.style.display='flex'; content.style.display='none'; return; }
+  empty.style.display='none'; content.style.display='flex';
+  setCfgTab(cfgActiveTab);
+  syncCfgDomain();
+  const v = p.view;
+  document.getElementById('c_grid').checked = v.show_grid;
+  sv('c_galpha', v.grid_alpha ?? 0.5);
+  document.getElementById('c_galpha_val').textContent = Math.round((v.grid_alpha ?? 0.5)*100)+'%';
+  const axEl = document.getElementById('c_axis_lines'); if(axEl) axEl.checked = v.show_axis_lines ?? true;
+  sv('c_aalpha', v.axis_alpha ?? 1.0);
+  document.getElementById('c_aalpha_val').textContent = Math.round((v.axis_alpha ?? 1.0)*100)+'%';
+  const xlEl = document.getElementById('c_x_log'); if(xlEl) xlEl.checked = v.x_log ?? false;
+  const ylEl = document.getElementById('c_y_log'); if(ylEl) ylEl.checked = v.y_log ?? false;
+  sv('c_ts', v.title_size); sv('c_ls2', v.label_size);
+  sv('c_legend_size', v.legend_size ?? 9);
+  const slEl = document.getElementById('c_show_legend'); if(slEl) slEl.checked = v.show_legend ?? true;
+  const bgEl = document.getElementById('c_bg_color'); if(bgEl) bgEl.value = v.bg_color || '#12121c';
+  const bgHexEl = document.getElementById('c_bg_hex'); if(bgHexEl) bgHexEl.value = v.bg_color || '#12121c';
+  applyBgColorToCanvas(activePid);
+  updateGridOpacityState(v.show_grid);
+  updateAxisOpacityState(v.show_axis_lines ?? true);
+  updateLegendOpacityState(v.show_legend ?? true);
+  refreshLineCurveSelector();
+  const curve = activeCurve();
+  const lineBody = document.getElementById('lineSettingsBody');
+  if(lineBody) lineBody.classList.toggle('line-settings-disabled', !curve);
+  if(curve){
+    document.getElementById('c_lc').value = curve.line_color;
+    document.getElementById('c_lchex').value = curve.line_color;
+    sv('c_lw', curve.line_width);
+    document.getElementById('c_lw_val').textContent = parseFloat(curve.line_width).toFixed(1);
+    sv('c_ls', curve.line_style);
+    sv('c_lconn', curve.line_connection || 'linear');
+    sv('c_mk', curve.marker);
+    syncDataMaskInputs();
+    const lconn = document.getElementById('c_lconn');
+    const lsRow = document.getElementById('row_ls');
+    if(lconn && lsRow){
+      const disabled = lconn.value === 'none';
+      lsRow.style.opacity = disabled ? '0.35' : '1';
+      lsRow.style.pointerEvents = disabled ? 'none' : '';
+    }
+  }
+}
+
+function syncDataMaskInputs(){
+  const curve=activeCurve(), focused=document.activeElement?.id;
+  const set=(id,val)=>{ const el=document.getElementById(id); if(el&&el.id!==focused) el.value=val!=null?fmtDomain(val):''; };
+  if(!curve){ ['c_mask_xn','c_mask_xx','c_mask_yn','c_mask_yx'].forEach(id=>{ const el=document.getElementById(id); if(el&&el.id!==focused) el.value=''; }); return; }
+  set('c_mask_xn', curve.mask_x_min); set('c_mask_xx', curve.mask_x_max);
+  set('c_mask_yn', curve.mask_y_min); set('c_mask_yx', curve.mask_y_max);
+}
+
+function commitMaskInput(id, axis, minMax){
+  const p = activePlot(); if(!p) return;
+  const curve = activeCurve(); if(!curve) return;
+  const el = document.getElementById(id); if(!el) return;
+  const raw = el.value.trim(), key = `mask_${axis}_${minMax}`;
+  if(raw==='') curve[key]=null;
+  else{ const val=parseFloat(raw); if(isNaN(val)){ syncDataMaskInputs(); return; } curve[key]=val; el.value=fmtDomain(val); }
+  if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(p.id),350); }
+  else renderJS(p.id, false);
+}
+
+function updateGridOpacityState(gridOn){
+  const row = document.getElementById('row_galpha');
+  if(!row) return;
+  row.style.opacity = gridOn ? '1' : '0.35';
+  row.style.pointerEvents = gridOn ? '' : 'none';
+}
+
+function updateAxisOpacityState(axisOn){
+  const row = document.getElementById('row_aalpha');
+  if(!row) return;
+  row.style.opacity = axisOn ? '1' : '0.35';
+  row.style.pointerEvents = axisOn ? '' : 'none';
+}
+
+function updateLegendOpacityState(legendOn){
+  const row = document.getElementById('row_legend_size');
+  if(!row) return;
+  row.style.opacity = legendOn ? '1' : '0.35';
+  row.style.pointerEvents = legendOn ? '' : 'none';
+}
+
+function sv(id, val){ const el=document.getElementById(id); if(el) el.value=val; }
+
+function commitDomainInput(id, axis, minMax){
+  const p = activePid!==null ? gp(activePid) : null; if(!p) return;
+  const el = document.getElementById(id); if(!el) return;
+  const raw = el.value.trim();
+  if(raw===''){
+    const dom=getEffectiveDomain(activePid), cur=axis==='x'?(minMax==='min'?dom.xMin:dom.xMax):(minMax==='min'?dom.yMin:dom.yMax);
+    el.value=fmtDomain(cur); p.view[axis+'_'+minMax]=null;
+    if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(activePid),350); }
+    else if(p.curves.some(c=>c.template)) renderJS(activePid, false); return;
+  }
+  const val = parseFloat(raw);
+  if(isNaN(val)){
+    const dom=getEffectiveDomain(activePid), cur=axis==='x'?(minMax==='min'?dom.xMin:dom.xMax):(minMax==='min'?dom.yMin:dom.yMax);
+    el.value=fmtDomain(cur); return;
+  }
+  p.view[axis+'_'+minMax] = val; el.value=fmtDomain(val);
+  if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(activePid),350); }
+  else if(p.curves.some(c=>c.template)) renderJS(activePid, false);
+}
+
+function triggerCfgRender(){
+  if(activePid===null) return;
+  readCfgIntoActive();
+  const p = gp(activePid); if(!p) return;
+  applyLabelFontSizes(activePid);
+  if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(activePid),350); }
+  else if(p.curves.some(c=>c.jsData)) renderJS(activePid, false);
+  clearTimeout(window._undoDebounce);
+  window._undoDebounce = setTimeout(snapshotForUndo, 600);
+}
+
+function readCfgIntoActive(){
+  const p = activePid!==null ? gp(activePid) : null; if(!p) return;
+  const v = p.view;
+  v.show_grid        = document.getElementById('c_grid').checked;
+  v.grid_alpha       = parseFloat(document.getElementById('c_galpha').value) || 0.5;
+  v.show_axis_lines  = document.getElementById('c_axis_lines')?.checked ?? true;
+  v.axis_alpha       = parseFloat(document.getElementById('c_aalpha')?.value) || 1.0;
+  v.x_log            = document.getElementById('c_x_log')?.checked ?? false;
+  v.y_log            = document.getElementById('c_y_log')?.checked ?? false;
+  v.title_size       = parseInt(document.getElementById('c_ts').value) || 13;
+  v.label_size       = parseInt(document.getElementById('c_ls2').value) || 10;
+  v.legend_size      = parseInt(document.getElementById('c_legend_size')?.value) || 9;
+  v.show_legend      = document.getElementById('c_show_legend')?.checked ?? true;
+  v.bg_color         = document.getElementById('c_bg_color')?.value || '#12121c';
+  v.surface_color    = v.bg_color;
+  const curve = activeCurve();
+  if(curve){
+    curve.line_color      = document.getElementById('c_lc').value;
+    curve.line_width      = parseFloat(document.getElementById('c_lw').value);
+    curve.line_style      = document.getElementById('c_ls').value;
+    curve.line_connection = document.getElementById('c_lconn')?.value || 'linear';
+    curve.marker          = document.getElementById('c_mk').value;
+  }
+}
+
+function syncCfgDomain(){
+  if(activePid===null) return;
+  const p = gp(activePid); if(!p) return;
+  const dom=getEffectiveDomain(activePid), focused=document.activeElement?.id;
+  const set=(id,val)=>{ const el=document.getElementById(id); if(el&&el.id!==focused) el.value=fmtDomain(val); };
+  set('c_xn',dom.xMin); set('c_xx',dom.xMax); set('c_yn',dom.yMin); set('c_yx',dom.yMax);
+}
+
+function resetDomainToDefault(){
+  const p = activePid!==null ? gp(activePid) : null; if(!p) return;
+  p.view.x_min=null; p.view.x_max=null; p.view.y_min=null; p.view.y_max=null;
+  renderJS(p.id, true);
+}
+
+function initCfgPanel(){
+  document.getElementById('c_bg_color')?.addEventListener('input', function(){
+    document.getElementById('c_bg_hex').value = this.value;
+    triggerCfgRender();
+    applyBgColorToCanvas(activePid);
+  });
+  document.getElementById('c_bg_hex')?.addEventListener('input', function(){
+    if(/^#[0-9a-fA-F]{6}$/.test(this.value)){
+      document.getElementById('c_bg_color').value = this.value;
+      triggerCfgRender();
+      applyBgColorToCanvas(activePid);
+    }
+  });
+
+  document.getElementById('cfgTabPlot')?.addEventListener('click', ()=>setCfgTab('plot'));
+  document.getElementById('cfgTabLine')?.addEventListener('click', ()=>{ setCfgTab('line'); refreshLineCurveSelector(); });
+  document.getElementById('domainHomeBtn')?.addEventListener('click', resetDomainToDefault);
+
+  [['c_xn','x','min'],['c_xx','x','max'],['c_yn','y','min'],['c_yx','y','max']].forEach(([id,axis,mm])=>{
+    const el = document.getElementById(id); if(!el) return;
+    el.addEventListener('keydown', e=>{ if(e.key==='Enter'){e.preventDefault();commitDomainInput(id,axis,mm);el.blur();} if(e.key==='Escape'){syncCfgDomain();el.blur();} });
+    el.addEventListener('blur', ()=>commitDomainInput(id,axis,mm));
+  });
+
+  ['c_ts','c_ls2','c_legend_size'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input',triggerCfgRender); el.addEventListener('change',triggerCfgRender); } });
+  document.getElementById('c_grid').addEventListener('change', function(){ updateGridOpacityState(this.checked); triggerCfgRender(); });
+  document.getElementById('c_axis_lines')?.addEventListener('change', function(){ updateAxisOpacityState(this.checked); triggerCfgRender(); });
+  document.getElementById('c_show_legend')?.addEventListener('change', function(){ updateLegendOpacityState(this.checked); triggerCfgRender(); });
+  document.getElementById('c_x_log')?.addEventListener('change', triggerCfgRender);
+  document.getElementById('c_y_log')?.addEventListener('change', triggerCfgRender);
+  document.getElementById('c_galpha').addEventListener('input', function(){ document.getElementById('c_galpha_val').textContent=Math.round(parseFloat(this.value)*100)+'%'; triggerCfgRender(); });
+  document.getElementById('c_aalpha')?.addEventListener('input', function(){ document.getElementById('c_aalpha_val').textContent=Math.round(parseFloat(this.value)*100)+'%'; triggerCfgRender(); });
+
+  ['c_lw','c_ls','c_lconn','c_mk'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input',triggerCfgRender); el.addEventListener('change',triggerCfgRender); } });
+
+  function updateLineStyleRowState(){
+    const lconn = document.getElementById('c_lconn');
+    const lsRow = document.getElementById('row_ls');
+    if(!lconn||!lsRow) return;
+    const disabled = lconn.value === 'none';
+    lsRow.style.opacity = disabled ? '0.35' : '1';
+    lsRow.style.pointerEvents = disabled ? 'none' : '';
+  }
+  document.getElementById('c_lconn')?.addEventListener('change', updateLineStyleRowState);
+  document.getElementById('c_lconn')?.addEventListener('input', updateLineStyleRowState);
+  document.getElementById('c_lc').addEventListener('input', function(){ document.getElementById('c_lchex').value=this.value; triggerCfgRender(); refreshOverlayLegend(activePid); refreshLineCurveSelector(); });
+  document.getElementById('c_lchex').addEventListener('input', function(){ if(/^#[0-9a-fA-F]{6}$/.test(this.value)){ document.getElementById('c_lc').value=this.value; triggerCfgRender(); refreshOverlayLegend(activePid); refreshLineCurveSelector(); } });
+  document.getElementById('c_lw').addEventListener('input', function(){ document.getElementById('c_lw_val').textContent=parseFloat(this.value).toFixed(1); });
+
+  [['c_mask_xn','x','min'],['c_mask_xx','x','max'],['c_mask_yn','y','min'],['c_mask_yx','y','max']].forEach(([id,axis,mm])=>{
+    const el = document.getElementById(id); if(!el) return;
+    el.addEventListener('keydown', e=>{ if(e.key==='Enter'){e.preventDefault();commitMaskInput(id,axis,mm);el.blur();} if(e.key==='Escape'){syncDataMaskInputs();el.blur();} });
+    el.addEventListener('blur', ()=>commitMaskInput(id,axis,mm));
+  });
+
+  document.getElementById('maskResetBtn')?.addEventListener('click', ()=>{
+    const p = activePlot(); if(!p) return;
+    const curve = activeCurve(); if(!curve) return;
+    curve.mask_x_min=null; curve.mask_x_max=null; curve.mask_y_min=null; curve.mask_y_max=null;
+    syncDataMaskInputs();
+    if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(p.id),350); }
+    else renderJS(p.id, false);
+  });
+}
