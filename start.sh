@@ -3,7 +3,7 @@
 # Create venv if it doesn't exist
 if [ ! -d "venv" ]; then
     printf "Creating virtual environment..."
-    python -m venv venv
+    python3 -m venv venv
     printf " Done\n"
 fi
 printf "Activating virtual environment..."
@@ -17,11 +17,11 @@ CURRENT_HASH=$(md5sum "$REQ_PATH" | awk '{print $1}')
 
 if [ ! -f "$HASH_FILE" ] || [ "$CURRENT_HASH" != "$(cat $HASH_FILE)" ]; then
     printf "Installing dependencies..."
-    pip install -r "$REQ_PATH" --quiet
+    pip3 install -r "$REQ_PATH" --quiet
     echo "$CURRENT_HASH" > "$HASH_FILE"
     printf " Done\n"
 fi
 
 # Start the server
 printf "Starting server...\n"
-python src/app.py
+python3 src/app.py
