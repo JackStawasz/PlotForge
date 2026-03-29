@@ -142,13 +142,18 @@
               </div>
               <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
             </div>
-            <div class="trow">
-              <label>Log scale X</label>
-              <label class="tog"><input type="checkbox" id="c_x_log"><span class="tslider"></span></label>
-            </div>
-            <div class="trow">
-              <label>Log scale Y</label>
-              <label class="tog"><input type="checkbox" id="c_y_log"><span class="tslider"></span></label>
+            <div class="log-scale-row">
+              <span class="log-scale-lbl">Log scale:</span>
+              <div class="log-scale-pair">
+                <div class="log-scale-item log-scale-item--left">
+                  <label class="tog"><input type="checkbox" id="c_x_log"><span class="tslider"></span></label>
+                  <span>X-axis</span>
+                </div>
+                <div class="log-scale-item log-scale-item--right">
+                  <span>Y-axis</span>
+                  <label class="tog"><input type="checkbox" id="c_y_log"><span class="tslider"></span></label>
+                </div>
+              </div>
             </div>
           </div>
         </div>

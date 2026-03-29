@@ -1115,3 +1115,10 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 .tpl-card-dot.general{background:#d4ff5a}
 .tpl-card-dot.other{background:#ff6faa}
 .tpl-card-dot.advanced{background:#38bdf8}
+/* Log scale combined row */
+.log-scale-row{display:flex;flex-direction:column;gap:4px}
+.log-scale-lbl{font-size:.7rem;color:#b0b0d8;letter-spacing:.04em}
+.log-scale-pair{display:flex;align-items:center;gap:6px}
+.log-scale-item{display:flex;align-items:center;gap:5px;font-size:.72rem;color:#b0b0d8}
+.log-scale-item--left{flex:1;justify-content:flex-start}
+.log-scale-item--right{flex:1;justify-content:flex-end}
