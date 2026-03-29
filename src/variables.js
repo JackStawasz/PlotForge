@@ -110,12 +110,29 @@ function applyLatexCompletion(mf, fullCmd){
   if(match){
     const partial = match[0];
     for(let i=0; i<partial.length; i++) mf.keystroke('Backspace');
-    mf.cmd(fullCmd);
+  }
+  // For decorators that need cursor inside braces, use write+Left instead of cmd
+  if(fullCmd === '\\overline' || fullCmd === '\\underline' ||
+     fullCmd === '\\overbrace' || fullCmd === '\\underbrace' ||
+     fullCmd === '\\hat' || fullCmd === '\\bar' || fullCmd === '\\vec' ||
+     fullCmd === '\\tilde' || fullCmd === '\\dot' || fullCmd === '\\ddot'){
+    mf.write(fullCmd + '{}');
+    mf.keystroke('Left'); // step inside the braces
   } else {
     mf.cmd(fullCmd);
   }
   hideLatexDropdown();
   mf.focus();
+}
+
+// Detect when \overline (or similar) was completed by direct typing and fix cursor
+// Called from the MathField edit handler
+function fixDecoratorCursor(mf){
+  const latex = mf.latex();
+  // If latex ends with \overline{} (empty box just created), cursor is outside — move it in
+  if(/\\overline\{\}$|\\underline\{\}$|\\hat\{\}$|\\bar\{\}$|\\vec\{\}$|\\tilde\{\}$/.test(latex)){
+    mf.keystroke('Left');
+  }
 }
 
 function updateLatexDropdown(mf, anchorEl){
@@ -329,20 +346,14 @@ function renderVariables(){
       headerTop.appendChild(delBtn);
       item.appendChild(headerTop);
 
-      // Second row: name (left) + length control (right)
+      // Second row: name as MQ (left) + length control (right)
       const headerBot = document.createElement('div');
       headerBot.className = 'var-list-subheader';
 
-      const nameInp = document.createElement('input');
-      nameInp.type = 'text';
-      nameInp.className = 'var-name-inp var-list-name';
-      nameInp.id = `vname_${v.id}`;
-      nameInp.value = v.name;
-      nameInp.placeholder = 'name';
-      nameInp.maxLength = 16;
-      nameInp.addEventListener('input', ()=>{ v.name = nameInp.value; reEvalAllConstants(); });
-      nameInp.addEventListener('click', e=>e.stopPropagation());
-      nameInp.addEventListener('keydown', e=>{ if(e.key==='Enter') nameInp.blur(); e.stopPropagation(); });
+      // MathQuill name field
+      const nameMqWrap = document.createElement('div');
+      nameMqWrap.className = 'var-list-name-mq';
+      nameMqWrap.id = `vnamemq_${v.id}`;
 
       const lenWrap = document.createElement('div');
       lenWrap.className = 'var-list-lenrow';
@@ -354,11 +365,33 @@ function renderVariables(){
       lenInp.id = `vlen_${v.id}`; lenInp.value = v.listLength;
       lenInp.min = 1; lenInp.max = 999; lenInp.step = 1;
 
-      headerBot.appendChild(nameInp);
+      headerBot.appendChild(nameMqWrap);
       lenWrap.appendChild(lenLabel);
       lenWrap.appendChild(lenInp);
       headerBot.appendChild(lenWrap);
       item.appendChild(headerBot);
+
+      // Init MQ for the name field after element is in DOM
+      requestAnimationFrame(()=>{
+        if(!MQ) return;
+        try{
+          const nameMf = MQ.MathField(nameMqWrap, {
+            spaceBehavesLikeTab: true,
+            handlers:{
+              edit(){
+                // Extract plain text from what user typed as the name
+                const raw = nameMf.latex().replace(/[\\{}\s]/g,'').replace(/left|right/g,'').trim();
+                if(raw) v.name = raw;
+                reEvalAllConstants();
+                updateLatexDropdown(nameMf, nameMqWrap);
+              }
+            }
+          });
+          if(v.name) nameMf.latex(v.name);
+          else nameMf.latex('');
+          wrapMathFieldWithAC(nameMqWrap, nameMf);
+        }catch(e){}
+      });
 
       buildListBody(item, v, lenInp);
 
@@ -417,6 +450,7 @@ function buildConstantBody(item, v){
           const parsed = parseVarLatex(v.fullLatex);
           v.name = parsed.name;
           v.exprLatex = parsed.exprLatex;
+          fixDecoratorCursor(mf);
           evaluateConstant(v);
           updateLatexDropdown(mf, mqWrap);
         }
@@ -512,6 +546,7 @@ function buildVariableBody(item, v){
           const parsed = parseVarLatex(v.fullLatex);
           v.name = parsed.name;
           v.exprLatex = parsed.exprLatex;
+          fixDecoratorCursor(_mf);
           updateMode(_mf);
           updateLatexDropdown(_mf, mqWrap);
         }
@@ -616,19 +651,24 @@ function partialEvalLatex(latex, ctx){
   }
 
   // Apply standard latex→JS transforms to the coefficient expression
-  const toJS = e => e
-    .replace(/\\pi/g,   '(Math.PI)')
-    .replace(/\\e(?![a-zA-Z])/g, '(Math.E)')
-    .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '(($1)/($2))')
-    .replace(/\\sqrt\{([^}]*)\}/g, 'Math.sqrt($1)')
-    .replace(/\\sin/g,'Math.sin').replace(/\\cos/g,'Math.cos').replace(/\\tan/g,'Math.tan')
-    .replace(/\\ln/g,'Math.log').replace(/\\log/g,'Math.log10').replace(/\\exp/g,'Math.exp')
-    .replace(/\\left\(/g,'(').replace(/\\right\)/g,')')
-    .replace(/\^\{([^}]*)\}/g,'**($1)').replace(/\^(\w)/g,'**$1')
-    .replace(/\_\{[^}]*\}/g,'').replace(/\_\w/g,'')
-    .replace(/\\cdot/g,'*').replace(/\\times/g,'*')
-    .replace(/\{/g,'(').replace(/\}/g,')')
-    .replace(/\\[a-zA-Z]+/g,'');
+  const toJS = e => {
+    let r = e
+      .replace(/\\pi/g,   '(Math.PI)')
+      .replace(/\\e(?![a-zA-Z])/g, '(Math.E)')
+      .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '(($1)/($2))')
+      .replace(/\\sqrt\{([^}]*)\}/g, 'Math.sqrt($1)')
+      .replace(/\\sin/g,'Math.sin').replace(/\\cos/g,'Math.cos').replace(/\\tan/g,'Math.tan')
+      .replace(/\\ln/g,'Math.log').replace(/\\log/g,'Math.log10').replace(/\\exp/g,'Math.exp')
+      .replace(/\\left\(/g,'(').replace(/\\right\)/g,')')
+      .replace(/\^\{([^}]*)\}/g,'**($1)').replace(/\^(\w)/g,'**$1')
+      .replace(/\_\{[^}]*\}/g,'').replace(/\_\w/g,'')
+      .replace(/\\cdot/g,'*').replace(/\\times/g,'*')
+      .replace(/\{/g,'(').replace(/\}/g,')')
+      .replace(/\\[a-zA-Z]+/g,'');
+    // Implicit multiplication
+    r = r.replace(/\)\s*\(/g,')*(' ).replace(/(\d)\s*\(/g,'$1*(').replace(/\)\s*(\d)/g,')*$1');
+    return r;
+  };
 
   let coeff = null;
   try{
@@ -702,11 +742,21 @@ function evalLatexExpr(latex, ctx={}){
     .replace(/\{/g,'(').replace(/\}/g,')')
     .replace(/\\[a-zA-Z]+/g, ''); // strip remaining unknown commands
 
-  const stripped = expr.replace(/Math\.[a-z]+/g,'').replace(/Infinity/g,'');
+  // Insert implicit multiplication between adjacent tokens:
+  // e.g. (2)(c)  →  (2)*(c)
+  //      2c       →  2*c       (after variable substitution numerics remain)
+  //      )(        →  )*(
+  let implExpr = expr
+    .replace(/\)\s*\(/g, ')*(')           // )(  →  )*(
+    .replace(/(\d)\s*\(/g, '$1*(')        // 2(  →  2*(
+    .replace(/\)\s*(\d)/g, ')*$1')        // )2  →  )*2
+    .replace(/(\d)\s+(\d)/g, '$1*$2');    // bare digit-space-digit (rare)
+
+  const stripped = implExpr.replace(/Math\.[a-z]+/g,'').replace(/Infinity/g,'');
   if(/[a-df-wyzA-DF-WYZ_$]/.test(stripped)) return null;
 
   // eslint-disable-next-line no-new-func
-  const result = Function('"use strict"; return (' + expr + ')')();
+  const result = Function('"use strict"; return (' + implExpr + ')')();
   return typeof result === 'number' ? result : null;
 }
 
@@ -909,14 +959,22 @@ function rebuildEditIndex(v, editRow){
   if(n <= THRESH) return;
 
   editRow.style.display = 'flex';
+  editRow.style.flexDirection = 'column';
+  editRow.style.gap = '5px';
+
   const midIdx = Math.floor((n - 1) / 2);
   if(v._editIdx === undefined || v._editIdx >= n) v._editIdx = midIdx;
 
+  // Top row: label
   const label = document.createElement('span');
   label.className = 'var-list-editlabel';
-  label.textContent = 'edit index';
+  label.textContent = 'Edit index';
+  editRow.appendChild(label);
 
-  // ← arrow
+  // Bottom row: ‹ · idx · › · value (value stretches)
+  const controlRow = document.createElement('div');
+  controlRow.className = 'var-list-editcontrols';
+
   const leftBtn = document.createElement('button');
   leftBtn.className = 'var-list-editarrow';
   leftBtn.textContent = '‹';
@@ -928,7 +986,6 @@ function rebuildEditIndex(v, editRow){
   idxInp.placeholder = 'idx';
   idxInp.value = v._editIdx;
 
-  // → arrow
   const rightBtn = document.createElement('button');
   rightBtn.className = 'var-list-editarrow';
   rightBtn.textContent = '›';
@@ -964,11 +1021,11 @@ function rebuildEditIndex(v, editRow){
   });
   valInp.addEventListener('click', e=>e.stopPropagation());
 
-  editRow.appendChild(label);
-  editRow.appendChild(leftBtn);
-  editRow.appendChild(idxInp);
-  editRow.appendChild(rightBtn);
-  editRow.appendChild(valInp);
+  controlRow.appendChild(leftBtn);
+  controlRow.appendChild(idxInp);
+  controlRow.appendChild(rightBtn);
+  controlRow.appendChild(valInp);
+  editRow.appendChild(controlRow);
 }
 
 function rebuildListCells(v, cellsWrap){
@@ -976,36 +1033,14 @@ function rebuildListCells(v, cellsWrap){
   const n = v.listItems.length;
   const THRESH = 8, HEAD = 4, TAIL = 4;
 
-  // Decide which real indices to show
-  let slots; // array of { realIdx } or null (= ellipsis)
-  if(n <= THRESH){
-    slots = v.listItems.map((_, i) => ({ realIdx: i }));
-  } else {
-    slots = [];
-    for(let i = 0; i < HEAD; i++) slots.push({ realIdx: i });
-    slots.push(null); // ellipsis
-    for(let i = n - TAIL; i < n; i++) slots.push({ realIdx: i });
-  }
-
-  slots.forEach(slot => {
-    if(slot === null){
-      // Ellipsis divider
-      const el = document.createElement('div');
-      el.className = 'var-list-ellipsis';
-      el.textContent = '⋯';
-      el.title = `${n - HEAD - TAIL} hidden items`;
-      cellsWrap.appendChild(el);
-      return;
-    }
-    const i = slot.realIdx;
+  function makeCell(i){
     const val = v.listItems[i];
-
     const cellWrap = document.createElement('div');
     cellWrap.className = 'var-list-cell-wrap';
 
     const idx = document.createElement('span');
     idx.className = 'var-list-idx';
-    idx.textContent = i; // 0-based index
+    idx.textContent = i; // 0-based
 
     const cell = document.createElement('input');
     cell.type = 'number'; cell.className = 'var-list-cell';
@@ -1015,18 +1050,47 @@ function rebuildListCells(v, cellsWrap){
     cell.addEventListener('keydown', e=>{
       if(e.key==='Tab'){
         e.preventDefault();
-        // Navigate among only the visible cells, using real indices
-        const visibleCells = [...cellsWrap.querySelectorAll('.var-list-cell')];
-        const pos = visibleCells.indexOf(cell);
-        const next = visibleCells[e.shiftKey ? pos - 1 : pos + 1];
+        const cells = cellsWrap.querySelectorAll('.var-list-cell');
+        const pos = [...cells].indexOf(cell);
+        const next = cells[e.shiftKey ? pos - 1 : pos + 1];
         if(next) next.focus();
       }
     });
 
     cellWrap.appendChild(idx);
     cellWrap.appendChild(cell);
-    cellsWrap.appendChild(cellWrap);
-  });
+    return cellWrap;
+  }
+
+  if(n <= THRESH){
+    // All items in a single non-wrapping row
+    const row = document.createElement('div');
+    row.className = 'var-list-row';
+    for(let i = 0; i < n; i++) row.appendChild(makeCell(i));
+    cellsWrap.appendChild(row);
+  } else {
+    // Row 1: first HEAD cells — no wrapping
+    const headRow = document.createElement('div');
+    headRow.className = 'var-list-row';
+    for(let i = 0; i < HEAD; i++) headRow.appendChild(makeCell(i));
+    cellsWrap.appendChild(headRow);
+
+    // Row 2: ellipsis centered on its own line
+    const ellipsisRow = document.createElement('div');
+    ellipsisRow.className = 'var-list-ellipsis-row';
+    const ellipsis = document.createElement('span');
+    ellipsis.className = 'var-list-ellipsis';
+    ellipsis.textContent = '⋯';
+    ellipsis.title = `${n - HEAD - TAIL} hidden item${n - HEAD - TAIL !== 1 ? 's' : ''}`;
+    ellipsisRow.appendChild(ellipsis);
+    cellsWrap.appendChild(ellipsisRow);
+
+    // Row 3: last TAIL cells — no wrapping
+    const tailRow = document.createElement('div');
+    tailRow.className = 'var-list-row';
+    for(let i = n - TAIL; i < n; i++) tailRow.appendChild(makeCell(i));
+    cellsWrap.appendChild(tailRow);
+  }
 }
 
 // ═══ TEMPLATE → VARIABLES SYNC ═══════════════════════════════════════════

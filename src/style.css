@@ -436,10 +436,6 @@ header{
 .var-list-subheader{
   display:flex;align-items:center;justify-content:space-between;gap:6px;
 }
-.var-list-name{
-  /* override flex-shrink so it can grow */
-  flex:1;min-width:0;
-}
 
 /* kind badge */
 .var-kind-badge{
@@ -530,6 +526,26 @@ header{
   border-color:var(--border2);background:var(--s2);color:#9898c8;
 }
 
+/* List subheader: name (left) + length (right) */
+.var-list-subheader{
+  display:flex;align-items:center;justify-content:space-between;gap:6px;
+}
+
+/* MathQuill name field for list variables */
+.var-list-name-mq{
+  flex:1;min-width:0;
+  background:transparent;border:none;border-bottom:1px solid var(--border2);
+  min-height:22px;cursor:text;padding:1px 2px;
+  transition:border-color .12s;
+}
+.var-list-name-mq:focus-within{border-bottom-color:var(--acc);}
+/* Make the MQ field inside the name box compact and inline */
+.var-list-name-mq .mq-editable-field{
+  font-size:14px !important;
+  min-height:18px !important;
+  padding:0 !important;
+}
+
 /* list length row — now inline in var-list-subheader */
 .var-list-lenrow{display:flex;align-items:center;gap:5px;flex-shrink:0;}
 .var-list-lenlabel{font-size:.75rem;color:#7070a8;white-space:nowrap;}
@@ -543,9 +559,16 @@ header{
 .var-list-leninp::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 .var-list-leninp:focus{border-color:var(--acc2);}
 
-/* list cells */
+/* list cells container — now a column of rows */
 .var-list-cells{
-  display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:3px;
+  display:flex;flex-direction:column;gap:4px;
+}
+/* each row of cells: horizontal, no wrap, equal-width cells */
+.var-list-row{
+  display:flex;flex-direction:row;flex-wrap:nowrap;gap:3px;
+}
+.var-list-row .var-list-cell-wrap{
+  flex:1;min-width:0;
 }
 .var-list-cell-wrap{
   display:flex;flex-direction:column;align-items:center;gap:2px;
@@ -562,20 +585,27 @@ header{
 .var-list-cell::-webkit-inner-spin-button,
 .var-list-cell::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 .var-list-cell:focus{border-color:var(--acc2);background:rgba(90,255,206,.04);}
-/* ellipsis separator between truncated list segments */
-.var-list-ellipsis{
-  display:flex;align-items:center;justify-content:center;
-  font-size:.75rem;color:#4a4a70;font-family:var(--mono);
-  padding:0 2px;align-self:end;padding-bottom:4px;
+
+/* ellipsis row between head and tail */
+.var-list-ellipsis-row{
+  display:flex;align-items:center;justify-content:center;padding:1px 0;
 }
-/* edit-index footer for long lists */
+.var-list-ellipsis{
+  font-size:.75rem;color:#4a4a70;font-family:var(--mono);
+}
+
+/* edit-index footer — two rows: label above, controls below */
 .var-list-editrow{
-  display:none;align-items:center;gap:5px;
+  display:none;flex-direction:column;gap:5px;
   padding-top:6px;border-top:1px solid var(--border);
-  flex-wrap:nowrap;
 }
 .var-list-editlabel{
-  font-size:.68rem;color:#5a5a80;font-family:var(--mono);white-space:nowrap;flex-shrink:0;
+  font-size:.68rem;color:#7070a0;font-family:var(--mono);white-space:nowrap;
+  font-weight:600;letter-spacing:.04em;
+}
+/* control row: arrows + idx input + stretching value box */
+.var-list-editcontrols{
+  display:flex;flex-direction:row;align-items:center;gap:5px;
 }
 .var-list-editarrow{
   background:transparent;border:1px solid var(--border2);border-radius:4px;
