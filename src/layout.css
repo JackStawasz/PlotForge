@@ -478,7 +478,7 @@ header{
   min-height:38px;display:flex;align-items:center;
 }
 
-/* MathQuill theme override */
+/* MathQuill theme override — applies to both editable fields AND StaticMath */
 .mq-math-mode, .mq-editable-field{
   font-size:16px !important;
   color:var(--text) !important;
@@ -490,7 +490,20 @@ header{
 .mq-editable-field .mq-cursor{border-color:var(--acc2) !important;}
 .mq-editable-field *{color:var(--text);}
 .mq-editable-field .mq-fraction{color:var(--text);}
-/* Fix overline/underline decorations to use text color */
+
+/* Fraction bar: the horizontal rule between numerator and denominator */
+.mq-editable-field .mq-fraction .mq-denominator,
+.mq-math-mode .mq-fraction .mq-denominator{
+  border-top-color:currentColor !important;
+}
+/* Ensure all fraction children inherit color */
+.mq-editable-field .mq-fraction *,
+.mq-math-mode .mq-fraction,
+.mq-math-mode .mq-fraction *{
+  color:inherit !important;
+}
+
+/* Fix overline/underline decorations to use text color — editable fields */
 .mq-editable-field .mq-overline,
 .mq-editable-field .mq-overline *,
 .mq-editable-field .mq-overline-inner{
@@ -501,6 +514,27 @@ header{
 .mq-editable-field .mq-underline *{
   color:var(--text) !important;
   border-color:var(--text) !important;
+}
+/* Fix overline/underline in StaticMath (result display area) */
+.mq-math-mode .mq-overline,
+.mq-math-mode .mq-overline *,
+.mq-math-mode .mq-overline-inner{
+  color:inherit !important;
+  border-color:currentColor !important;
+}
+.mq-math-mode .mq-underline,
+.mq-math-mode .mq-underline *{
+  color:inherit !important;
+  border-color:currentColor !important;
+}
+
+/* var-result StaticMath: inherit parent color so fraction/overline show correctly */
+.var-result .mq-math-mode,
+.var-result .mq-math-mode *{
+  color:inherit !important;
+  font-size:inherit !important;
+  background:transparent !important;
+  border-top-color:currentColor !important;
 }
 
 /* constant result line */
@@ -639,13 +673,4 @@ header{
   border-radius:3px;padding:1px 5px;margin-left:auto;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   max-width:80px;flex-shrink:1;cursor:default;
-}
-/* MathQuill StaticMath in var-result partial display */
-.var-result.var-result-partial .mq-math-mode,
-.var-result.var-result-partial .mq-math-mode *{
-  color:#a0a8e8 !important;
-  font-size:0.82rem !important;
-  background:transparent !important;
-  border:none !important;
-  box-shadow:none !important;
 }

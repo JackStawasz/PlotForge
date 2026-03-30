@@ -135,12 +135,26 @@ function fixDecoratorCursor(mf){
   }
 }
 
+// Latex commands that are complete operators — never use as autocomplete prefix
+const LATEX_OPERATORS = new Set([
+  '\\cdot','\\times','\\div','\\pm','\\mp','\\cdot',
+  '\\leq','\\geq','\\neq','\\approx','\\equiv','\\sim',
+  '\\rightarrow','\\leftarrow','\\Rightarrow','\\Leftarrow',
+  '\\leftrightarrow','\\Leftrightarrow',
+  '\\uparrow','\\downarrow','\\updownarrow',
+  '\\in','\\notin','\\subset','\\supset','\\cup','\\cap',
+  '\\infty','\\partial','\\nabla','\\emptyset',
+  '\\forall','\\exists',
+]);
+
 function updateLatexDropdown(mf, anchorEl){
   const latex = mf.latex();
   const match = latex.match(/\\([a-zA-Z]*)$/);
   if(!match){ hideLatexDropdown(); return; }
   const partial = '\\' + match[1];
   if(partial === '\\'){ hideLatexDropdown(); return; }
+  // Don't trigger autocomplete for complete operator commands
+  if(LATEX_OPERATORS.has(partial)){ hideLatexDropdown(); return; }
   const suggestions = LATEX_COMMANDS.filter(c => c.startsWith(partial)).slice(0, 5);
   if(!suggestions.length){ hideLatexDropdown(); return; }
   showLatexDropdown(mf, suggestions, anchorEl);
@@ -186,189 +200,41 @@ function parseVarLatex(fullLatex){
   return { name, exprLatex: rhs };
 }
 
-// ═══ SYMPY EVALUATION ENGINE ════════════════════════════════════════════
-// All variable evaluation is now delegated to the Python backend (/api/evaluate),
-// which uses SymPy for proper symbolic math: LaTeX parsing, simplification,
-// partial evaluation with unknown variables, and LaTeX output.
-
-// Debounce handle for batching evaluation requests
-let _evalDebounceTimer = null;
-let _evalPending = false;
-
-// Cache: vid -> { value, latex, is_numeric } — avoids redundant re-renders
-const _evalCache = {};
-
-/**
- * Build the ordered list of variable definitions to send to /api/evaluate.
- * Includes all constant/variable/parameter kinds (not list/equation).
- */
-function buildEvalPayload(){
-  const defs = [];
-  for(const v of variables){
-    if(v.kind === 'parameter'){
-      defs.push({ id: v.id, name: v.name, expr_latex: String(v.value), kind: 'parameter' });
-    } else if(v.kind === 'constant' || v.kind === 'variable'){
-      defs.push({ id: v.id, name: v.name, expr_latex: v.exprLatex || '', kind: 'constant' });
-    }
-  }
-  return defs;
-}
-
-/**
- * Build a numeric context { name: value } from the last resolved evaluation cache.
- * Used by _reRenderVariableCurves and slider numeric detection.
- */
+// ═══ VARIABLE CONTEXT ════════════════════════════════════════════════════
 function buildVarContext(){
   const ctx = {};
+  // Parameters: always numeric (value stored on v.value)
   for(const v of variables){
-    const cached = _evalCache[v.id];
-    if(cached && cached.is_numeric && cached.value !== null && v.name){
-      ctx[v.name] = cached.value;
-    } else if(v.kind === 'parameter' && v.name){
-      ctx[v.name] = v.value;
+    if(v.kind === 'parameter' && v.name) ctx[v.name] = v.value;
+  }
+  // Variables (merged kind): if pure numeric → use v.value; else evaluate exprLatex
+  for(const v of variables){
+    if(v.kind === 'variable' && v.name){
+      try{
+        if(v._isNumeric){
+          ctx[v.name] = v.value;
+        } else {
+          const localCtx = {...ctx};
+          delete localCtx[v.name];
+          const val = evalLatexExpr(v.exprLatex || '', localCtx);
+          if(val !== null) ctx[v.name] = val;
+        }
+      }catch(e){}
+    }
+  }
+  // Constants (legacy kind — keep for backward compat)
+  for(const v of variables){
+    if(v.kind === 'constant' && v.name){
+      try{
+        const localCtx = {...ctx};
+        delete localCtx[v.name];
+        const val = evalLatexExpr(v.exprLatex || '', localCtx);
+        if(val !== null) ctx[v.name] = val;
+      }catch(e){}
     }
   }
   return ctx;
 }
-
-/**
- * Post all variable definitions to /api/evaluate and update each variable's
- * result display.  Calls are debounced so rapid typing only triggers one request.
- */
-function reEvalAllConstants(){
-  clearTimeout(_evalDebounceTimer);
-  _evalDebounceTimer = setTimeout(_doEvaluate, 80);
-}
-
-async function _doEvaluate(){
-  const payload = buildEvalPayload();
-  if(!payload.length) return;
-
-  let results;
-  try{
-    const r = await fetch(`${API}/evaluate`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ variables: payload }),
-    });
-    const data = await r.json();
-    results = data.results;
-  } catch(e){
-    // Backend unreachable — clear result displays silently
-    for(const v of variables){
-      const el = document.getElementById(`vres_${v.id}`);
-      if(el){ el.innerHTML = ''; el.textContent = ''; el.className = 'var-result'; }
-    }
-    return;
-  }
-
-  // Apply results
-  for(const res of results){
-    // Update cache
-    _evalCache[res.id] = { value: res.value, latex: res.latex, is_numeric: res.is_numeric };
-
-    const v = variables.find(x => x.id === res.id);
-    if(!v) continue;
-
-    // Update v.value if numeric (so sliders and context stay in sync)
-    if(res.is_numeric && res.value !== null){
-      v.value = res.value;
-    }
-
-    // Update result display element
-    _renderEvalResult(v, res);
-  }
-
-  // Re-render variable-dependent curves with the freshest context
-  _reRenderVariableCurves();
-}
-
-/**
- * Render a single variable's evaluation result into its vres_<id> element.
- * Numeric results show as plain text; symbolic results render via MQ.StaticMath.
- */
-function _renderEvalResult(v, res){
-  const el = document.getElementById(`vres_${v.id}`); if(!el) return;
-
-  // Slider-mode variables: suppress result display (slider IS the control)
-  if((v.kind === 'constant' || v.kind === 'variable') && v._isNumeric){
-    el.innerHTML = ''; el.textContent = ''; el.className = 'var-result'; return;
-  }
-
-  el.innerHTML = '';
-
-  if(!res || res.error === 'empty' || (!res.latex && !res.value)){
-    el.className = 'var-result'; return;
-  }
-
-  if(res.is_numeric){
-    // Fully resolved number — plain text display
-    el.className = 'var-result var-result-ok';
-    el.textContent = '= ' + res.latex;
-    return;
-  }
-
-  if(res.latex){
-    // Symbolic result — render with MathQuill StaticMath
-    el.className = 'var-result var-result-partial';
-    const eqSpan = document.createElement('span');
-    eqSpan.textContent = '=\u2009'; // = + thin space
-    el.appendChild(eqSpan);
-    const mqSpan = document.createElement('span');
-    el.appendChild(mqSpan);
-    if(MQ){
-      try{ MQ.StaticMath(mqSpan).latex(res.latex); }
-      catch(e){ mqSpan.textContent = res.latex; }
-    } else {
-      mqSpan.textContent = res.latex;
-    }
-    return;
-  }
-
-  el.className = 'var-result';
-}
-
-// ─── evaluateConstant: single-variable wrapper used by buildVariableBody ───
-// Called when one variable's expression changes — triggers a full batch eval
-// so dependent variables also update.
-function evaluateConstant(v){
-  reEvalAllConstants();
-}
-
-// ─── Re-render variable-backed curves ──────────────────────────────────────
-function _reRenderVariableCurves(){
-  if(typeof plots === 'undefined') return;
-  let anyNeedRender = false;
-  const ctx = buildVarContext();
-  for(const p of plots){
-    for(const curve of p.curves){
-      if(curve.listXName || curve.listYName){
-        const xVar = variables.find(v => v.name === curve.listXName);
-        const yVar = variables.find(v => v.name === curve.listYName);
-        if(xVar && yVar){
-          curve.jsData = { x: [...xVar.listItems], y: [...yVar.listItems], discrete: false };
-          anyNeedRender = true;
-        }
-      }
-      if(curve.template && curve.params){
-        for(const pk of Object.keys(curve.params)){
-          if(pk in ctx){ curve.params[pk] = ctx[pk]; anyNeedRender = true; }
-        }
-      }
-    }
-  }
-  if(anyNeedRender){
-    clearTimeout(window._varRenderDebounce);
-    window._varRenderDebounce = setTimeout(()=>{
-      if(typeof renderJS !== 'function') return;
-      for(const pp of plots){
-        if(pp.curves.some(c => c.listXName || c.listYName || c.template)) renderJS(pp.id, false);
-      }
-    }, 0);
-  }
-}
-
-
 
 // ═══ VAR TYPE PICKER ═════════════════════════════════════════════════════
 let _varTypePicker = null;
@@ -387,7 +253,7 @@ function showVarTypePicker(){
   ].join(';');
   _varTypePicker = picker;
   const types = [
-    { key:'constant', icon:'α',   label:'Constant', desc:'Number or expression' },
+    { key:'variable',  icon:'α',   label:'Variable',  desc:'Number or expression' },
     { key:'equation',  icon:'ƒ',   label:'Equation',  desc:'Function of x' },
     { key:'list',      icon:'[ ]', label:'List',      desc:'Fixed-length sequence' },
   ];
@@ -561,7 +427,8 @@ function renderVariables(){
       header.appendChild(delBtn);
       item.appendChild(header);
 
-      if(v.kind === 'constant' || v.kind === 'variable') buildVariableBody(item, v);
+      if(v.kind === 'constant')       buildConstantBody(item, v);
+      else if(v.kind === 'variable')  buildVariableBody(item, v);
       else if(v.kind === 'parameter') buildParameterBody(item, v);
       else if(v.kind === 'equation')  buildEquationBody(item, v);
     }
@@ -570,16 +437,58 @@ function renderVariables(){
   });
 }
 
+function reEvalAllConstants(){
+  for(const v of variables){
+    if(v.kind === 'constant' || v.kind === 'variable') evaluateConstant(v);
+  }
+}
+
+// ─── CONSTANT (legacy) ─────────────────────────────────────────────────────
+function buildConstantBody(item, v){
+  const mqWrap = document.createElement('div');
+  mqWrap.className = 'var-mq-wrap var-mq-single-line';
+  mqWrap.id = `vmq_${v.id}`;
+  item.appendChild(mqWrap);
+
+  const result = document.createElement('div');
+  result.className = 'var-result';
+  result.id = `vres_${v.id}`;
+  item.appendChild(result);
+
+  requestAnimationFrame(()=>{
+    const mf = makeMathField(mqWrap, {
+      spaceBehavesLikeTab: true,
+      handlers:{
+        edit(){
+          v.fullLatex = mf.latex();
+          const parsed = parseVarLatex(v.fullLatex);
+          v.name = parsed.name;
+          v.exprLatex = parsed.exprLatex;
+          fixDecoratorCursor(mf);
+          evaluateConstant(v);
+          updateLatexDropdown(mf, mqWrap);
+        }
+      }
+    });
+    if(mf){
+      const initLatex = v.fullLatex || (v.name ? `${v.name}=${v.exprLatex||''}` : (v.exprLatex || ''));
+      if(initLatex) mf.latex(initLatex);
+      evaluateConstant(v);
+      wrapMathFieldWithAC(mqWrap, mf);
+    }
+  });
+}
+
 // ─── VARIABLE (merged constant+parameter) ──────────────────────────────────
-// One MathField for "name = expr". If RHS is a plain number → show slider.
-// If RHS is an expression → show evaluated result beneath (via SymPy backend).
+// One MathField for "name = expr". If the RHS is a plain number → show slider.
+// If the RHS is an expression → show evaluated result beneath.
 function buildVariableBody(item, v){
   const mqWrap = document.createElement('div');
   mqWrap.className = 'var-mq-wrap var-mq-single-line';
   mqWrap.id = `vmq_${v.id}`;
   item.appendChild(mqWrap);
 
-  // Result line — shows either "= <value>" (numeric) or simplified LaTeX (symbolic)
+  // Result line — shows either "= <value>" (expression mode) or nothing (slider mode)
   const resultEl = document.createElement('div');
   resultEl.className = 'var-result';
   resultEl.id = `vres_${v.id}`;
@@ -611,9 +520,11 @@ function buildVariableBody(item, v){
   sliderWrap.appendChild(maxInp);
   item.appendChild(sliderWrap);
 
-  // Determine whether the RHS is a plain number (slider mode) or expression (eval mode)
+  // Determine whether the RHS is a pure number (slider mode) or expression (eval mode)
   function isNumericRhs(expr){
     if(!expr || !expr.trim()) return false;
+    // A "pure number" is just digits, optional minus, optional decimal, optional whitespace
+    // and no latex commands other than a leading minus
     const stripped = expr.replace(/\s+/g,'').replace(/^-/,'');
     return /^\d+\.?\d*$/.test(stripped) || /^\d*\.\d+$/.test(stripped);
   }
@@ -622,12 +533,18 @@ function buildVariableBody(item, v){
     const numericRhs = isNumericRhs(v.exprLatex);
     v._isNumeric = numericRhs;
     if(numericRhs){
+      // Slider mode
       sliderWrap.style.display = 'flex';
-      resultEl.innerHTML = ''; resultEl.textContent = '';
+      resultEl.textContent = '';
       resultEl.className = 'var-result';
+      // Parse the numeric value from exprLatex
       const num = parseFloat(v.exprLatex.replace(/[^\d.\-]/g,''));
-      if(!isNaN(num)){ v.value = num; syncParamSlider(v); }
+      if(!isNaN(num)){
+        v.value = num;
+        syncParamSlider(v);
+      }
     } else {
+      // Expression mode
       sliderWrap.style.display = 'none';
       evaluateConstant(v);
     }
@@ -656,6 +573,7 @@ function buildVariableBody(item, v){
       wrapMathFieldWithAC(mqWrap, _mf);
     }
 
+    // Slider changes update the MathField and value
     slider.addEventListener('input', ()=>{
       v.value = parseFloat(slider.value);
       if(_mf){
@@ -682,6 +600,188 @@ function buildVariableBody(item, v){
     maxInp.addEventListener('click', e=>e.stopPropagation());
   });
 }
+
+function evaluateConstant(v){
+  const el = document.getElementById(`vres_${v.id}`); if(!el) return;
+  try{
+    const ctx = buildVarContext();
+    delete ctx[v.name];
+    const val = evalLatexExpr(v.exprLatex || '', ctx);
+    if(val !== null && val !== undefined){
+      // Format to 7 significant figures; show integers without decimal
+      let formatted;
+      if(Number.isInteger(val)){
+        formatted = String(val);
+      } else {
+        // toPrecision(7) then strip trailing zeros
+        formatted = parseFloat(val.toPrecision(7)).toString();
+      }
+      el.textContent = '= ' + formatted;
+      el.className = 'var-result var-result-ok';
+      return;
+    }
+    // Full eval failed — try partial: substitute knowns, report simplified form
+    const partial = partialEvalLatex(v.exprLatex || '', ctx);
+    if(partial !== null){
+      el.textContent = '= ' + partial;
+      // Use same green as fully-evaluated results so symbolic output is equally visible
+      el.className = 'var-result var-result-ok';
+    } else {
+      el.textContent = ''; el.className = 'var-result';
+    }
+  } catch(e){
+    el.textContent = ''; el.className = 'var-result';
+  }
+}
+
+// Partial evaluator: substitute known vars, collect unknown single-letter symbols,
+// compute the numeric coefficient, return a readable string like "18c" or "9bc".
+function partialEvalLatex(latex, ctx){
+  if(!latex || !latex.trim()) return null;
+  let expr = latex;
+
+  // Resolve \text{name} from ctx
+  expr = expr.replace(/\\text\{([^}]+)\}/g, (match, name) => {
+    if(name in ctx) return `(${ctx[name]})`;
+    return match;
+  });
+
+  // Collect unknown single-letter names from the raw latex (before substitution)
+  // These are bare single letters not in ctx and not math commands
+  const allLetters = new Set();
+  // Find single latin letters used as variables (not preceded by \)
+  const rawLetterRe = /(?<!\\)(?<![a-zA-Z])([a-zA-Z])(?![a-zA-Z])/g;
+  let m;
+  while((m = rawLetterRe.exec(expr)) !== null){
+    const ch = m[1];
+    // Skip if it's a known ctx variable — those will be substituted
+    if(!(ch in ctx)) allLetters.add(ch);
+  }
+
+  // Substitute known ctx vars
+  const ctxNames = Object.keys(ctx).filter(n=>n).sort((a,b)=>b.length-a.length);
+  for(const name of ctxNames){
+    const safeRe = new RegExp(`(?<!\\\\)\\b${escapeRegex(name)}\\b`, 'g');
+    expr = expr.replace(safeRe, `(${ctx[name]})`);
+  }
+
+  // Now compute numeric coefficient: substitute all remaining unknown letters with 1
+  let coeffExpr = expr;
+  for(const ch of allLetters){
+    const re = new RegExp(`(?<![a-zA-Z(])${ch}(?![a-zA-Z])`, 'g');
+    coeffExpr = coeffExpr.replace(re, '(1)');
+  }
+
+  // Apply standard latex→JS transforms to the coefficient expression
+  const toJS = e => {
+    let r = e
+      .replace(/\\pi/g,   '(Math.PI)')
+      .replace(/\\e(?![a-zA-Z])/g, '(Math.E)')
+      .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '(($1)/($2))')
+      .replace(/\\sqrt\{([^}]*)\}/g, 'Math.sqrt($1)')
+      .replace(/\\sin/g,'Math.sin').replace(/\\cos/g,'Math.cos').replace(/\\tan/g,'Math.tan')
+      .replace(/\\ln/g,'Math.log').replace(/\\log/g,'Math.log10').replace(/\\exp/g,'Math.exp')
+      .replace(/\\left\(/g,'(').replace(/\\right\)/g,')')
+      .replace(/\^\{([^}]*)\}/g,'**($1)').replace(/\^(\w)/g,'**$1')
+      .replace(/\_\{[^}]*\}/g,'').replace(/\_\w/g,'')
+      .replace(/\\cdot/g,'*').replace(/\\times/g,'*')
+      .replace(/\{/g,'(').replace(/\}/g,')')
+      .replace(/\\[a-zA-Z]+/g,'');
+    // Implicit multiplication
+    r = r.replace(/\)\s*\(/g,')*(' ).replace(/(\d)\s*\(/g,'$1*(').replace(/\)\s*(\d)/g,')*$1');
+    return r;
+  };
+
+  let coeff = null;
+  try{
+    const jsExpr = toJS(coeffExpr);
+    // eslint-disable-next-line no-new-func
+    coeff = Function('"use strict"; return (' + jsExpr + ')')();
+  }catch(e){ return null; }
+
+  if(typeof coeff !== 'number' || !isFinite(coeff)) return null;
+  if(allLetters.size === 0) return null; // would have been caught by full eval
+
+  // Format coefficient — omit "1" if it's a bare multiplier
+  let coeffStr = Number.isInteger(coeff)
+    ? String(coeff)
+    : parseFloat(coeff.toPrecision(5)).toString();
+  if(coeffStr === '1') coeffStr = '';
+  else if(coeffStr === '-1') coeffStr = '-';
+
+  // Build unknown part: sort letters for deterministic output
+  const unknownPart = [...allLetters].sort().join('');
+
+  if(!unknownPart) return null;
+  return coeffStr + unknownPart;
+}
+
+function escapeRegex(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function evalLatexExpr(latex, ctx={}){
+  if(!latex || !latex.trim()) return null;
+  let expr = latex;
+
+  // First: resolve \text{name} patterns from context
+  // e.g. \text{var_name} → replaced with its numeric value if known
+  expr = expr.replace(/\\text\{([^}]+)\}/g, (match, name) => {
+    if(name in ctx) return `(${ctx[name]})`;
+    return match; // leave unknown \text{} for later stripping
+  });
+
+  // Substitute plain user variables (longest names first to avoid partial matches)
+  const ctxNames = Object.keys(ctx).filter(n=>n).sort((a,b)=>b.length-a.length);
+  for(const name of ctxNames){
+    const safeRe = new RegExp(`(?<!\\\\)\\b${escapeRegex(name)}\\b`, 'g');
+    expr = expr.replace(safeRe, `(${ctx[name]})`);
+  }
+
+  expr = expr
+    .replace(/\\pi/g,   '(Math.PI)')
+    .replace(/\\e(?![a-zA-Z])/g, '(Math.E)')
+    .replace(/\\infty/g,'Infinity')
+    .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '(($1)/($2))')
+    .replace(/\\sqrt\{([^}]*)\}/g, 'Math.sqrt($1)')
+    .replace(/\\sin/g,  'Math.sin')
+    .replace(/\\cos/g,  'Math.cos')
+    .replace(/\\tan/g,  'Math.tan')
+    .replace(/\\arcsin/g,'Math.asin')
+    .replace(/\\arccos/g,'Math.acos')
+    .replace(/\\arctan/g,'Math.atan')
+    .replace(/\\sinh/g, 'Math.sinh')
+    .replace(/\\cosh/g, 'Math.cosh')
+    .replace(/\\tanh/g, 'Math.tanh')
+    .replace(/\\ln/g,   'Math.log')
+    .replace(/\\log/g,  'Math.log10')
+    .replace(/\\exp/g,  'Math.exp')
+    .replace(/\\left\(/g,'(').replace(/\\right\)/g,')')
+    .replace(/\\left\[/g,'[').replace(/\\right\]/g,']')
+    .replace(/\\left\|/g,'Math.abs(').replace(/\\right\|/g,')')
+    .replace(/\^\{([^}]*)\}/g, '**($1)')
+    .replace(/\^(\w)/g,  '**$1')
+    .replace(/\_\{[^}]*\}/g,'').replace(/\_\w/g,'')
+    .replace(/\\cdot/g,'*').replace(/\\times/g,'*')
+    .replace(/\{/g,'(').replace(/\}/g,')')
+    .replace(/\\[a-zA-Z]+/g, ''); // strip remaining unknown commands
+
+  // Insert implicit multiplication between adjacent tokens:
+  // e.g. (2)(c)  →  (2)*(c)
+  //      2c       →  2*c       (after variable substitution numerics remain)
+  //      )(        →  )*(
+  let implExpr = expr
+    .replace(/\)\s*\(/g, ')*(')           // )(  →  )*(
+    .replace(/(\d)\s*\(/g, '$1*(')        // 2(  →  2*(
+    .replace(/\)\s*(\d)/g, ')*$1')        // )2  →  )*2
+    .replace(/(\d)\s+(\d)/g, '$1*$2');    // bare digit-space-digit (rare)
+
+  const stripped = implExpr.replace(/Math\.[a-z]+/g,'').replace(/Infinity/g,'');
+  if(/[a-df-wyzA-DF-WYZ_$]/.test(stripped)) return null;
+
+  // eslint-disable-next-line no-new-func
+  const result = Function('"use strict"; return (' + implExpr + ')')();
+  return typeof result === 'number' ? result : null;
+}
+
 // ─── PARAMETER ────────────────────────────────────────────────────────────
 // Single MathField showing "name = value" (numeric only), slider below
 function buildParameterBody(item, v){
@@ -726,12 +826,15 @@ function buildParameterBody(item, v){
       handlers:{
         edit(){
           const latex = _mf.latex();
+          // Parse "name = numeric" — only update if we can extract a clean number
           const eqIdx = latex.indexOf('=');
           if(eqIdx >= 0){
             const lhsRaw = latex.slice(0, eqIdx).trim();
             const rhsRaw = latex.slice(eqIdx + 1).trim();
+            // Extract plain name from LHS
             const namePart = lhsRaw.replace(/[\\{}\s]/g,'');
             if(namePart) v.name = namePart;
+            // Try to parse RHS as a number (strip minus sign handling)
             const numStr = rhsRaw.replace(/[^\d.\-]/g,'');
             const num = parseFloat(numStr);
             if(!isNaN(num)){
@@ -1027,7 +1130,7 @@ function syncTemplateParamsToVars(tplKey, params){
       const slider = document.getElementById(`vpslider_${existing.id}`);
       if(slider) syncParamSlider(existing);
     } else {
-      addVariable('constant', {
+      addVariable('variable', {
         name: pk,
         value: currentVal,
         exprLatex: String(currentVal),
@@ -1067,7 +1170,7 @@ function importPickleVars(data, sourceName){
         existing.value = info.value;
         renderVariables();
       } else {
-        addVariable('constant', {
+        addVariable('variable', {
           name,
           exprLatex: String(info.value),
           fullLatex: `${latexName}=${info.value}`,
