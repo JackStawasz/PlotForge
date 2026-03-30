@@ -140,9 +140,34 @@
   animation:fsEnter .22s cubic-bezier(.22,1,.36,1) forwards;
 }
 .plot-card.plot-fs .cbody{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;}
-.plot-card.plot-fs .chart-region{flex:1;min-height:0;display:flex;flex-direction:column;padding-bottom:28px;}
-.plot-card.plot-fs .canvas-wrap{flex:1;min-height:0;}
-.plot-card.plot-fs .canvas-wrap canvas{height:100%!important;width:100%!important;}
+.plot-card.plot-fs .chart-region{
+  flex:1;min-height:0;
+  display:grid;
+  grid-template-rows:32px 1fr 28px;
+  grid-template-columns:28px 1fr;
+  padding:0;
+}
+/* Title: spans both columns, row 1 */
+.plot-card.plot-fs .chart-region .chart-title-inp{
+  grid-column:2;grid-row:1;
+  position:static;height:auto;align-self:center;
+  margin:0;padding:4px 8px;
+}
+/* Canvas wrap: column 2, row 2 — fills remaining space */
+.plot-card.plot-fs .chart-region .canvas-wrap{
+  grid-column:2;grid-row:2;min-height:0;height:100%;
+}
+.plot-card.plot-fs .chart-region .canvas-wrap canvas{height:100%!important;width:100%!important;}
+/* X-axis label: column 2, row 3 — always visible */
+.plot-card.plot-fs .chart-region .ax-xlabel{
+  grid-column:2;grid-row:3;
+  position:static;display:flex;align-items:center;justify-content:center;height:28px;
+}
+/* Y-axis label: column 1, row 2 */
+.plot-card.plot-fs .chart-region .ax-ylabel{
+  grid-column:1;grid-row:2;
+  position:static;display:flex;align-items:center;justify-content:center;width:28px;overflow:visible;
+}
 .plot-card.plot-fs-exit{
   animation:fsExit .18s ease forwards;
   pointer-events:none;
@@ -401,6 +426,10 @@
 
 .cdivider{height:1px;background:var(--border);margin:2px 0}
 .cfg-sec{display:flex;flex-direction:column;gap:9px}
+/* Line settings disabled state when no curve exists */
+#lineSettingsBody.line-settings-disabled{
+  opacity:0.35;pointer-events:none;user-select:none;
+}
 .crow{display:flex;flex-direction:column;gap:3px}
 .crow>label{font-size:.7rem;color:#b0b0d8;letter-spacing:.04em}
 .crow-inline{display:flex;align-items:center;justify-content:space-between;gap:8px}

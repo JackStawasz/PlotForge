@@ -606,6 +606,20 @@ function resizeAndRefresh(pid){
   refreshOverlayLegend(pid);
 }
 
+// When the browser itself enters/exits F11 fullscreen, resize all chart instances
+// so that the x-axis ticks and labels remain fully visible.
+document.addEventListener('fullscreenchange', ()=>{
+  setTimeout(()=>{
+    for(const p of (typeof plots !== 'undefined' ? plots : [])){
+      if(!p.mplMode && chartInstances[p.id]){
+        chartInstances[p.id].resize();
+        renderTextAnnotations(p.id);
+        refreshOverlayLegend(p.id);
+      }
+    }
+  }, 60);
+});
+
 // ═══ CUSTOM TOPBAR TOOLTIPS ══════════════════════════════════════════════
 (function initTopbarTooltips(){
   const tip = document.createElement('div');

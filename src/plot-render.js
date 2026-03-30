@@ -485,6 +485,7 @@ function drawChart(p){
       const galpha = v.grid_alpha ?? 0.5, gc = `rgba(60,60,100,${galpha})`;
       ch.options.scales.x.grid.display=v.show_grid; ch.options.scales.x.grid.color=gc;
       ch.options.scales.y.grid.display=v.show_grid; ch.options.scales.y.grid.color=gc;
+      ch.options.scales.x.border.color=gc; ch.options.scales.y.border.color=gc;
       ch.options.scales.x.ticks.callback = v.x_log ? makeLogTickCb() : makeTickCb('x');
       ch.options.scales.y.ticks.callback = v.y_log ? makeLogTickCb() : makeTickCb('y');
       applyScaleLimits(ch.options.scales, v); ch.update('none'); refreshOverlayLegend(p.id); updatePlotLockedAnnotations(p.id); return;

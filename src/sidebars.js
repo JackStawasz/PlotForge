@@ -442,6 +442,7 @@ function triggerCfgRender(){
   applyLabelFontSizes(activePid);
   if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(activePid),350); }
   else if(p.curves.some(c=>c.jsData)) renderJS(activePid, false);
+  else if(chartInstances[activePid]) drawChart(p); // empty plot — still update grid/axis styles
   clearTimeout(window._undoDebounce);
   window._undoDebounce = setTimeout(snapshotForUndo, 600);
 }

@@ -640,3 +640,12 @@ header{
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   max-width:80px;flex-shrink:1;cursor:default;
 }
+/* MathQuill StaticMath in var-result partial display */
+.var-result.var-result-partial .mq-math-mode,
+.var-result.var-result-partial .mq-math-mode *{
+  color:#a0a8e8 !important;
+  font-size:0.82rem !important;
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+}
