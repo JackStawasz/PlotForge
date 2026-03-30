@@ -446,6 +446,128 @@ def plot_matplotlib():
         import traceback; traceback.print_exc()
         return jsonify({"error":str(e)}),500
 
+@app.route("/api/evaluate", methods=["POST"])
+def evaluate_variables():
+    """
+    Evaluate a batch of variable definitions using SymPy.
+    Processes variables in order so each resolved value is available to later ones.
+
+    Request:  { "variables": [{ "id", "name", "expr_latex", "kind" }, ...] }
+    Response: { "results":   [{ "id", "value", "latex", "is_numeric", "error" }, ...] }
+    """
+    import re
+    from sympy.parsing.latex import parse_latex
+    from sympy import (Symbol, latex as sym_latex, N, simplify,
+                       E, pi as SPI, oo, Integer, Rational)
+
+    body = request.get_json(silent=True) or {}
+    var_defs = body.get("variables", [])
+
+    # parse_latex emits these as Symbol names rather than constants
+    CONST_SUBS = [(Symbol('pi'), SPI), (Symbol('e'), E)]
+
+    # Greek letters as single-atom placeholders for \text{long_name}
+    # (parse_latex treats multi-char tokens as implicit products of single letters)
+    GREEK_POOL = [
+        ('\\alpha','alpha'), ('\\beta','beta'), ('\\gamma','gamma'),
+        ('\\delta','delta'), ('\\varepsilon','varepsilon'), ('\\zeta','zeta'),
+        ('\\eta','eta'), ('\\vartheta','vartheta'), ('\\iota','iota'),
+        ('\\kappa','kappa'), ('\\lambda','lambda'), ('\\mu','mu'),
+        ('\\nu','nu'), ('\\xi','xi'), ('\\varpi','varpi'),
+        ('\\varrho','varrho'), ('\\varsigma','varsigma'), ('\\tau','tau'),
+        ('\\upsilon','upsilon'), ('\\varphi','varphi'),
+        ('\\chi','chi'), ('\\psi','psi'), ('\\omega','omega'),
+    ]
+
+    def _replace_text_vars(s):
+        """Replace \\text{name} → Greek placeholder; return (processed, {sympy_name: orig})."""
+        text_map = {}; ctr = [0]
+        def sub(m):
+            name = m.group(1)
+            if ctr[0] >= len(GREEK_POOL):
+                return re.sub(r'[^a-zA-Z0-9_]', '_', name)
+            _, sympy_name = GREEK_POOL[ctr[0]]
+            latex_g = GREEK_POOL[ctr[0]][0]
+            text_map[sympy_name] = name; ctr[0] += 1
+            return latex_g
+        return re.sub(r'\\text\{([^}]+)\}', sub, s), text_map
+
+    def _fmt_number(expr):
+        """Format a fully-numeric SymPy expr → {value, latex}."""
+        if expr == oo:  return {'value': float('inf'),  'latex': '\\infty'}
+        if expr == -oo: return {'value': float('-inf'), 'latex': '-\\infty'}
+        if expr.is_Integer:
+            v = int(expr); return {'value': v, 'latex': str(v)}
+        if expr.is_Rational:
+            return {'value': float(expr), 'latex': sym_latex(expr)}
+        try:
+            v = float(N(expr, 15))
+        except Exception:
+            return {'value': None, 'latex': sym_latex(expr)}
+        if abs(v - round(v)) < 1e-9 * max(1.0, abs(v)):
+            v = int(round(v)); return {'value': v, 'latex': str(v)}
+        return {'value': v, 'latex': f'{v:.10g}'}
+
+    def _eval_one(expr_latex, ctx_syms):
+        if not expr_latex or not expr_latex.strip():
+            return {'value': None, 'latex': '', 'is_numeric': False, 'error': 'empty'}
+        processed, text_map = _replace_text_vars(expr_latex)
+        try:
+            expr = parse_latex(processed)
+        except Exception as exc:
+            return {'value': None, 'latex': expr_latex, 'is_numeric': False, 'error': str(exc)}
+        # Remap Greek placeholders → proper symbol names
+        for sympy_name, orig in text_map.items():
+            safe = re.sub(r'[^a-zA-Z0-9_]', '_', orig)
+            expr = expr.subs(Symbol(sympy_name), Symbol(safe))
+        # Substitute math constants
+        expr = expr.subs(CONST_SUBS)
+        # Substitute known variable values (longest names first)
+        subs = [(Symbol(re.sub(r'[^a-zA-Z0-9_]', '_', n)), v)
+                for n, v in sorted(ctx_syms.items(), key=lambda x: -len(x[0]))]
+        if subs:
+            expr = expr.subs(subs)
+        try:
+            expr = simplify(expr)
+        except Exception:
+            pass
+        free = expr.free_symbols
+        if not free:
+            fmt = _fmt_number(expr)
+            if fmt['value'] is not None:
+                return {'value': fmt['value'], 'latex': fmt['latex'], 'is_numeric': True, 'error': None}
+            return {'value': None, 'latex': fmt['latex'], 'is_numeric': False, 'error': None}
+        return {'value': None, 'latex': sym_latex(expr), 'is_numeric': False, 'error': None}
+
+    ctx = {}   # name → float, grows as variables resolve
+    results = []
+    for vdef in var_defs:
+        vid        = vdef.get('id')
+        name       = vdef.get('name', '')
+        expr_latex = vdef.get('expr_latex', '')
+        kind       = vdef.get('kind', 'constant')
+
+        if kind == 'parameter':
+            try:
+                v = float(expr_latex)
+                if name: ctx[name] = v
+                results.append({'id': vid, 'value': v, 'latex': expr_latex,
+                                 'is_numeric': True, 'error': None})
+            except Exception:
+                results.append({'id': vid, 'value': None, 'latex': expr_latex,
+                                 'is_numeric': False, 'error': 'not a number'})
+            continue
+
+        local_ctx = {k: v for k, v in ctx.items() if k != name}
+        res = _eval_one(expr_latex, local_ctx)
+        res['id'] = vid
+        if res['is_numeric'] and res['value'] is not None and name:
+            ctx[name] = res['value']
+        results.append(res)
+
+    return jsonify({'results': results})
+
+
 if __name__ == "__main__":
     print("PlotForge backend  →  http://localhost:5000")
     app.run(debug=True, port=5000)
