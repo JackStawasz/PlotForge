@@ -34,22 +34,10 @@ const redoStack = [];
 const MAX_HISTORY = 60;
 
 function snapshotForUndo(){
-  const plotsSnap = JSON.stringify(plots.map(p=>({
+  const snap = JSON.stringify(plots.map(p=>({
     ...p,
     curves: p.curves.map(c=>({...c, jsData:null}))
   })));
-  // Capture variables state too (strip ephemeral UI-only fields)
-  const varsSnap = JSON.stringify(
-    (typeof variables !== 'undefined' ? variables : []).map(v=>({
-      id: v.id, kind: v.kind,
-      name: v.name, fullLatex: v.fullLatex, exprLatex: v.exprLatex,
-      value: v.value, paramMin: v.paramMin, paramMax: v.paramMax,
-      listLength: v.listLength, listItems: v.listItems ? [...v.listItems] : [],
-      fromTemplate: v.fromTemplate, templateKey: v.templateKey, paramKey: v.paramKey,
-      pickleSource: v.pickleSource,
-    }))
-  );
-  const snap = JSON.stringify({ plots: plotsSnap, vars: varsSnap });
   if(undoStack.length && undoStack[undoStack.length-1]===snap) return;
   undoStack.push(snap);
   if(undoStack.length > MAX_HISTORY) undoStack.shift();
@@ -74,26 +62,12 @@ function performRedo(){
 }
 
 function restoreSnapshot(snap){
-  const parsed = JSON.parse(snap);
-  // Support both old format (array) and new format ({plots, vars})
-  const plotsData = parsed.plots ? JSON.parse(parsed.plots) : parsed;
+  const restored = JSON.parse(snap);
   plots.length = 0;
-  for(const rp of plotsData) plots.push(rp);
+  for(const rp of restored) plots.push(rp);
   if(!plots.find(p=>p.id===activePid)) activePid = plots[0]?.id ?? null;
   const ap = plots.find(p=>p.id===activePid);
   if(ap && activeCurveIdx >= ap.curves.length) activeCurveIdx = 0;
-  // Restore variables if present
-  if(parsed.vars && typeof variables !== 'undefined' && typeof renderVariables === 'function'){
-    const varsData = JSON.parse(parsed.vars);
-    variables.length = 0;
-    for(const rv of varsData) variables.push(rv);
-    // Restore varIdCtr so new variables get unique IDs
-    if(typeof varIdCtr !== 'undefined'){
-      varIdCtr = variables.reduce((mx, v) => Math.max(mx, v.id || 0), varIdCtr);
-    }
-    renderVariables();
-    if(typeof reEvalAllConstants === 'function') reEvalAllConstants();
-  }
   renderDOM();
   for(const p of plots){
     if(p.curves.some(c=>c.template)) renderJS(p.id, false);
@@ -127,12 +101,14 @@ function defView(){
 }
 
 function pickCurveColor(existingCurves){
-  const used = new Set(existingCurves.map(c => c.line_color));
+  // Only consider curves that are actually plotted when deduplicating colors.
+  // Phantom blank curves (no template, no jsData) shouldn't consume a color slot.
+  const realCurves = existingCurves.filter(c => c.template || c.jsData);
+  const used = new Set(realCurves.map(c => c.line_color));
   for(const color of CURVE_COLORS){
     if(!used.has(color)) return color;
   }
-  // All colors taken — fall back to cycling
-  return CURVE_COLORS[existingCurves.length % CURVE_COLORS.length];
+  return CURVE_COLORS[realCurves.length % CURVE_COLORS.length];
 }
 
 function defCurve(existingCurves = []){

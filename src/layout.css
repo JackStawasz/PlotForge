@@ -200,7 +200,23 @@ header{
 }
 .tpl-card-label{font-size:.78rem;font-weight:600;color:#d8d8f0;}
 .tpl-card.selected .tpl-card-label{color:var(--acc2);}
-.tpl-card-eq{font-size:.65rem;color:#5a5a88;font-style:italic;margin-top:2px;}
+/* Equation display: MQ StaticMath rendered, improved visibility */
+.tpl-card-eq{
+  min-height:22px;display:flex;align-items:center;
+  margin-top:2px;
+}
+.tpl-card-eq .mq-math-mode{
+  font-size:13px !important;
+  color:#9898c8 !important;
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  font-family:var(--mono) !important;
+  pointer-events:none;
+}
+.tpl-card-eq .mq-math-mode *{ color:inherit !important; }
+.tpl-card.selected .tpl-card-eq .mq-math-mode{ color:color-mix(in srgb,var(--acc2) 75%,transparent) !important; }
+.tpl-card:hover .tpl-card-eq .mq-math-mode{ color:#c0c0e8 !important; }
 .tpl-card.selected .tpl-card-eq{color:color-mix(in srgb,var(--acc2) 55%,transparent);}
 .tpl-card-dot{
   position:absolute;top:9px;right:9px;
@@ -428,8 +444,21 @@ header{
 /* ── var item shell ── */
 .var-item{
   background:var(--s2);border:1px solid var(--border);border-radius:7px;
-  padding:10px 11px;display:flex;flex-direction:column;gap:9px;
+  padding:10px 11px 10px 8px;display:flex;flex-direction:row;gap:7px;
+  cursor:default;
 }
+/* Drag handle on left side of variable container */
+.var-drag-handle{
+  display:flex;align-items:flex-start;padding-top:2px;
+  color:#3a3a60;font-size:.85rem;cursor:grab;flex-shrink:0;
+  transition:color .12s;user-select:none;line-height:1;
+}
+.var-drag-handle:hover{color:#6868a0;}
+.var-drag-handle:active{cursor:grabbing;}
+.var-item.var-dragging{opacity:0.45;border-style:dashed;}
+.var-item.var-drag-over{border-color:var(--acc2);background:rgba(90,255,206,.05);}
+/* Inner content column (everything except the handle) */
+.var-item-inner{flex:1;min-width:0;display:flex;flex-direction:column;gap:9px;}
 .var-item-header{display:flex;align-items:center;gap:8px;}
 
 /* List subheader: name (left) + length (right) */
@@ -478,7 +507,7 @@ header{
   min-height:38px;display:flex;align-items:center;
 }
 
-/* MathQuill theme override — applies to both editable fields AND StaticMath */
+/* MathQuill theme override */
 .mq-math-mode, .mq-editable-field{
   font-size:16px !important;
   color:var(--text) !important;
@@ -490,20 +519,7 @@ header{
 .mq-editable-field .mq-cursor{border-color:var(--acc2) !important;}
 .mq-editable-field *{color:var(--text);}
 .mq-editable-field .mq-fraction{color:var(--text);}
-
-/* Fraction bar: the horizontal rule between numerator and denominator */
-.mq-editable-field .mq-fraction .mq-denominator,
-.mq-math-mode .mq-fraction .mq-denominator{
-  border-top-color:currentColor !important;
-}
-/* Ensure all fraction children inherit color */
-.mq-editable-field .mq-fraction *,
-.mq-math-mode .mq-fraction,
-.mq-math-mode .mq-fraction *{
-  color:inherit !important;
-}
-
-/* Fix overline/underline decorations to use text color — editable fields */
+/* Fix overline/underline decorations to use text color */
 .mq-editable-field .mq-overline,
 .mq-editable-field .mq-overline *,
 .mq-editable-field .mq-overline-inner{
@@ -514,27 +530,6 @@ header{
 .mq-editable-field .mq-underline *{
   color:var(--text) !important;
   border-color:var(--text) !important;
-}
-/* Fix overline/underline in StaticMath (result display area) */
-.mq-math-mode .mq-overline,
-.mq-math-mode .mq-overline *,
-.mq-math-mode .mq-overline-inner{
-  color:inherit !important;
-  border-color:currentColor !important;
-}
-.mq-math-mode .mq-underline,
-.mq-math-mode .mq-underline *{
-  color:inherit !important;
-  border-color:currentColor !important;
-}
-
-/* var-result StaticMath: inherit parent color so fraction/overline show correctly */
-.var-result .mq-math-mode,
-.var-result .mq-math-mode *{
-  color:inherit !important;
-  font-size:inherit !important;
-  background:transparent !important;
-  border-top-color:currentColor !important;
 }
 
 /* constant result line */

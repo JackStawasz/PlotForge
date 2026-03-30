@@ -32,8 +32,19 @@ function buildModalNavAndGrid(){
     grid.appendChild(hdr);
     for(const {key,tpl} of catMeta[cat]){
       const card=document.createElement('div'); card.className='tpl-card'; card.dataset.key=key; card.dataset.cat=cat;
-      card.innerHTML=`<div class="tpl-card-dot ${meta.dotClass}"></div><div class="tpl-card-label">${tpl.label}</div><div class="tpl-card-eq">${tpl.equation}</div>`;
+      // Build card with a placeholder span for the equation; MQ renders it after insertion
+      card.innerHTML=`<div class="tpl-card-dot ${meta.dotClass}"></div><div class="tpl-card-label">${tpl.label}</div><div class="tpl-card-eq"><span class="tpl-card-eq-mq"></span></div>`;
       card.addEventListener('click',()=>selectModalTemplate(key)); grid.appendChild(card);
+      // Render the equation with MathQuill StaticMath after the element is in the DOM
+      requestAnimationFrame(()=>{
+        const mqSpan = card.querySelector('.tpl-card-eq-mq');
+        if(mqSpan && MQ){
+          try{ MQ.StaticMath(mqSpan).latex(tpl.equation); }
+          catch(e){ mqSpan.textContent = tpl.equation; }
+        } else if(mqSpan){
+          mqSpan.textContent = tpl.equation;
+        }
+      });
     }
   }
 }
@@ -485,7 +496,6 @@ function drawChart(p){
       const galpha = v.grid_alpha ?? 0.5, gc = `rgba(60,60,100,${galpha})`;
       ch.options.scales.x.grid.display=v.show_grid; ch.options.scales.x.grid.color=gc;
       ch.options.scales.y.grid.display=v.show_grid; ch.options.scales.y.grid.color=gc;
-      ch.options.scales.x.border.color=gc; ch.options.scales.y.border.color=gc;
       ch.options.scales.x.ticks.callback = v.x_log ? makeLogTickCb() : makeTickCb('x');
       ch.options.scales.y.ticks.callback = v.y_log ? makeLogTickCb() : makeTickCb('y');
       applyScaleLimits(ch.options.scales, v); ch.update('none'); refreshOverlayLegend(p.id); updatePlotLockedAnnotations(p.id); return;

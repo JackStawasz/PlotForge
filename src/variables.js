@@ -135,26 +135,12 @@ function fixDecoratorCursor(mf){
   }
 }
 
-// Latex commands that are complete operators — never use as autocomplete prefix
-const LATEX_OPERATORS = new Set([
-  '\\cdot','\\times','\\div','\\pm','\\mp','\\cdot',
-  '\\leq','\\geq','\\neq','\\approx','\\equiv','\\sim',
-  '\\rightarrow','\\leftarrow','\\Rightarrow','\\Leftarrow',
-  '\\leftrightarrow','\\Leftrightarrow',
-  '\\uparrow','\\downarrow','\\updownarrow',
-  '\\in','\\notin','\\subset','\\supset','\\cup','\\cap',
-  '\\infty','\\partial','\\nabla','\\emptyset',
-  '\\forall','\\exists',
-]);
-
 function updateLatexDropdown(mf, anchorEl){
   const latex = mf.latex();
   const match = latex.match(/\\([a-zA-Z]*)$/);
   if(!match){ hideLatexDropdown(); return; }
   const partial = '\\' + match[1];
   if(partial === '\\'){ hideLatexDropdown(); return; }
-  // Don't trigger autocomplete for complete operator commands
-  if(LATEX_OPERATORS.has(partial)){ hideLatexDropdown(); return; }
   const suggestions = LATEX_COMMANDS.filter(c => c.startsWith(partial)).slice(0, 5);
   if(!suggestions.length){ hideLatexDropdown(); return; }
   showLatexDropdown(mf, suggestions, anchorEl);
@@ -326,16 +312,59 @@ function removeVariablesBySource(sourceName){
   if(changed) renderVariables();
 }
 
+let _varDragSrcIdx = null;
+
 function renderVariables(){
   const list = document.getElementById('varsList'); if(!list) return;
   const empty = document.getElementById('varsEmpty');
   if(empty) empty.style.display = variables.length ? 'none' : 'flex';
   list.innerHTML = '';
 
-  variables.forEach(v=>{
+  variables.forEach((v, idx)=>{
     const item = document.createElement('div');
     item.className = `var-item var-item-${v.kind}`;
     item.dataset.vid = v.id;
+    item.draggable = true;
+
+    // ── Drag handle (left side) ──────────────────────────────────
+    const handle = document.createElement('div');
+    handle.className = 'var-drag-handle';
+    handle.textContent = '⠿';
+    handle.title = 'Drag to reorder';
+    item.appendChild(handle);
+
+    // ── Inner content column ─────────────────────────────────────
+    const inner = document.createElement('div');
+    inner.className = 'var-item-inner';
+    item.appendChild(inner);
+
+    // Drag-and-drop wiring
+    item.addEventListener('dragstart', e=>{
+      _varDragSrcIdx = idx;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(()=>item.classList.add('var-dragging'), 0);
+    });
+    item.addEventListener('dragend', ()=>{
+      item.classList.remove('var-dragging');
+      list.querySelectorAll('.var-item').forEach(el=>el.classList.remove('var-drag-over'));
+    });
+    item.addEventListener('dragover', e=>{
+      e.preventDefault(); e.dataTransfer.dropEffect='move';
+      item.classList.add('var-drag-over');
+    });
+    item.addEventListener('dragleave', ()=>item.classList.remove('var-drag-over'));
+    item.addEventListener('drop', e=>{
+      e.preventDefault();
+      item.classList.remove('var-drag-over');
+      const destIdx = idx;
+      if(_varDragSrcIdx === null || _varDragSrcIdx === destIdx) return;
+      const [moved] = variables.splice(_varDragSrcIdx, 1);
+      variables.splice(destIdx, 0, moved);
+      _varDragSrcIdx = null;
+      renderVariables();
+      reEvalAllConstants();
+      if(typeof snapshotForUndo === 'function') snapshotForUndo();
+    });
 
     const delBtn = document.createElement('button');
     delBtn.className = 'var-item-del';
@@ -358,7 +387,7 @@ function renderVariables(){
         headerTop.appendChild(srcTag);
       }
       headerTop.appendChild(delBtn);
-      item.appendChild(headerTop);
+      inner.appendChild(headerTop);
 
       // Second row: name as MQ (left) + length control (right)
       const headerBot = document.createElement('div');
@@ -383,7 +412,7 @@ function renderVariables(){
       lenWrap.appendChild(lenLabel);
       lenWrap.appendChild(lenInp);
       headerBot.appendChild(lenWrap);
-      item.appendChild(headerBot);
+      inner.appendChild(headerBot);
 
       // Init MQ for the name field after element is in DOM
       requestAnimationFrame(()=>{
@@ -407,7 +436,7 @@ function renderVariables(){
         }catch(e){}
       });
 
-      buildListBody(item, v, lenInp);
+      buildListBody(inner, v, lenInp);
 
     } else {
       // Non-list: single header row
@@ -425,12 +454,12 @@ function renderVariables(){
         header.appendChild(srcTag);
       }
       header.appendChild(delBtn);
-      item.appendChild(header);
+      inner.appendChild(header);
 
-      if(v.kind === 'constant')       buildConstantBody(item, v);
-      else if(v.kind === 'variable')  buildVariableBody(item, v);
-      else if(v.kind === 'parameter') buildParameterBody(item, v);
-      else if(v.kind === 'equation')  buildEquationBody(item, v);
+      if(v.kind === 'constant')       buildConstantBody(inner, v);
+      else if(v.kind === 'variable')  buildVariableBody(inner, v);
+      else if(v.kind === 'parameter') buildParameterBody(inner, v);
+      else if(v.kind === 'equation')  buildEquationBody(inner, v);
     }
 
     list.appendChild(item);
@@ -608,14 +637,7 @@ function evaluateConstant(v){
     delete ctx[v.name];
     const val = evalLatexExpr(v.exprLatex || '', ctx);
     if(val !== null && val !== undefined){
-      // Format to 7 significant figures; show integers without decimal
-      let formatted;
-      if(Number.isInteger(val)){
-        formatted = String(val);
-      } else {
-        // toPrecision(7) then strip trailing zeros
-        formatted = parseFloat(val.toPrecision(7)).toString();
-      }
+      const formatted = Number.isInteger(val) ? String(val) : parseFloat(val.toPrecision(6)).toString();
       el.textContent = '= ' + formatted;
       el.className = 'var-result var-result-ok';
       return;
@@ -624,8 +646,7 @@ function evaluateConstant(v){
     const partial = partialEvalLatex(v.exprLatex || '', ctx);
     if(partial !== null){
       el.textContent = '= ' + partial;
-      // Use same green as fully-evaluated results so symbolic output is equally visible
-      el.className = 'var-result var-result-ok';
+      el.className = 'var-result var-result-partial';
     } else {
       el.textContent = ''; el.className = 'var-result';
     }
