@@ -223,13 +223,19 @@ def render_matplotlib_multi(curves_data, view, labels, text_annotations=None):
         if lconn in ("cubic", "bezier") and not is_d and len(x) >= 4:
             from scipy.interpolate import make_interp_spline
             try:
-                order = 3
                 finite = np.isfinite(x) & np.isfinite(y)
                 xf, yf = x[finite], y[finite]
                 if len(xf) >= 4:
-                    spl = make_interp_spline(xf, yf, k=order)
-                    px = np.linspace(xf[0], xf[-1], max(500, len(xf)*4))
-                    py = spl(px)
+                    # Sort by x and remove duplicates for make_interp_spline
+                    sort_idx = np.argsort(xf)
+                    xf, yf = xf[sort_idx], yf[sort_idx]
+                    _, unique_idx = np.unique(xf, return_index=True)
+                    xf, yf = xf[unique_idx], yf[unique_idx]
+                    if len(xf) >= 4:
+                        order = 3 if lconn == "cubic" else min(3, len(xf) - 1)
+                        spl = make_interp_spline(xf, yf, k=order)
+                        px = np.linspace(xf[0], xf[-1], max(500, len(xf) * 4))
+                        py = spl(px)
             except Exception:
                 pass
         if is_d:

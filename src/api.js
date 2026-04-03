@@ -34,10 +34,23 @@ const redoStack = [];
 const MAX_HISTORY = 60;
 
 function snapshotForUndo(){
-  const snap = JSON.stringify(plots.map(p=>({
-    ...p,
-    curves: p.curves.map(c=>({...c, jsData:null}))
-  })));
+  const snap = JSON.stringify({
+    plots: plots.map(p=>({
+      ...p,
+      curves: p.curves.map(c=>({...c, jsData:null}))
+    })),
+    variables: variables.map(v=>({
+      id: v.id, kind: v.kind,
+      name: v.name, nameLatex: v.nameLatex || '',
+      fullLatex: v.fullLatex || '', exprLatex: v.exprLatex || '',
+      value: v.value, paramMin: v.paramMin, paramMax: v.paramMax,
+      listLength: v.listLength, listItems: [...(v.listItems||[])],
+      fromTemplate: v.fromTemplate, templateKey: v.templateKey,
+      paramKey: v.paramKey, pickleSource: v.pickleSource,
+      _isNumeric: v._isNumeric || false,
+    })),
+    varIdCtr,
+  });
   if(undoStack.length && undoStack[undoStack.length-1]===snap) return;
   undoStack.push(snap);
   if(undoStack.length > MAX_HISTORY) undoStack.shift();
@@ -62,9 +75,13 @@ function performRedo(){
 }
 
 function restoreSnapshot(snap){
-  const restored = JSON.parse(snap);
+  const state = JSON.parse(snap);
+  // Support both old format (array) and new format ({plots, variables})
+  const restoredPlots = Array.isArray(state) ? state : state.plots;
+  const restoredVars  = Array.isArray(state) ? null  : state.variables;
+
   plots.length = 0;
-  for(const rp of restored) plots.push(rp);
+  for(const rp of restoredPlots) plots.push(rp);
   if(!plots.find(p=>p.id===activePid)) activePid = plots[0]?.id ?? null;
   const ap = plots.find(p=>p.id===activePid);
   if(ap && activeCurveIdx >= ap.curves.length) activeCurveIdx = 0;
@@ -73,6 +90,15 @@ function restoreSnapshot(snap){
     if(p.curves.some(c=>c.template)) renderJS(p.id, false);
   }
   refreshCfg();
+
+  // Restore variables if present in snapshot
+  if(restoredVars && typeof renderVariables === 'function'){
+    variables.length = 0;
+    for(const rv of restoredVars) variables.push(rv);
+    if(state.varIdCtr !== undefined) varIdCtr = state.varIdCtr;
+    renderVariables();
+    if(typeof reEvalAllConstants === 'function') reEvalAllConstants();
+  }
 }
 
 function updateUndoRedoBtns(){
@@ -243,23 +269,29 @@ async function convertToMpl(pid){
   }catch(e){ setConn('err','Error: '+e.message); }
   finally{
     p.loading = false; p.converting = false;
+    // Preserve scroll position — updateCardContent may shift layout
+    const plotList = document.getElementById('plotList');
+    const savedScroll = plotList ? plotList.scrollTop : 0;
     updateCardContent(pid); updateTopbar(pid); updateSpinner(pid);
+    if(plotList) plotList.scrollTop = savedScroll;
   }
 }
 
 function revertToJS(pid){
   const p = gp(pid); if(!p) return;
   p.mplMode = false; p.mplImage = null;
-  // Keep this plot active
+  // Keep this plot active — set before any DOM changes
   activePid = pid;
+  syncActiveHighlight();
   // Rebuild inner content (mpl→js) and topbar
   updateCardContent(pid);
   updateTopbar(pid);
+  // Re-sync highlight after content replacement (DOM may have shifted)
   syncActiveHighlight();
   // renderJS will handle drawChart; refreshCfg/Sidebar after the chart settles
   if(p.curves.some(c=>c.template)){
     renderJS(pid, false);
   }
   // Defer panel refresh until after renderJS's internal setTimeout completes
-  setTimeout(()=>{ refreshCfg(); refreshSidebar(); }, 20);
+  setTimeout(()=>{ refreshCfg(); refreshSidebar(); syncActiveHighlight(); }, 20);
 }

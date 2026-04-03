@@ -423,7 +423,8 @@ function commitDomainInput(id, axis, minMax){
     const dom=getEffectiveDomain(activePid), cur=axis==='x'?(minMax==='min'?dom.xMin:dom.xMax):(minMax==='min'?dom.yMin:dom.yMax);
     el.value=fmtDomain(cur); p.view[axis+'_'+minMax]=null;
     if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(activePid),350); }
-    else if(p.curves.some(c=>c.template)) renderJS(activePid, false); return;
+    else { _applyDomainToChart(p); if(p.curves.some(c=>c.template)) renderJS(activePid, false); }
+    return;
   }
   const val = parseFloat(raw);
   if(isNaN(val)){
@@ -432,7 +433,15 @@ function commitDomainInput(id, axis, minMax){
   }
   p.view[axis+'_'+minMax] = val; el.value=fmtDomain(val);
   if(p.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(activePid),350); }
-  else if(p.curves.some(c=>c.template)) renderJS(activePid, false);
+  else { _applyDomainToChart(p); if(p.curves.some(c=>c.template)) renderJS(activePid, false); }
+}
+
+// Immediately apply p.view domain to an existing Chart.js instance without re-rendering curves.
+function _applyDomainToChart(p){
+  const ch = chartInstances[p?.id]; if(!ch) return;
+  applyScaleLimits(ch.options.scales, p.view);
+  ch.update('none');
+  syncCfgDomain();
 }
 
 function triggerCfgRender(){

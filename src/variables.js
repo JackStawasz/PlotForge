@@ -56,7 +56,7 @@ function getLatexDropdown(){
   return _latexDropdown;
 }
 
-function showLatexDropdown(mf, items, anchorEl){
+function showLatexDropdown(mf, items, anchorEl, mqEl){
   const dd = getLatexDropdown();
   _latexDropdownMF = mf;
   _latexDropdownIdx = 0;
@@ -67,7 +67,7 @@ function showLatexDropdown(mf, items, anchorEl){
     row.textContent = cmd;
     row.style.cssText = 'padding:6px 14px;cursor:pointer;color:#c8c8ee;transition:background .08s;white-space:nowrap;';
     row.addEventListener('mouseenter', ()=>{ _latexDropdownIdx=i; highlightLatexItem(); });
-    row.addEventListener('mousedown', e=>{ e.preventDefault(); applyLatexCompletion(mf, cmd); });
+    row.addEventListener('mousedown', e=>{ e.preventDefault(); applyLatexCompletion(mf, mqEl, cmd); });
     dd.appendChild(row);
   });
   dd.style.display = 'block';
@@ -105,14 +105,22 @@ function navigateLatexDropdown(dir){
   return true;
 }
 
-function applyLatexCompletion(mf, fullCmd){
-  const latex = mf.latex();
-  const match = latex.match(/\\([a-zA-Z]*)$/);
-  if(match){
-    const partial = match[0];
-    for(let i=0; i<partial.length; i++) mf.keystroke('Backspace');
+function applyLatexCompletion(mf, mqEl, fullCmd){
+  // If MQ is in command-entry mode (user typed \si etc.), cancel it cleanly first.
+  // keystroke('Escape') exits command mode and reverts to before the \ was typed.
+  const inCommandMode = !!(mqEl && mqEl.querySelector('.mq-command-text'));
+  if(inCommandMode){
+    mf.keystroke('Escape');
+  } else {
+    // Not in command mode — the partial \word is already in the latex, backspace it out
+    const latex = mf.latex();
+    const match = latex.match(/\\([a-zA-Z]*)$/);
+    if(match){
+      for(let i = 0; i < match[0].length; i++) mf.keystroke('Backspace');
+    }
   }
-  // For decorators that need cursor inside braces, use write+Left instead of cmd
+
+  // Insert the chosen command
   if(fullCmd === '\\overline' || fullCmd === '\\underline' ||
      fullCmd === '\\overbrace' || fullCmd === '\\underbrace' ||
      fullCmd === '\\hat' || fullCmd === '\\bar' || fullCmd === '\\vec' ||
@@ -120,7 +128,6 @@ function applyLatexCompletion(mf, fullCmd){
     mf.write(fullCmd + '{}');
     mf.keystroke('Left'); // step inside the braces
   } else if(fullCmd === '\\text'){
-    // MathQuill's \text creates a plain-text box; cmd() places cursor inside it
     mf.cmd('\\text');
   } else {
     mf.cmd(fullCmd);
@@ -131,45 +138,90 @@ function applyLatexCompletion(mf, fullCmd){
 
 // Detect when \overline (or similar) was completed by direct typing and fix cursor,
 // and when MQ auto-inserted a matching ')' placing cursor after it.
-function fixDecoratorCursor(mf){
+// prevLatex: the latex string from the PREVIOUS edit event (to detect new insertions only)
+function fixDecoratorCursor(mf, prevLatex){
   const latex = mf.latex();
   // If latex ends with \overline{} (empty box just created), cursor is outside — move it in
   if(/\\overline\{\}$|\\underline\{\}$|\\hat\{\}$|\\bar\{\}$|\\vec\{\}$|\\tilde\{\}$/.test(latex)){
     mf.keystroke('Left');
     return;
   }
-  // MathQuill auto-inserts \left(\right) when user types '(' — cursor lands after \right).
-  // Detect this by checking if latex ends with \left(\right) and cursor is at the very end.
-  // We move left once to place cursor between the parens.
-  if(/\\left\(\\right\)$/.test(latex)){
+  // MathQuill auto-inserts \left(\right) when user types '('.
+  // Only correct cursor if the PREVIOUS latex did NOT already end with \left(\right),
+  // meaning this was a fresh insertion (not the user navigating an existing one).
+  if(/\\left\(\\right\)$/.test(latex) && !/\\left\(\\right\)$/.test(prevLatex || '')){
     mf.keystroke('Left');
   }
 }
 
-function updateLatexDropdown(mf, anchorEl){
-  const latex = mf.latex();
-  const match = latex.match(/\\([a-zA-Z]*)$/);
-  if(!match){ hideLatexDropdown(); return; }
-  const partial = '\\' + match[1];
-  if(partial === '\\'){ hideLatexDropdown(); return; }
+function updateLatexDropdown(mf, anchorEl, mqEl){
+  // Check if MQ is in command-entry mode: the partial command lives in .mq-command-text
+  const cmdSpan = mqEl && mqEl.querySelector('.mq-command-text');
+  let partial = null;
+
+  if(cmdSpan){
+    const text = cmdSpan.textContent || '';
+    if(text.length > 0){
+      partial = '\\' + text;
+    } else {
+      // Just the '\' was typed, no letters yet
+      hideLatexDropdown();
+      return;
+    }
+  } else {
+    // Not in command mode — fall back to checking latex() for trailing \word
+    const latex = mf.latex();
+    const match = latex.match(/\\([a-zA-Z]+)$/);
+    if(!match){ hideLatexDropdown(); return; }
+    partial = '\\' + match[1];
+  }
+
   const suggestions = LATEX_COMMANDS.filter(c => c.startsWith(partial)).slice(0, 5);
   if(!suggestions.length){ hideLatexDropdown(); return; }
-  showLatexDropdown(mf, suggestions, anchorEl);
+  showLatexDropdown(mf, suggestions, anchorEl, mqEl);
+}
+
+// Returns the text currently typed inside MathQuill's command-entry box,
+// or null if MQ is not in command-entry mode.
+// While in command mode, mf.latex() ends with the partial like "ab\si" — we read it directly.
+function _getMQCommandText(mqEl){
+  // MQ renders an in-progress command in a .mq-command-text span
+  const cmdSpan = mqEl.querySelector('.mq-command-text');
+  if(cmdSpan) return cmdSpan.textContent || '';
+  return null;
 }
 
 function wrapMathFieldWithAC(mqEl, mf){
   mqEl.addEventListener('keydown', e=>{
     const dd = _latexDropdown;
     const open = dd && dd.style.display !== 'none';
+
     if(open){
       if(e.key === 'ArrowDown'){ e.preventDefault(); navigateLatexDropdown(1); return; }
       if(e.key === 'ArrowUp'){  e.preventDefault(); navigateLatexDropdown(-1); return; }
       if(e.key === 'Enter' || e.key === 'Tab'){
         const items = dd.querySelectorAll('.latex-ac-item');
         const idx = _latexDropdownIdx >= 0 ? _latexDropdownIdx : 0;
-        if(items[idx]){ e.preventDefault(); applyLatexCompletion(mf, items[idx].textContent); return; }
+        if(items[idx]){ e.preventDefault(); applyLatexCompletion(mf, mqEl, items[idx].textContent); return; }
       }
-      if(e.key === 'Escape'){ e.preventDefault(); hideLatexDropdown(); return; }
+      if(e.key === 'Escape'){
+        e.preventDefault();
+        hideLatexDropdown();
+        // Cancel MQ command-entry mode — this reverts to before the '\' was typed
+        mf.keystroke('Escape');
+        return;
+      }
+    }
+
+    // Escape with dropdown closed: cancel command-entry mode if active
+    if(e.key === 'Escape' && !open){
+      const cmdText = _getMQCommandText(mqEl);
+      if(cmdText !== null){
+        e.preventDefault();
+        // keystroke('Escape') tells MQ to cancel the in-progress command entry
+        mf.keystroke('Escape');
+        return;
+      }
     }
   }, true);
 }
@@ -303,8 +355,8 @@ function addVariable(kind='constant', opts={}){
   variables.push(v);
   renderVariables();
   if(!opts.silent){
+    if(typeof snapshotForUndo === 'function') snapshotForUndo();
     setTimeout(()=>{
-      // All kinds: focus the MathField
       const mq = document.querySelector(`#vmq_${v.id} .mq-editable-field`);
       if(mq) mq.click();
     }, 80);
@@ -316,6 +368,7 @@ function removeVariable(id){
   const idx = variables.findIndex(x=>x.id===id);
   if(idx > -1) variables.splice(idx, 1);
   renderVariables();
+  if(typeof snapshotForUndo === 'function') snapshotForUndo();
 }
 
 // Remove all variables that were imported from a given file
@@ -437,24 +490,25 @@ function _varDragEnd(e){
 class VarWarning {
   constructor(varId){
     this.varId = varId;
-    this._msg = null;
+    this._dupMsg = null;    // duplicate-name warning
+    this._invalidMsg = null; // invalid-expression warning
   }
-  get active(){ return this._msg !== null; }
-  set(msg){
-    this._msg = msg;
-    this._apply();
-  }
-  clear(){
-    this._msg = null;
-    this._apply();
-  }
+  get active(){ return this._dupMsg !== null; }
+  // Duplicate-name warnings (from checkAllWarnings)
+  set(msg){ this._dupMsg = msg; this._apply(); }
+  clear(){ this._dupMsg = null; this._apply(); }
+  // Invalid-expression warnings (from evaluateConstant)
+  setInvalid(msg){ this._invalidMsg = msg; this._apply(); }
+  clearInvalid(){ this._invalidMsg = null; this._apply(); }
   _apply(){
     const btn = document.querySelector(`.var-warn-btn[data-vid="${this.varId}"]`);
     if(!btn) return;
     const tip = btn.querySelector('.var-warn-tip');
-    if(this._msg){
+    // Duplicate-name takes priority; invalid is secondary
+    const msg = this._dupMsg || this._invalidMsg;
+    if(msg){
       btn.classList.add('var-warn-active');
-      if(tip) tip.textContent = this._msg;
+      if(tip) tip.textContent = msg;
     } else {
       btn.classList.remove('var-warn-active');
       if(tip) tip.textContent = 'No errors';
@@ -526,9 +580,21 @@ function renderVariables(){
     warnBtn.appendChild(warnTip);
     item.appendChild(warnBtn);
 
-    // Click anywhere on item → focus the MQ field (unless a specific interactive element was clicked)
-    item.addEventListener('click', e=>{
-      if(e.target.closest('input, button, .var-drag-handle, .var-warn-btn, .mq-editable-field')) return;
+    // Click anywhere on item → focus the MQ field.
+    // This acts as a pseudo-background — interactive controls stop propagation themselves.
+    item.addEventListener('mousedown', e=>{
+      // Only intercept plain left-clicks on non-interactive areas
+      if(e.button !== 0) return;
+      const blocked = e.target.closest(
+        'input[type="range"], input[type="number"], input[type="text"], ' +
+        'button, .var-drag-handle, .var-warn-btn, .var-list-cell, ' +
+        '.var-list-leninp, .var-param-bound'
+      );
+      if(blocked) return;
+      // If clicking directly into the MQ field itself, let MQ handle it
+      if(e.target.closest('.mq-editable-field')) return;
+      // Otherwise focus the primary MQ field for this variable
+      e.preventDefault();
       const mqField = item.querySelector('.mq-editable-field');
       if(mqField) mqField.click();
     });
@@ -593,7 +659,7 @@ function renderVariables(){
                 const raw = nameMf.latex().replace(/[\\{}\s]/g,'').replace(/left|right/g,'').trim();
                 if(raw) v.name = raw;
                 reEvalAllConstants();
-                updateLatexDropdown(nameMf, nameMqWrap);
+                updateLatexDropdown(nameMf, nameMqWrap, nameMqWrap);
               }
             }
           });
@@ -705,19 +771,22 @@ function buildConstantBody(item, v){
 
   requestAnimationFrame(()=>{
     let _mf = null;
+    let _prevLatex = '';
     _mf = makeMathField(mqWrap, {
       spaceBehavesLikeTab: true,
       handlers:{
         edit(){
+          const prev = _prevLatex;
+          _prevLatex = _mf.latex();
           v.fullLatex = _mf.latex();
           const parsed = parseVarLatex(v.fullLatex);
           v.name = parsed.name;
           v.nameLatex = parsed.nameLatex;
           v.exprLatex = parsed.exprLatex;
-          fixDecoratorCursor(_mf);
+          fixDecoratorCursor(_mf, prev);
           updateMode(_mf);
           checkAllWarnings();
-          updateLatexDropdown(_mf, mqWrap);
+          updateLatexDropdown(_mf, mqWrap, mqWrap);
         }
       }
     });
@@ -770,8 +839,10 @@ function evaluateConstant(v){
   if(val !== null && val !== undefined){
     const formatted = Number.isInteger(val) ? String(val) : parseFloat(val.toPrecision(6)).toString();
     _renderResultMQ(el, '= ' + formatted, 'var-result var-result-ok');
-    // Cancel any pending backend call — we already have a full numeric result
+    // Cancel any pending backend/invalid calls — we already have a full numeric result
     clearTimeout(v._evalTimer);
+    clearTimeout(v._invalidTimer);
+    if(v._warning) v._warning.clearInvalid();
     return;
   }
 
@@ -813,10 +884,17 @@ function evaluateConstant(v){
           ? String(result.value)
           : parseFloat(result.value.toPrecision(6)).toString();
         _renderResultMQ(elNow, '= ' + fmt, 'var-result var-result-ok');
+        if(v._warning) v._warning.clearInvalid();
       } else if(result.latex && result.latex.trim()){
         _renderResultMQ(elNow, '= ' + result.latex, 'var-result var-result-partial');
+        if(v._warning) v._warning.clearInvalid();
       } else if(result.error && result.error !== 'empty'){
         elNow.innerHTML = ''; elNow.className = 'var-result';
+        // Show "invalid expression" warning after 1 second of no valid result
+        clearTimeout(v._invalidTimer);
+        v._invalidTimer = setTimeout(()=>{
+          if(v._warning) v._warning.setInvalid('Invalid expression');
+        }, 1000);
       }
     }catch(e){
       // Backend unreachable — silently keep the JS partial result
@@ -1088,7 +1166,7 @@ function buildParameterBody(item, v){
               reEvalAllConstants();
             }
           }
-          updateLatexDropdown(_mf, mqWrap);
+          updateLatexDropdown(_mf, mqWrap, mqWrap);
         }
       }
     });
@@ -1179,7 +1257,7 @@ function buildEquationBody(item, v){
             if(nameMatch) v.name = nameMatch[1];
             v.exprLatex = v.fullLatex.slice(eqIdx + 1).trim();
           }
-          updateLatexDropdown(mf, mqWrap);
+          updateLatexDropdown(mf, mqWrap, mqWrap);
         }
       }
     });

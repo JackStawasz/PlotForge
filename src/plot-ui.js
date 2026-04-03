@@ -59,7 +59,10 @@ function renderDOM(){
   });
   list.appendChild(ghost);
   list.addEventListener('click', e=>{
-    const onCard=e.target.closest('.plot-card'), onGhost=e.target.closest('.add-card');
+    const onCard = e.target.closest('.plot-card');
+    const onGhost = e.target.closest('.add-card');
+    // If not on a card or ghost AND not on a button that already handled action,
+    // deselect. We must check the closest card at event time (before any DOM replacement).
     if(!onCard && !onGhost){ activePid=null; syncActiveHighlight(); refreshCfg(); refreshSidebar(); }
   });
   refreshCfg(); refreshSidebar();
