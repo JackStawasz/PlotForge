@@ -756,27 +756,68 @@ function buildConstantBody(item, v){
 
 function evaluateConstant(v){
   const el = document.getElementById(`vres_${v.id}`); if(!el) return;
-  // In numeric (slider) mode the result line is always suppressed
   if(v._isNumeric){ el.innerHTML = ''; el.className = 'var-result'; return; }
-  try{
-    const ctx = buildVarContext();
-    delete ctx[v.name];
-    const val = evalLatexExpr(v.exprLatex || '', ctx);
-    if(val !== null && val !== undefined){
-      const formatted = Number.isInteger(val) ? String(val) : parseFloat(val.toPrecision(6)).toString();
-      _renderResultMQ(el, '= ' + formatted, 'var-result var-result-ok');
-      return;
-    }
-    // Full eval failed — try partial: substitute knowns, report simplified latex form
-    const partial = partialEvalLatex(v.exprLatex || '', ctx);
-    if(partial !== null){
-      _renderResultMQ(el, '= ' + partial, 'var-result var-result-partial');
-    } else {
-      el.innerHTML = ''; el.className = 'var-result';
-    }
-  } catch(e){
+
+  const ctx = buildVarContext();
+  delete ctx[v.name];
+
+  // ── Try pure-JS numeric evaluation first (instant) ───────────────────
+  const val = evalLatexExpr(v.exprLatex || '', ctx);
+  if(val !== null && val !== undefined){
+    const formatted = Number.isInteger(val) ? String(val) : parseFloat(val.toPrecision(6)).toString();
+    _renderResultMQ(el, '= ' + formatted, 'var-result var-result-ok');
+    // Cancel any pending backend call — we already have a full numeric result
+    clearTimeout(v._evalTimer);
+    return;
+  }
+
+  // ── Show immediate JS partial as placeholder while SymPy loads ───────
+  const partial = partialEvalLatex(v.exprLatex || '', ctx);
+  if(partial !== null){
+    _renderResultMQ(el, '= ' + partial, 'var-result var-result-partial');
+  } else {
     el.innerHTML = ''; el.className = 'var-result';
   }
+
+  // ── Debounce backend call (300ms) so rapid typing doesn't flood ───────
+  clearTimeout(v._evalTimer);
+  v._evalTimer = setTimeout(async ()=>{
+    try{
+      // Build the variable list for the backend: context numerics first, then this var
+      const varDefs = [];
+      for(const [name, numVal] of Object.entries(ctx)){
+        varDefs.push({ id: `ctx_${name}`, name, expr_latex: String(numVal), kind: 'parameter' });
+      }
+      varDefs.push({ id: String(v.id), name: v.name, expr_latex: v.exprLatex || '', kind: 'constant' });
+
+      const resp = await fetch(`${API}/evaluate`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ variables: varDefs }),
+      });
+      if(!resp.ok) return;
+      const data = await resp.json();
+      const result = (data.results || []).find(r => r.id === String(v.id));
+      if(!result) return;
+
+      // Re-check element still exists and variable hasn't changed
+      const elNow = document.getElementById(`vres_${v.id}`);
+      if(!elNow) return;
+
+      if(result.is_numeric && result.value !== null){
+        const fmt = Number.isInteger(result.value)
+          ? String(result.value)
+          : parseFloat(result.value.toPrecision(6)).toString();
+        _renderResultMQ(elNow, '= ' + fmt, 'var-result var-result-ok');
+      } else if(result.latex && result.latex.trim()){
+        _renderResultMQ(elNow, '= ' + result.latex, 'var-result var-result-partial');
+      } else if(result.error && result.error !== 'empty'){
+        elNow.innerHTML = ''; elNow.className = 'var-result';
+      }
+    }catch(e){
+      // Backend unreachable — silently keep the JS partial result
+    }
+  }, 300);
 }
 
 // Render a latex string into a result element via MQ StaticMath

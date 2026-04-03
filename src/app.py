@@ -511,33 +511,134 @@ def evaluate_variables():
     def _eval_one(expr_latex, ctx_syms):
         if not expr_latex or not expr_latex.strip():
             return {'value': None, 'latex': '', 'is_numeric': False, 'error': 'empty'}
-        processed, text_map = _replace_text_vars(expr_latex)
+
+        from sympy import (expand, factor, cancel, Poly, degree,
+                           Symbol as Sym, latex as sym_latex)
+        from sympy.abc import x as _x
+
+        # ── Step 1: build a safe encoding for ALL variable names ──────────
+        # Names can be: plain "b", subscripted "b_0", or text "\text{abc}".
+        # parse_latex cannot handle multi-char or subscripted atoms reliably,
+        # so we replace every user-defined name with an unused Greek placeholder.
+        all_names = list(ctx_syms.keys())  # names that already have numeric values
+        # Also scan expr for any remaining \text{} patterns
+        text_names_in_expr = re.findall(r'\\text\{([^}]+)\}', expr_latex)
+        for tn in text_names_in_expr:
+            if tn not in all_names:
+                all_names.append(tn)
+
+        # Greek pool — enough for virtually any expression
+        POOL = [
+            ('\\alpha','_pA'), ('\\beta','_pB'), ('\\gamma','_pC'),
+            ('\\delta','_pD'), ('\\varepsilon','_pE'), ('\\zeta','_pF'),
+            ('\\eta','_pG'), ('\\vartheta','_pH'), ('\\iota','_pI'),
+            ('\\kappa','_pJ'), ('\\lambda','_pK'), ('\\mu','_pL'),
+            ('\\nu','_pM'), ('\\xi','_pN'), ('\\varpi','_pO'),
+            ('\\varrho','_pP'), ('\\varsigma','_pQ'), ('\\tau','_pR'),
+            ('\\upsilon','_pS'), ('\\varphi','_pT'),
+            ('\\chi','_pU'), ('\\psi','_pV'), ('\\omega','_pW'),
+        ]
+        # Map: original_name → (latex_placeholder, sympy_placeholder_name)
+        name_enc = {}
+        pool_idx = 0
+        for nm in sorted(all_names, key=len, reverse=True):  # longest first
+            if pool_idx >= len(POOL):
+                break
+            name_enc[nm] = POOL[pool_idx]
+            pool_idx += 1
+
+        # ── Step 2: rewrite expr_latex replacing all known names ──────────
+        processed = expr_latex
+        # Replace \text{name} patterns first
+        def _sub_text(m):
+            nm = m.group(1)
+            if nm in name_enc:
+                return name_enc[nm][0]  # latex placeholder
+            return re.sub(r'[^a-zA-Z0-9]', '', nm) or 'z'
+        processed = re.sub(r'\\text\{([^}]+)\}', _sub_text, processed)
+
+        # Replace subscripted names: b_0, b_{0}, etc.
+        for nm, (lat_ph, _) in sorted(name_enc.items(), key=lambda x: -len(x[0])):
+            if '_' in nm:
+                base, sub = nm.split('_', 1)
+                pat = r'(?<![a-zA-Z\\])' + re.escape(base) + r'_(?:\{' + re.escape(sub) + r'\}|' + re.escape(sub) + r')(?![a-zA-Z0-9_])'
+                processed = re.sub(pat, lat_ph, processed)
+
+        # Replace plain single-letter names that are in our encoding
+        for nm, (lat_ph, _) in sorted(name_enc.items(), key=lambda x: -len(x[0])):
+            if '_' not in nm and len(nm) == 1:
+                processed = re.sub(r'(?<![a-zA-Z\\])' + re.escape(nm) + r'(?![a-zA-Z_])', lat_ph, processed)
+
+        # ── Step 3: parse with SymPy ──────────────────────────────────────
         try:
             expr = parse_latex(processed)
         except Exception as exc:
             return {'value': None, 'latex': expr_latex, 'is_numeric': False, 'error': str(exc)}
-        # Remap Greek placeholders → proper symbol names
-        for sympy_name, orig in text_map.items():
-            safe = re.sub(r'[^a-zA-Z0-9_]', '_', orig)
-            expr = expr.subs(Symbol(sympy_name), Symbol(safe))
-        # Substitute math constants
+
+        # ── Step 4: substitute math constants ────────────────────────────
         expr = expr.subs(CONST_SUBS)
-        # Substitute known variable values (longest names first)
-        subs = [(Symbol(re.sub(r'[^a-zA-Z0-9_]', '_', n)), v)
-                for n, v in sorted(ctx_syms.items(), key=lambda x: -len(x[0]))]
-        if subs:
-            expr = expr.subs(subs)
+
+        # ── Step 5: substitute numeric ctx values via placeholder symbols ─
+        for nm, val in ctx_syms.items():
+            if nm in name_enc:
+                ph_sym = Sym(name_enc[nm][1])
+                expr = expr.subs(ph_sym, val)
+
+        # ── Step 6: cancel, expand, flatten parse_latex grouping artefact ──
+        from sympy import sympify as sp_sympify
         try:
-            expr = simplify(expr)
+            expr = cancel(expr)
         except Exception:
             pass
+        try:
+            expr = sp_sympify(str(expand(expr)))
+        except Exception:
+            try:
+                expr = expand(expr)
+            except Exception:
+                pass
+
+        # ── Step 7: check if fully numeric ───────────────────────────────
         free = expr.free_symbols
         if not free:
             fmt = _fmt_number(expr)
             if fmt['value'] is not None:
                 return {'value': fmt['value'], 'latex': fmt['latex'], 'is_numeric': True, 'error': None}
             return {'value': None, 'latex': fmt['latex'], 'is_numeric': False, 'error': None}
-        return {'value': None, 'latex': sym_latex(expr), 'is_numeric': False, 'error': None}
+
+        # ── Step 8: render symbolic result back to latex ──────────────────
+        # Try polynomial ordering (highest degree first) if expr is a polynomial
+        result_latex = None
+        try:
+            free_list = list(free)
+            if len(free_list) == 1:
+                p_obj = Poly(expr, free_list[0])
+                # sym_latex(Poly) includes "Poly(...)" wrapper — use its expression form
+                result_latex = sym_latex(p_obj.as_expr())
+        except Exception:
+            pass
+        if result_latex is None:
+            result_latex = sym_latex(expr)
+
+        # ── Step 9: decode placeholders back to original latex names ─────
+        # sym_latex uses the sympy symbol name directly, e.g. \alpha, \beta
+        for nm, (lat_ph, sym_ph) in name_enc.items():
+            # Determine the latex representation of this name for display
+            if '_' in nm:
+                base, sub = nm.split('_', 1)
+                display_latex = f'{base}_{{{sub}}}'
+            elif len(nm) > 1:
+                display_latex = f'\\text{{{nm}}}'
+            else:
+                display_latex = nm
+            # Replace the placeholder's latex representation in result_latex
+            # sym_latex renders \alpha as \alpha etc.
+            ph_in_output = lat_ph  # e.g. \alpha
+            # Build a safe regex that matches the placeholder as a whole token
+            ph_escaped = re.escape(ph_in_output)
+            result_latex = re.sub(ph_escaped + r'(?![a-zA-Z])', display_latex, result_latex)
+
+        return {'value': None, 'latex': result_latex, 'is_numeric': False, 'error': None}
 
     ctx = {}   # name → float, grows as variables resolve
     results = []
