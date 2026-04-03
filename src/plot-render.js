@@ -760,16 +760,26 @@ function wireInteraction(p){
     const {dataX,dataY} = pixelToData(ch, e.clientX, e.clientY);
     const txt = `x=${sigFig(dataX,4)}&nbsp;y=${sigFig(dataY,4)}`;
     const tcel = document.getElementById(`ctop_coords_${p.id}`);
-    if(tcel){ tcel.innerHTML = txt; tcel.style.opacity='1'; }
+    if(tcel){
+      tcel.innerHTML = txt;
+      tcel.style.transition = 'opacity 0.3s ease';
+      tcel.style.opacity='1';
+    }
     if(panState[p.id]?.dragging) onPanMove(e, p);
   });
   wrap.addEventListener('mouseenter', ()=>{
     const tcel = document.getElementById(`ctop_coords_${p.id}`);
-    if(tcel) tcel.style.opacity='1';
+    if(tcel){
+      tcel.style.transition = 'opacity 0.3s ease';
+      tcel.style.opacity='1';
+    }
   });
   wrap.addEventListener('mouseleave', ()=>{
     const tcel = document.getElementById(`ctop_coords_${p.id}`);
-    if(tcel){ tcel.innerHTML=''; tcel.style.opacity='0'; }
+    if(tcel){
+      tcel.style.transition = 'opacity 0.8s ease';
+      tcel.style.opacity='0';
+    }
   });
   wrap.addEventListener('wheel', e=>{
     e.preventDefault();
