@@ -593,6 +593,19 @@ header{
 .var-result .mq-root-block *{ color:inherit !important; font-size:.8rem !important; }
 .var-result.var-result-ok{ color:#5affce;opacity:.9; }
 .var-result.var-result-partial{ color:#a0a8e8;opacity:.85; }
+.var-result.var-result-pending{ color:#5a5a90;opacity:.7; }
+.var-result-dots{ display:inline-flex;gap:2px;align-items:center; }
+.var-result-dots span{
+  display:inline-block;animation:vrd-bounce .9s infinite ease-in-out;
+  font-size:.85rem;line-height:1;
+}
+.var-result-dots span:nth-child(1){ animation-delay:0s; }
+.var-result-dots span:nth-child(2){ animation-delay:.18s; }
+.var-result-dots span:nth-child(3){ animation-delay:.36s; }
+@keyframes vrd-bounce{
+  0%,80%,100%{ transform:translateY(0);opacity:.35; }
+  40%{          transform:translateY(-4px);opacity:1; }
+}
 
 /* parameter slider row (value now in MathField above) */
 .var-param-valrow{display:none;}

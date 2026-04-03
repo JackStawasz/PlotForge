@@ -25,19 +25,61 @@ function initResizableSidebars(){
 
 function makeResizable(elId, defaultPx, minPx, maxPx, edge, cssVar){
   const el = document.getElementById(elId); if(!el) return;
+
+  // Collapse threshold: if dragged below minPx - 40px, collapse
+  const COLLAPSE_THRESHOLD = minPx - 40;
+  const COLLAPSED_PX = 0;
+  let collapsed = false;
+  let lastExpandedW = defaultPx;
+
+  // Resize handle
   const handle = document.createElement('div');
   handle.className = 'resize-handle resize-handle-' + edge;
   el.appendChild(handle);
+
+  // Expand button (shown only when collapsed)
+  const expandBtn = document.createElement('button');
+  expandBtn.className = `sidebar-expand-btn sidebar-expand-${edge}`;
+  expandBtn.innerHTML = edge === 'right' ? '&#8250;' : '&#8249;'; // › or ‹
+  expandBtn.title = 'Expand sidebar';
+  expandBtn.style.display = 'none';
+  document.body.appendChild(expandBtn);
+
+  function setCollapsed(val){
+    collapsed = val;
+    el.classList.toggle('sidebar-collapsed', collapsed);
+    expandBtn.style.display = collapsed ? 'flex' : 'none';
+    if(collapsed){
+      document.documentElement.style.setProperty(cssVar, COLLAPSED_PX + 'px');
+    }
+  }
+
+  function expand(){
+    setCollapsed(false);
+    document.documentElement.style.setProperty(cssVar, lastExpandedW + 'px');
+  }
+
+  expandBtn.addEventListener('click', expand);
+
   let dragging = false, startX = 0, startW = 0;
   handle.addEventListener('mousedown', e=>{
-    e.preventDefault(); dragging = true; startX = e.clientX; startW = el.offsetWidth;
+    e.preventDefault(); dragging = true; startX = e.clientX;
+    startW = collapsed ? lastExpandedW : el.offsetWidth;
     document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
   });
   window.addEventListener('mousemove', e=>{
     if(!dragging) return;
     const delta = edge === 'right' ? (e.clientX - startX) : (startX - e.clientX);
-    const newW = Math.max(minPx, Math.min(maxPx, startW + delta));
-    document.documentElement.style.setProperty(cssVar, newW + 'px');
+    const raw = startW + delta;
+    if(raw < COLLAPSE_THRESHOLD){
+      // Snap to collapsed
+      if(!collapsed) setCollapsed(true);
+    } else {
+      if(collapsed) setCollapsed(false);
+      const newW = Math.max(minPx, Math.min(maxPx, raw));
+      lastExpandedW = newW;
+      document.documentElement.style.setProperty(cssVar, newW + 'px');
+    }
   });
   window.addEventListener('mouseup', ()=>{
     if(!dragging) return;

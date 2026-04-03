@@ -174,6 +174,35 @@
 }
 .has-fullscreen .plot-card:not(.plot-fs):not(.plot-fs-exit){opacity:.25;pointer-events:none;}
 
+/* Sidebar collapsed state */
+.sidebar-collapsed,
+.cfg.sidebar-collapsed{
+  overflow:hidden;
+}
+/* Expand button — floats at the edge of the collapsed sidebar */
+.sidebar-expand-btn{
+  position:fixed;top:50%;transform:translateY(-50%);
+  z-index:300;
+  width:18px;height:48px;
+  background:var(--s1);border:1px solid var(--border2);
+  color:#7070a8;font-size:1.1rem;line-height:1;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .15s,color .15s,border-color .15s;
+  padding:0;
+}
+.sidebar-expand-btn:hover{background:rgba(90,255,206,.1);color:var(--acc2);border-color:var(--acc2);}
+.sidebar-expand-right{
+  left:0px; /* right edge of collapsed left sidebar */
+  border-radius:0 5px 5px 0;
+  border-left:none;
+}
+.sidebar-expand-left{
+  right:0px; /* left edge of collapsed right sidebar */
+  border-radius:5px 0 0 5px;
+  border-right:none;
+}
+
 /* Resize handles for sidebars */
 .resize-handle{
   position:absolute;top:0;bottom:0;width:5px;
