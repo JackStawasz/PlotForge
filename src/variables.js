@@ -129,12 +129,19 @@ function applyLatexCompletion(mf, fullCmd){
   mf.focus();
 }
 
-// Detect when \overline (or similar) was completed by direct typing and fix cursor
-// Called from the MathField edit handler
+// Detect when \overline (or similar) was completed by direct typing and fix cursor,
+// and when MQ auto-inserted a matching ')' placing cursor after it.
 function fixDecoratorCursor(mf){
   const latex = mf.latex();
   // If latex ends with \overline{} (empty box just created), cursor is outside — move it in
   if(/\\overline\{\}$|\\underline\{\}$|\\hat\{\}$|\\bar\{\}$|\\vec\{\}$|\\tilde\{\}$/.test(latex)){
+    mf.keystroke('Left');
+    return;
+  }
+  // MathQuill auto-inserts \left(\right) when user types '(' — cursor lands after \right).
+  // Detect this by checking if latex ends with \left(\right) and cursor is at the very end.
+  // We move left once to place cursor between the parens.
+  if(/\\left\(\\right\)$/.test(latex)){
     mf.keystroke('Left');
   }
 }
@@ -213,9 +220,10 @@ function buildVarContext(){
   for(const v of variables){
     if(v.kind === 'parameter' && v.name) ctx[v.name] = v.value;
   }
-  // Constants: if pure numeric → use v.value; else evaluate exprLatex
+  // Constants: skip any variable whose name is a duplicate (has an active warning).
+  // Only the first-defined owner of each name contributes to the context.
   for(const v of variables){
-    if(v.kind === 'constant' && v.name){
+    if(v.kind === 'constant' && v.name && !(v._warning?.active)){
       try{
         if(v._isNumeric){
           ctx[v.name] = v.value;
@@ -651,7 +659,6 @@ function buildConstantBody(item, v){
   const sliderWrap = document.createElement('div');
   sliderWrap.className = 'var-param-sliderrow';
   sliderWrap.id = `vslrow_${v.id}`;
-  sliderWrap.style.display = 'none';
 
   const minInp = document.createElement('input');
   minInp.type = 'text'; minInp.className = 'var-param-bound';
@@ -683,13 +690,13 @@ function buildConstantBody(item, v){
     const numericRhs = isNumericRhs(v.exprLatex);
     v._isNumeric = numericRhs;
     if(numericRhs){
-      sliderWrap.style.display = 'flex';
-      resultEl.textContent = '';
+      sliderWrap.classList.add('visible');
+      resultEl.innerHTML = '';
       resultEl.className = 'var-result';
       const num = parseFloat(v.exprLatex.replace(/[^\d.\-]/g,''));
       if(!isNaN(num)){ v.value = num; syncParamSlider(v); }
     } else {
-      sliderWrap.style.display = 'none';
+      sliderWrap.classList.remove('visible');
       evaluateConstant(v);
     }
     // Re-evaluate all other constants that may depend on this one
@@ -715,12 +722,9 @@ function buildConstantBody(item, v){
       }
     });
     if(_mf){
-      // Use write() so \text{} and other commands are processed as MQ commands,
-      // preserving upright text rendering inside \text boxes
-      if(v.fullLatex){
-        _mf.latex(''); // clear first
-        _mf.write(v.fullLatex);
-      }
+      // latex() setter is the correct way to restore MQ content from a stored string.
+      // write() processes as typed commands and garbles = signs, ^ etc.
+      if(v.fullLatex) _mf.latex(v.fullLatex);
       updateMode(_mf);
       wrapMathFieldWithAC(mqWrap, _mf);
     }
@@ -1182,8 +1186,7 @@ function buildEquationBody(item, v){
     if(mf){
       const fname = v.name || 'f';
       const initLatex = v.fullLatex || `${fname}\\left(x\\right)=${v.exprLatex||''}`;
-      mf.latex('');
-      mf.write(initLatex);
+      mf.latex(initLatex);
       wrapMathFieldWithAC(mqWrap, mf);
     }
   });

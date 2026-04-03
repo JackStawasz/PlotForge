@@ -582,9 +582,11 @@ header{
 /* constant result line */
 .var-result{
   font-size:.8rem;font-family:var(--mono);color:#5a5a90;
-  min-height:16px;padding:0 2px;transition:color .15s;
+  padding:0 2px;transition:color .15s;
   display:flex;align-items:center;
+  overflow:hidden;
 }
+.var-result:empty{ display:none; }
 .var-result .mq-math-mode,
 .var-result .mq-editable-field,
 .var-result span.mq-root-block,
@@ -593,9 +595,10 @@ header{
 .var-result.var-result-partial{ color:#a0a8e8;opacity:.85; }
 
 /* parameter slider row (value now in MathField above) */
-.var-param-valrow{display:none;} /* hidden — value shown in MQ */
+.var-param-valrow{display:none;}
 .var-param-valinp{display:none;}
-.var-param-sliderrow{display:flex;align-items:center;gap:5px;}
+.var-param-sliderrow{display:none;align-items:center;gap:5px;}
+.var-param-sliderrow.visible{display:flex;}
 .var-param-slider{flex:1;height:2px;}
 .var-param-bound{
   background:transparent;border:1px solid transparent;border-radius:3px;
