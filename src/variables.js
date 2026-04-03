@@ -503,7 +503,8 @@ class VarWarning {
   _apply(){
     const btn = document.querySelector(`.var-warn-btn[data-vid="${this.varId}"]`);
     if(!btn) return;
-    const tip = btn.querySelector('.var-warn-tip');
+    // Tip may be a detached body child — use stored reference, fall back to child query
+    const tip = btn._tipEl || btn.querySelector('.var-warn-tip');
     // Duplicate-name takes priority; invalid is secondary
     const msg = this._dupMsg || this._invalidMsg;
     if(msg){
@@ -538,6 +539,8 @@ function renderVariables(){
   const list = document.getElementById('varsList'); if(!list) return;
   const empty = document.getElementById('varsEmpty');
   if(empty) empty.style.display = variables.length ? 'none' : 'flex';
+  // Remove any detached tooltip elements from a prior render
+  document.querySelectorAll('body > .var-warn-tip').forEach(el => el.remove());
   list.innerHTML = '';
 
   variables.forEach((v, idx)=>{
@@ -568,16 +571,45 @@ function renderVariables(){
     item.addEventListener('focusin',  ()=> item.classList.add('var-item--focused'));
     item.addEventListener('focusout', ()=> item.classList.remove('var-item--focused'));
 
-    // ── Warning symbol (bottom-left of container) ────────────────
+    // ── Warning symbol (right-center of container) ───────────────
     const warnBtn = document.createElement('div');
     warnBtn.className = 'var-warn-btn';
     warnBtn.dataset.vid = v.id;
     warnBtn.innerHTML = '&#9888;';
     warnBtn.setAttribute('aria-label', 'No errors');
+
+    // Tooltip lives on document.body so it escapes var-item stacking context
     const warnTip = document.createElement('div');
     warnTip.className = 'var-warn-tip';
     warnTip.textContent = 'No errors';
-    warnBtn.appendChild(warnTip);
+    document.body.appendChild(warnTip);
+
+    function _positionTip(){
+      const r = warnBtn.getBoundingClientRect();
+      warnTip.style.top  = (r.bottom + 4) + 'px';
+      warnTip.style.left = r.left + 'px';
+    }
+    function _showTip(){ _positionTip(); warnTip.style.display = 'block'; }
+    function _hideTip(){ if(!warnBtn.classList.contains('var-warn-pinned')) warnTip.style.display = 'none'; }
+
+    warnBtn.addEventListener('mouseenter', _showTip);
+    warnBtn.addEventListener('mouseleave', _hideTip);
+    warnBtn.addEventListener('click', e=>{
+      e.stopPropagation();
+      const pinned = warnBtn.classList.toggle('var-warn-pinned');
+      if(pinned){ _positionTip(); warnTip.style.display = 'block'; }
+      else { warnTip.style.display = 'none'; }
+    });
+    // Dismiss pin on outside click
+    document.addEventListener('click', ()=>{
+      warnBtn.classList.remove('var-warn-pinned');
+      warnTip.style.display = 'none';
+    });
+
+    // Patch VarWarning._apply so it can also update the detached warnTip text
+    // We store the tip reference on the button for use by VarWarning._apply
+    warnBtn._tipEl = warnTip;
+
     item.appendChild(warnBtn);
 
     // Click anywhere on item → focus the MQ field.
@@ -1238,6 +1270,41 @@ function rebuildParamSlider(v){
 }
 
 // ─── EQUATION ─────────────────────────────────────────────────────────────
+function validateEquationLatex(latex, v){
+  if(!v._warning) return;
+  if(!latex || !latex.trim()){ v._warning.clearInvalid(); return; }
+
+  const eqIdx = latex.indexOf('=');
+  if(eqIdx < 0){ v._warning.setInvalid('Missing "=" sign'); return; }
+
+  const lhs = latex.slice(0, eqIdx).trim();
+
+  // Must have '(' on LHS
+  if(!/\\left\(|\(/.test(lhs)){
+    v._warning.setInvalid('Missing independent variable'); return;
+  }
+
+  // Empty parentheses: \left(\right) with nothing between, or plain ()
+  if(/\\left\(\\right\)/.test(lhs)){
+    v._warning.setInvalid('Missing independent variable'); return;
+  }
+
+  // Extract function name: everything before the first \left( or (
+  const nameRaw = lhs.replace(/\\left\(.*$|\(.*$/,'').trim();
+
+  if(!nameRaw){
+    v._warning.setInvalid('Missing function name'); return;
+  }
+
+  const isText       = /^\\text\{[^}]+\}/.test(nameRaw);
+  const isSingleChar = /^[a-zA-Z](_\{[^}]*\}|_[a-zA-Z0-9])?$/.test(nameRaw);
+  if(!isText && !isSingleChar){
+    v._warning.setInvalid('Invalid function name'); return;
+  }
+
+  v._warning.clearInvalid();
+}
+
 function buildEquationBody(item, v){
   const mqWrap = document.createElement('div');
   mqWrap.className = 'var-mq-wrap var-mq-single-line';
@@ -1257,6 +1324,7 @@ function buildEquationBody(item, v){
             if(nameMatch) v.name = nameMatch[1];
             v.exprLatex = v.fullLatex.slice(eqIdx + 1).trim();
           }
+          validateEquationLatex(v.fullLatex, v);
           updateLatexDropdown(mf, mqWrap, mqWrap);
         }
       }
@@ -1265,6 +1333,7 @@ function buildEquationBody(item, v){
       const fname = v.name || 'f';
       const initLatex = v.fullLatex || `${fname}\\left(x\\right)=${v.exprLatex||''}`;
       mf.latex(initLatex);
+      validateEquationLatex(mf.latex(), v);
       wrapMathFieldWithAC(mqWrap, mf);
     }
   });
