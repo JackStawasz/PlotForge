@@ -66,27 +66,15 @@
     </div>
   </div>
 
-  <!-- LEFT SIDEBAR: Files + Variables tabs -->
+  <!-- LEFT SIDEBAR: Variables + Files tabs -->
   <aside class="sidebar" id="leftSidebar">
     <div class="sidebar-tabs">
-      <button class="sidebar-tab sidebar-tab-active" id="sbTabFiles" data-tab="files">Files</button>
-      <button class="sidebar-tab" id="sbTabVars" data-tab="vars">Variables</button>
-    </div>
-
-    <!-- FILES TAB -->
-    <div class="sb-pane" id="sbPaneFiles">
-      <div class="sb-pane-inner">
-        <div class="files-drop-zone" id="filesDropZone">
-          <div class="fdz-icon">&#8853;</div>
-          <div class="fdz-text">Drop files here<br><span>or click to browse</span></div>
-          <input type="file" id="filesInput" multiple style="display:none"/>
-        </div>
-        <div class="files-list" id="filesList"></div>
-      </div>
+      <button class="sidebar-tab sidebar-tab-active" id="sbTabVars" data-tab="vars">Variables</button>
+      <button class="sidebar-tab" id="sbTabFiles" data-tab="files">Files</button>
     </div>
 
     <!-- VARIABLES TAB -->
-    <div class="sb-pane" id="sbPaneVars" style="display:none">
+    <div class="sb-pane" id="sbPaneVars">
       <div class="sb-pane-inner">
         <div class="vars-header">
           <span class="slbl" style="margin-bottom:0">Variables</span>
@@ -97,6 +85,18 @@
           <div style="font-size:1.4rem;opacity:.13">&#8721;</div>
           <div>Define named variables<br>using LaTeX equations</div>
         </div>
+      </div>
+    </div>
+
+    <!-- FILES TAB -->
+    <div class="sb-pane" id="sbPaneFiles" style="display:none">
+      <div class="sb-pane-inner">
+        <div class="files-drop-zone" id="filesDropZone">
+          <div class="fdz-icon">&#8853;</div>
+          <div class="fdz-text">Drop files here<br><span>or click to browse</span></div>
+          <input type="file" id="filesInput" multiple style="display:none"/>
+        </div>
+        <div class="files-list" id="filesList"></div>
       </div>
     </div>
   </aside>

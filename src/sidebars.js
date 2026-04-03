@@ -1,5 +1,5 @@
 // ═══ LEFT SIDEBAR: Files + Variables ════════════════════════════════════
-let sbActiveTab = 'files';
+let sbActiveTab = 'vars';
 
 function initLeftSidebar(){
   document.getElementById('sbTabFiles')?.addEventListener('click', ()=>setSbTab('files'));

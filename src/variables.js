@@ -28,6 +28,7 @@ const LATEX_COMMANDS = [
   '\\forall','\\exists','\\in','\\notin','\\subset','\\supset',
   '\\cup','\\cap','\\emptyset','\\mathbb','\\mathrm','\\mathbf',
   '\\hat','\\bar','\\vec','\\tilde','\\dot','\\ddot',
+  '\\text',
   '\\left','\\right','\\big','\\bigg',
   '\\overline','\\underline','\\overbrace','\\underbrace',
 ];
@@ -118,6 +119,9 @@ function applyLatexCompletion(mf, fullCmd){
      fullCmd === '\\tilde' || fullCmd === '\\dot' || fullCmd === '\\ddot'){
     mf.write(fullCmd + '{}');
     mf.keystroke('Left'); // step inside the braces
+  } else if(fullCmd === '\\text'){
+    // MathQuill's \text creates a plain-text box; cmd() places cursor inside it
+    mf.cmd('\\text');
   } else {
     mf.cmd(fullCmd);
   }
@@ -170,20 +174,36 @@ function makeMathField(el, opts){
 }
 
 // ─── Parse "name = expr" from full latex ─────────────────────────────────
+// Returns { name, nameLatex, exprLatex }
+// name      — canonical lookup key (e.g. "b_0", "varName")
+// nameLatex — raw LHS latex used to reconstruct fullLatex (e.g. "b_{0}", "\alpha")
+// exprLatex — raw RHS latex
 function parseVarLatex(fullLatex){
   const eqIdx = fullLatex.indexOf('=');
-  if(eqIdx < 0) return { name: '', exprLatex: fullLatex };
+  if(eqIdx < 0) return { name: '', nameLatex: '', exprLatex: fullLatex };
   const lhs = fullLatex.slice(0, eqIdx).trim();
   const rhs = fullLatex.slice(eqIdx + 1).trim();
-  // Check for \text{name} on LHS — extract the name inside braces
-  const textMatch = lhs.match(/\\text\{([^}]+)\}/);
+  const nameLatex = lhs;
+
   let name;
+  // Check for \text{name} on LHS
+  const textMatch = lhs.match(/\\text\{([^}]+)\}/);
   if(textMatch){
-    name = textMatch[1]; // e.g. "var_name"
+    name = textMatch[1];
   } else {
-    name = lhs.replace(/[\\{}^_\s]/g, '').replace(/left|right/g,'').trim();
+    // Support subscripts: extract letter + optional _{...} or _x
+    // e.g. "b_{0}" → "b_0", "x_{12}" → "x_12", "a" → "a"
+    const subMatch = lhs.match(/^([a-zA-Z]+(?:\\[a-zA-Z]+)?)(?:_\{([^}]*)\}|_([a-zA-Z0-9]))?$/);
+    if(subMatch){
+      const base = subMatch[1].replace(/\\/g,'');
+      const sub  = subMatch[2] !== undefined ? subMatch[2] : (subMatch[3] !== undefined ? subMatch[3] : null);
+      name = sub !== null ? `${base}_${sub}` : base;
+    } else {
+      // Fallback: strip formatting chars
+      name = lhs.replace(/[\\{}^_\s]/g, '').replace(/left|right/g,'').trim();
+    }
   }
-  return { name, exprLatex: rhs };
+  return { name, nameLatex, exprLatex: rhs };
 }
 
 // ═══ VARIABLE CONTEXT ════════════════════════════════════════════════════
@@ -193,9 +213,9 @@ function buildVarContext(){
   for(const v of variables){
     if(v.kind === 'parameter' && v.name) ctx[v.name] = v.value;
   }
-  // Variables (merged kind): if pure numeric → use v.value; else evaluate exprLatex
+  // Constants: if pure numeric → use v.value; else evaluate exprLatex
   for(const v of variables){
-    if(v.kind === 'variable' && v.name){
+    if(v.kind === 'constant' && v.name){
       try{
         if(v._isNumeric){
           ctx[v.name] = v.value;
@@ -205,17 +225,6 @@ function buildVarContext(){
           const val = evalLatexExpr(v.exprLatex || '', localCtx);
           if(val !== null) ctx[v.name] = val;
         }
-      }catch(e){}
-    }
-  }
-  // Constants (legacy kind — keep for backward compat)
-  for(const v of variables){
-    if(v.kind === 'constant' && v.name){
-      try{
-        const localCtx = {...ctx};
-        delete localCtx[v.name];
-        const val = evalLatexExpr(v.exprLatex || '', localCtx);
-        if(val !== null) ctx[v.name] = val;
       }catch(e){}
     }
   }
@@ -239,7 +248,7 @@ function showVarTypePicker(){
   ].join(';');
   _varTypePicker = picker;
   const types = [
-    { key:'variable',  icon:'α',   label:'Variable',  desc:'Number or expression' },
+    { key:'constant',  icon:'α',   label:'Constant',  desc:'Number or expression' },
     { key:'equation',  icon:'ƒ',   label:'Equation',  desc:'Function of x' },
     { key:'list',      icon:'[ ]', label:'List',      desc:'Fixed-length sequence' },
   ];
@@ -270,6 +279,7 @@ function addVariable(kind='constant', opts={}){
   const v = {
     id: ++varIdCtr, kind,
     name:      opts.name      || '',
+    nameLatex: opts.nameLatex || '',
     fullLatex: opts.fullLatex || '',
     exprLatex: opts.exprLatex || '',
     value:     opts.value     ?? 0,
@@ -312,7 +322,155 @@ function removeVariablesBySource(sourceName){
   if(changed) renderVariables();
 }
 
-let _varDragSrcIdx = null;
+// ═══ VARIABLE DRAG STATE (pointer-based) ══════════════════════════════════
+let _varDrag = null; // { srcIdx, clone, placeholder, offX, offY }
+
+function _varDragStart(e, item, idx){
+  const list = document.getElementById('varsList'); if(!list) return;
+  const rect = item.getBoundingClientRect();
+
+  // Build floating clone
+  const clone = item.cloneNode(true);
+  clone.style.cssText = [
+    'position:fixed','z-index:99999','pointer-events:none',
+    `width:${rect.width}px`,
+    `left:${rect.left}px`,`top:${rect.top}px`,
+    'margin:0','opacity:0.92',
+    'box-shadow:0 8px 32px rgba(0,0,0,.55)',
+    'border-color:var(--acc2)',
+    'transition:none',
+  ].join(';');
+  document.body.appendChild(clone);
+
+  // Build placeholder (outline only, same height) — insert BEFORE item so it takes its visual slot
+  const ph = document.createElement('div');
+  ph.className = 'var-drag-placeholder';
+  ph.style.height = rect.height + 'px';
+  item.before(ph);
+
+  // Hide original (placeholder now occupies its slot)
+  item.style.display = 'none';
+
+  _varDrag = {
+    srcIdx: idx,
+    srcItem: item,
+    clone,
+    placeholder: ph,
+    offX: e.clientX - rect.left,
+    offY: e.clientY - rect.top,
+    list,
+    committed: false,
+  };
+
+  document.addEventListener('pointermove', _varDragMove);
+  document.addEventListener('pointerup',   _varDragEnd);
+}
+
+function _varDragMove(e){
+  if(!_varDrag) return;
+  const { clone, placeholder, offX, offY, list } = _varDrag;
+
+  // Move floating clone
+  clone.style.left = (e.clientX - offX) + 'px';
+  clone.style.top  = (e.clientY - offY) + 'px';
+
+  // Find which item the cursor is over (skip hidden original)
+  const items = [...list.querySelectorAll('.var-item')].filter(el=>el.style.display !== 'none');
+  let target = null;
+  for(const el of items){
+    const r = el.getBoundingClientRect();
+    if(e.clientY >= r.top && e.clientY <= r.bottom){ target = el; break; }
+  }
+
+  if(target){
+    const r = target.getBoundingClientRect();
+    if(e.clientY < r.top + r.height / 2){
+      if(placeholder.nextSibling !== target) list.insertBefore(placeholder, target);
+    } else {
+      if(target.nextSibling !== placeholder) list.insertBefore(placeholder, target.nextSibling);
+    }
+  }
+}
+
+function _varDragEnd(e){
+  if(!_varDrag) return;
+  document.removeEventListener('pointermove', _varDragMove);
+  document.removeEventListener('pointerup',   _varDragEnd);
+
+  const { srcIdx, srcItem, clone, placeholder, list } = _varDrag;
+
+  clone.remove();
+  srcItem.style.display = '';
+
+  if(placeholder.parentNode === list){
+    // Determine destination index from placeholder position
+    const sibs = [...list.children]; // items + placeholder
+    const phPos = sibs.indexOf(placeholder);
+    let destIdx = sibs.slice(0, phPos).filter(el=>el.classList.contains('var-item')).length;
+    if(destIdx > srcIdx) destIdx--;
+
+    placeholder.remove();
+    _varDrag = null;
+
+    if(destIdx !== srcIdx){
+      const [moved] = variables.splice(srcIdx, 1);
+      variables.splice(destIdx, 0, moved);
+      renderVariables();
+      reEvalAllConstants();
+      if(typeof snapshotForUndo === 'function') snapshotForUndo();
+    }
+  } else {
+    placeholder.remove();
+    _varDrag = null;
+  }
+}
+
+// ═══ WARNING SYSTEM ══════════════════════════════════════════════════════
+class VarWarning {
+  constructor(varId){
+    this.varId = varId;
+    this._msg = null;
+  }
+  get active(){ return this._msg !== null; }
+  set(msg){
+    this._msg = msg;
+    this._apply();
+  }
+  clear(){
+    this._msg = null;
+    this._apply();
+  }
+  _apply(){
+    const btn = document.querySelector(`.var-warn-btn[data-vid="${this.varId}"]`);
+    if(!btn) return;
+    const tip = btn.querySelector('.var-warn-tip');
+    if(this._msg){
+      btn.classList.add('var-warn-active');
+      if(tip) tip.textContent = this._msg;
+    } else {
+      btn.classList.remove('var-warn-active');
+      if(tip) tip.textContent = 'No errors';
+    }
+  }
+}
+
+function checkAllWarnings(){
+  // Build a map of name → first variable index that owns it
+  const nameOwner = new Map(); // name → first v.id that defined it
+  for(const v of variables){
+    if(!v.name) continue;
+    if(!nameOwner.has(v.name)) nameOwner.set(v.name, v.id);
+  }
+  for(const v of variables){
+    if(!v._warning) v._warning = new VarWarning(v.id);
+    if(v.name && nameOwner.get(v.name) !== v.id){
+      v._warning.set(`"${v.name}" is already defined`);
+    } else {
+      v._warning.clear();
+    }
+  }
+}
+
 
 function renderVariables(){
   const list = document.getElementById('varsList'); if(!list) return;
@@ -324,7 +482,6 @@ function renderVariables(){
     const item = document.createElement('div');
     item.className = `var-item var-item-${v.kind}`;
     item.dataset.vid = v.id;
-    item.draggable = true;
 
     // ── Drag handle (left side) ──────────────────────────────────
     const handle = document.createElement('div');
@@ -338,32 +495,34 @@ function renderVariables(){
     inner.className = 'var-item-inner';
     item.appendChild(inner);
 
-    // Drag-and-drop wiring
-    item.addEventListener('dragstart', e=>{
-      _varDragSrcIdx = idx;
-      e.dataTransfer.effectAllowed = 'move';
-      setTimeout(()=>item.classList.add('var-dragging'), 0);
-    });
-    item.addEventListener('dragend', ()=>{
-      item.classList.remove('var-dragging');
-      list.querySelectorAll('.var-item').forEach(el=>el.classList.remove('var-drag-over'));
-    });
-    item.addEventListener('dragover', e=>{
-      e.preventDefault(); e.dataTransfer.dropEffect='move';
-      item.classList.add('var-drag-over');
-    });
-    item.addEventListener('dragleave', ()=>item.classList.remove('var-drag-over'));
-    item.addEventListener('drop', e=>{
+    // Drag wiring: only the handle initiates drag
+    handle.addEventListener('pointerdown', e=>{
       e.preventDefault();
-      item.classList.remove('var-drag-over');
-      const destIdx = idx;
-      if(_varDragSrcIdx === null || _varDragSrcIdx === destIdx) return;
-      const [moved] = variables.splice(_varDragSrcIdx, 1);
-      variables.splice(destIdx, 0, moved);
-      _varDragSrcIdx = null;
-      renderVariables();
-      reEvalAllConstants();
-      if(typeof snapshotForUndo === 'function') snapshotForUndo();
+      handle.setPointerCapture(e.pointerId);
+      _varDragStart(e, item, idx);
+    });
+
+    // Green outline when any child element is focused/interacted with
+    item.addEventListener('focusin',  ()=> item.classList.add('var-item--focused'));
+    item.addEventListener('focusout', ()=> item.classList.remove('var-item--focused'));
+
+    // ── Warning symbol (bottom-left of container) ────────────────
+    const warnBtn = document.createElement('div');
+    warnBtn.className = 'var-warn-btn';
+    warnBtn.dataset.vid = v.id;
+    warnBtn.innerHTML = '&#9888;';
+    warnBtn.setAttribute('aria-label', 'No errors');
+    const warnTip = document.createElement('div');
+    warnTip.className = 'var-warn-tip';
+    warnTip.textContent = 'No errors';
+    warnBtn.appendChild(warnTip);
+    item.appendChild(warnBtn);
+
+    // Click anywhere on item → focus the MQ field (unless a specific interactive element was clicked)
+    item.addEventListener('click', e=>{
+      if(e.target.closest('input, button, .var-drag-handle, .var-warn-btn, .mq-editable-field')) return;
+      const mqField = item.querySelector('.mq-editable-field');
+      if(mqField) mqField.click();
     });
 
     const delBtn = document.createElement('button');
@@ -444,7 +603,7 @@ function renderVariables(){
       header.className = 'var-item-header';
       const badge = document.createElement('span');
       badge.className = `var-kind-badge var-kind-${v.kind}`;
-      badge.textContent = v.kind.charAt(0).toUpperCase() + v.kind.slice(1);
+      badge.textContent = v.kind === 'constant' ? 'Const' : v.kind.charAt(0).toUpperCase() + v.kind.slice(1);
       header.appendChild(badge);
       if(v.pickleSource){
         const srcTag = document.createElement('span');
@@ -457,77 +616,42 @@ function renderVariables(){
       inner.appendChild(header);
 
       if(v.kind === 'constant')       buildConstantBody(inner, v);
-      else if(v.kind === 'variable')  buildVariableBody(inner, v);
       else if(v.kind === 'parameter') buildParameterBody(inner, v);
       else if(v.kind === 'equation')  buildEquationBody(inner, v);
     }
 
     list.appendChild(item);
   });
+  // Apply warning states after DOM is built (requestAnimationFrame so MQ init runs first)
+  requestAnimationFrame(()=> checkAllWarnings());
 }
 
 function reEvalAllConstants(){
   for(const v of variables){
-    if(v.kind === 'constant' || v.kind === 'variable') evaluateConstant(v);
+    if(v.kind === 'constant') evaluateConstant(v);
   }
 }
 
-// ─── CONSTANT (legacy) ─────────────────────────────────────────────────────
+// ─── CONSTANT — numeric value or expression, with optional slider ───────────
+// One MathField for "name = expr". If the RHS is a plain number → show slider.
+// If the RHS is an expression → show evaluated result beneath.
 function buildConstantBody(item, v){
   const mqWrap = document.createElement('div');
   mqWrap.className = 'var-mq-wrap var-mq-single-line';
   mqWrap.id = `vmq_${v.id}`;
   item.appendChild(mqWrap);
 
-  const result = document.createElement('div');
-  result.className = 'var-result';
-  result.id = `vres_${v.id}`;
-  item.appendChild(result);
-
-  requestAnimationFrame(()=>{
-    const mf = makeMathField(mqWrap, {
-      spaceBehavesLikeTab: true,
-      handlers:{
-        edit(){
-          v.fullLatex = mf.latex();
-          const parsed = parseVarLatex(v.fullLatex);
-          v.name = parsed.name;
-          v.exprLatex = parsed.exprLatex;
-          fixDecoratorCursor(mf);
-          evaluateConstant(v);
-          updateLatexDropdown(mf, mqWrap);
-        }
-      }
-    });
-    if(mf){
-      const initLatex = v.fullLatex || (v.name ? `${v.name}=${v.exprLatex||''}` : (v.exprLatex || ''));
-      if(initLatex) mf.latex(initLatex);
-      evaluateConstant(v);
-      wrapMathFieldWithAC(mqWrap, mf);
-    }
-  });
-}
-
-// ─── VARIABLE (merged constant+parameter) ──────────────────────────────────
-// One MathField for "name = expr". If the RHS is a plain number → show slider.
-// If the RHS is an expression → show evaluated result beneath.
-function buildVariableBody(item, v){
-  const mqWrap = document.createElement('div');
-  mqWrap.className = 'var-mq-wrap var-mq-single-line';
-  mqWrap.id = `vmq_${v.id}`;
-  item.appendChild(mqWrap);
-
-  // Result line — shows either "= <value>" (expression mode) or nothing (slider mode)
+  // Result line — shows "= <value>" in expression mode, hidden in slider mode
   const resultEl = document.createElement('div');
   resultEl.className = 'var-result';
   resultEl.id = `vres_${v.id}`;
   item.appendChild(resultEl);
 
-  // Slider row — shown only in numeric mode
+  // Slider row — shown only when RHS is a plain number
   const sliderWrap = document.createElement('div');
   sliderWrap.className = 'var-param-sliderrow';
   sliderWrap.id = `vslrow_${v.id}`;
-  sliderWrap.style.display = 'none'; // hidden until we know mode
+  sliderWrap.style.display = 'none';
 
   const minInp = document.createElement('input');
   minInp.type = 'text'; minInp.className = 'var-param-bound';
@@ -549,11 +673,8 @@ function buildVariableBody(item, v){
   sliderWrap.appendChild(maxInp);
   item.appendChild(sliderWrap);
 
-  // Determine whether the RHS is a pure number (slider mode) or expression (eval mode)
   function isNumericRhs(expr){
     if(!expr || !expr.trim()) return false;
-    // A "pure number" is just digits, optional minus, optional decimal, optional whitespace
-    // and no latex commands other than a leading minus
     const stripped = expr.replace(/\s+/g,'').replace(/^-/,'');
     return /^\d+\.?\d*$/.test(stripped) || /^\d*\.\d+$/.test(stripped);
   }
@@ -562,21 +683,17 @@ function buildVariableBody(item, v){
     const numericRhs = isNumericRhs(v.exprLatex);
     v._isNumeric = numericRhs;
     if(numericRhs){
-      // Slider mode
       sliderWrap.style.display = 'flex';
       resultEl.textContent = '';
       resultEl.className = 'var-result';
-      // Parse the numeric value from exprLatex
       const num = parseFloat(v.exprLatex.replace(/[^\d.\-]/g,''));
-      if(!isNaN(num)){
-        v.value = num;
-        syncParamSlider(v);
-      }
+      if(!isNaN(num)){ v.value = num; syncParamSlider(v); }
     } else {
-      // Expression mode
       sliderWrap.style.display = 'none';
       evaluateConstant(v);
     }
+    // Re-evaluate all other constants that may depend on this one
+    reEvalAllConstants();
   }
 
   requestAnimationFrame(()=>{
@@ -588,26 +705,33 @@ function buildVariableBody(item, v){
           v.fullLatex = _mf.latex();
           const parsed = parseVarLatex(v.fullLatex);
           v.name = parsed.name;
+          v.nameLatex = parsed.nameLatex;
           v.exprLatex = parsed.exprLatex;
           fixDecoratorCursor(_mf);
           updateMode(_mf);
+          checkAllWarnings();
           updateLatexDropdown(_mf, mqWrap);
         }
       }
     });
     if(_mf){
-      const initLatex = v.fullLatex || (v.name ? `${v.name}=${v._isNumeric ? formatParamVal(v.value) : (v.exprLatex||'')}` : '');
-      if(initLatex) _mf.latex(initLatex);
+      // Use write() so \text{} and other commands are processed as MQ commands,
+      // preserving upright text rendering inside \text boxes
+      if(v.fullLatex){
+        _mf.latex(''); // clear first
+        _mf.write(v.fullLatex);
+      }
       updateMode(_mf);
       wrapMathFieldWithAC(mqWrap, _mf);
     }
 
-    // Slider changes update the MathField and value
     slider.addEventListener('input', ()=>{
       v.value = parseFloat(slider.value);
       if(_mf){
-        const name = v.name || 'a';
-        _mf.latex(`${name}=${formatParamVal(v.value)}`);
+        // Use stored nameLatex so \-commands in the LHS are preserved
+        const lhs = v.nameLatex || v.name || 'a';
+        const newLatex = `${lhs}=${formatParamVal(v.value)}`;
+        _mf.latex(newLatex);
         v.fullLatex = _mf.latex();
         v.exprLatex = formatParamVal(v.value);
       }
@@ -632,68 +756,114 @@ function buildVariableBody(item, v){
 
 function evaluateConstant(v){
   const el = document.getElementById(`vres_${v.id}`); if(!el) return;
+  // In numeric (slider) mode the result line is always suppressed
+  if(v._isNumeric){ el.innerHTML = ''; el.className = 'var-result'; return; }
   try{
     const ctx = buildVarContext();
     delete ctx[v.name];
     const val = evalLatexExpr(v.exprLatex || '', ctx);
     if(val !== null && val !== undefined){
       const formatted = Number.isInteger(val) ? String(val) : parseFloat(val.toPrecision(6)).toString();
-      el.textContent = '= ' + formatted;
-      el.className = 'var-result var-result-ok';
+      _renderResultMQ(el, '= ' + formatted, 'var-result var-result-ok');
       return;
     }
-    // Full eval failed — try partial: substitute knowns, report simplified form
+    // Full eval failed — try partial: substitute knowns, report simplified latex form
     const partial = partialEvalLatex(v.exprLatex || '', ctx);
     if(partial !== null){
-      el.textContent = '= ' + partial;
-      el.className = 'var-result var-result-partial';
+      _renderResultMQ(el, '= ' + partial, 'var-result var-result-partial');
     } else {
-      el.textContent = ''; el.className = 'var-result';
+      el.innerHTML = ''; el.className = 'var-result';
     }
   } catch(e){
-    el.textContent = ''; el.className = 'var-result';
+    el.innerHTML = ''; el.className = 'var-result';
   }
 }
 
-// Partial evaluator: substitute known vars, collect unknown single-letter symbols,
-// compute the numeric coefficient, return a readable string like "18c" or "9bc".
+// Render a latex string into a result element via MQ StaticMath
+function _renderResultMQ(el, latex, className){
+  el.className = className;
+  el.innerHTML = '';
+  if(MQ){
+    try{
+      const span = document.createElement('span');
+      el.appendChild(span);
+      MQ.StaticMath(span).latex(latex);
+      return;
+    }catch(e){}
+  }
+  // Fallback to plain text if MQ unavailable
+  el.textContent = latex;
+}
+
+// Partial evaluator: substitute known vars, collect unknown symbol tokens (with subscripts),
+// compute the numeric coefficient, return a latex string like "2b_{0}" or "3cd".
 function partialEvalLatex(latex, ctx){
   if(!latex || !latex.trim()) return null;
   let expr = latex;
 
-  // Resolve \text{name} from ctx
+  // Resolve \text{name} from ctx first
   expr = expr.replace(/\\text\{([^}]+)\}/g, (match, name) => {
     if(name in ctx) return `(${ctx[name]})`;
     return match;
   });
 
-  // Collect unknown single-letter names from the raw latex (before substitution)
-  // These are bare single letters not in ctx and not math commands
-  const allLetters = new Set();
-  // Find single latin letters used as variables (not preceded by \)
-  const rawLetterRe = /(?<!\\)(?<![a-zA-Z])([a-zA-Z])(?![a-zA-Z])/g;
+  // Collect unknown symbol tokens — bare letter OR letter+subscript (b_{0}, b_0)
+  // Must be collected from expr BEFORE ctx substitution
+  const unknownTokens = []; // { latex: 'b_{0}', key: 'b_0' } or { latex: 'c', key: 'c' }
+  const seenKeys = new Set();
+
+  // Match subscripted: letter_{stuff} or letter_digit
+  const subRe = /(?<!\\)([a-zA-Z])_\{([^}]*)\}|(?<!\\)([a-zA-Z])_([a-zA-Z0-9])/g;
   let m;
-  while((m = rawLetterRe.exec(expr)) !== null){
+  while((m = subRe.exec(expr)) !== null){
+    const base = m[1] || m[3];
+    const sub  = m[2] !== undefined ? m[2] : m[4];
+    const key = `${base}_${sub}`;
+    const ltx = m[2] !== undefined ? `${base}_{${sub}}` : `${base}_{${sub}}`;
+    if(!(key in ctx) && !seenKeys.has(key)){
+      seenKeys.add(key);
+      unknownTokens.push({ latex: ltx, key });
+    }
+  }
+  // Match plain single letters (not preceded by \, not already found as subscript base)
+  const plainRe = /(?<!\\)(?<![a-zA-Z])([a-zA-Z])(?![a-zA-Z_{])/g;
+  while((m = plainRe.exec(expr)) !== null){
     const ch = m[1];
-    // Skip if it's a known ctx variable — those will be substituted
-    if(!(ch in ctx)) allLetters.add(ch);
+    if(!(ch in ctx) && !seenKeys.has(ch)){
+      seenKeys.add(ch);
+      unknownTokens.push({ latex: ch, key: ch });
+    }
   }
 
-  // Substitute known ctx vars
+  if(unknownTokens.length === 0) return null;
+
+  // Substitute known ctx vars (subscripted first, then plain)
   const ctxNames = Object.keys(ctx).filter(n=>n).sort((a,b)=>b.length-a.length);
   for(const name of ctxNames){
-    const safeRe = new RegExp(`(?<!\\\\)\\b${escapeRegex(name)}\\b`, 'g');
-    expr = expr.replace(safeRe, `(${ctx[name]})`);
+    if(name.includes('_')){
+      const [base, sub] = name.split('_');
+      const pat = `${escapeRegex(base)}_(?:\\{${escapeRegex(sub)}\\}|${escapeRegex(sub)})(?![a-zA-Z0-9_])`;
+      expr = expr.replace(new RegExp(pat,'g'), `(${ctx[name]})`);
+    } else {
+      const safeRe = new RegExp(`(?<!\\\\)\\b${escapeRegex(name)}\\b`,'g');
+      expr = expr.replace(safeRe, `(${ctx[name]})`);
+    }
   }
 
-  // Now compute numeric coefficient: substitute all remaining unknown letters with 1
+  // Substitute unknown tokens with 1 to extract numeric coefficient
   let coeffExpr = expr;
-  for(const ch of allLetters){
-    const re = new RegExp(`(?<![a-zA-Z(])${ch}(?![a-zA-Z])`, 'g');
-    coeffExpr = coeffExpr.replace(re, '(1)');
+  for(const tok of unknownTokens){
+    if(tok.key.includes('_')){
+      const [base, sub] = tok.key.split('_');
+      const pat = `${escapeRegex(base)}_(?:\\{${escapeRegex(sub)}\\}|${escapeRegex(sub)})(?![a-zA-Z0-9_])`;
+      coeffExpr = coeffExpr.replace(new RegExp(pat,'g'), '(1)');
+    } else {
+      const re = new RegExp(`(?<![a-zA-Z(])${escapeRegex(tok.key)}(?![a-zA-Z_{])`, 'g');
+      coeffExpr = coeffExpr.replace(re, '(1)');
+    }
   }
 
-  // Apply standard latex→JS transforms to the coefficient expression
+  // Convert latex coefficient expression to JS
   const toJS = e => {
     let r = e
       .replace(/\\pi/g,   '(Math.PI)')
@@ -708,33 +878,34 @@ function partialEvalLatex(latex, ctx){
       .replace(/\\cdot/g,'*').replace(/\\times/g,'*')
       .replace(/\{/g,'(').replace(/\}/g,')')
       .replace(/\\[a-zA-Z]+/g,'');
-    // Implicit multiplication
     r = r.replace(/\)\s*\(/g,')*(' ).replace(/(\d)\s*\(/g,'$1*(').replace(/\)\s*(\d)/g,')*$1');
     return r;
   };
 
   let coeff = null;
   try{
-    const jsExpr = toJS(coeffExpr);
     // eslint-disable-next-line no-new-func
-    coeff = Function('"use strict"; return (' + jsExpr + ')')();
+    coeff = Function('"use strict"; return (' + toJS(coeffExpr) + ')')();
   }catch(e){ return null; }
 
   if(typeof coeff !== 'number' || !isFinite(coeff)) return null;
-  if(allLetters.size === 0) return null; // would have been caught by full eval
 
-  // Format coefficient — omit "1" if it's a bare multiplier
+  // Format coefficient
   let coeffStr = Number.isInteger(coeff)
     ? String(coeff)
     : parseFloat(coeff.toPrecision(5)).toString();
   if(coeffStr === '1') coeffStr = '';
   else if(coeffStr === '-1') coeffStr = '-';
 
-  // Build unknown part: sort letters for deterministic output
-  const unknownPart = [...allLetters].sort().join('');
+  // Build unknown part in latex (sort for deterministic output)
+  const unknownLatex = unknownTokens
+    .slice()
+    .sort((a,b) => a.key.localeCompare(b.key))
+    .map(t => t.latex)
+    .join(' ');
 
-  if(!unknownPart) return null;
-  return coeffStr + unknownPart;
+  if(!unknownLatex) return null;
+  return coeffStr + unknownLatex;
 }
 
 function escapeRegex(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
@@ -751,10 +922,18 @@ function evalLatexExpr(latex, ctx={}){
   });
 
   // Substitute plain user variables (longest names first to avoid partial matches)
+  // Subscript names like b_0 appear in latex as b_{0} or b_0 — handle both forms
   const ctxNames = Object.keys(ctx).filter(n=>n).sort((a,b)=>b.length-a.length);
   for(const name of ctxNames){
-    const safeRe = new RegExp(`(?<!\\\\)\\b${escapeRegex(name)}\\b`, 'g');
-    expr = expr.replace(safeRe, `(${ctx[name]})`);
+    if(name.includes('_')){
+      // Build a regex that matches both b_{0} and b_0 in latex
+      const [base, sub] = name.split('_');
+      const subPattern = `${escapeRegex(base)}_(?:\\{${escapeRegex(sub)}\\}|${escapeRegex(sub)})(?![a-zA-Z0-9_])`;
+      expr = expr.replace(new RegExp(subPattern, 'g'), `(${ctx[name]})`);
+    } else {
+      const safeRe = new RegExp(`(?<!\\\\)\\b${escapeRegex(name)}\\b`, 'g');
+      expr = expr.replace(safeRe, `(${ctx[name]})`);
+    }
   }
 
   expr = expr
@@ -962,7 +1141,8 @@ function buildEquationBody(item, v){
     if(mf){
       const fname = v.name || 'f';
       const initLatex = v.fullLatex || `${fname}\\left(x\\right)=${v.exprLatex||''}`;
-      mf.latex(initLatex);
+      mf.latex('');
+      mf.write(initLatex);
       wrapMathFieldWithAC(mqWrap, mf);
     }
   });
@@ -1151,7 +1331,7 @@ function syncTemplateParamsToVars(tplKey, params){
       const slider = document.getElementById(`vpslider_${existing.id}`);
       if(slider) syncParamSlider(existing);
     } else {
-      addVariable('variable', {
+      addVariable('constant', {
         name: pk,
         value: currentVal,
         exprLatex: String(currentVal),
@@ -1191,7 +1371,7 @@ function importPickleVars(data, sourceName){
         existing.value = info.value;
         renderVariables();
       } else {
-        addVariable('variable', {
+        addVariable('constant', {
           name,
           exprLatex: String(info.value),
           fullLatex: `${latexName}=${info.value}`,

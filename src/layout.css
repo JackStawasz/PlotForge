@@ -444,20 +444,67 @@ header{
 /* ── var item shell ── */
 .var-item{
   background:var(--s2);border:1px solid var(--border);border-radius:7px;
-  padding:10px 11px 10px 8px;display:flex;flex-direction:row;gap:7px;
-  cursor:default;
+  padding:6px 8px 20px 30px; /* left pad for handle, bottom pad for warning */
+  display:flex;flex-direction:row;gap:7px;
+  cursor:default;position:relative;
+  transition:border-color .15s,background .15s;
 }
-/* Drag handle on left side of variable container */
+.var-item--focused{
+  border-color:var(--acc2);
+  background:rgba(90,255,206,.03);
+}
+/* Drag handle: square in top-left corner */
 .var-drag-handle{
-  display:flex;align-items:flex-start;padding-top:2px;
-  color:#3a3a60;font-size:.85rem;cursor:grab;flex-shrink:0;
-  transition:color .12s;user-select:none;line-height:1;
+  position:absolute;top:0;left:0;
+  width:26px;height:26px;
+  display:flex;align-items:center;justify-content:center;
+  color:#4a4a78;font-size:.88rem;cursor:grab;
+  transition:color .12s,background .12s,border-color .12s;user-select:none;
+  background:rgba(255,255,255,.03);
+  border-radius:7px 0 4px 0; /* top-left matches container, inner corners rounded */
+  border-right:1px solid rgba(255,255,255,.07);
+  border-bottom:1px solid rgba(255,255,255,.07);
 }
-.var-drag-handle:hover{color:#6868a0;}
+.var-drag-handle:hover{color:#8080c0;background:rgba(90,255,206,.09);border-color:rgba(90,255,206,.28);}
 .var-drag-handle:active{cursor:grabbing;}
 .var-item.var-dragging{opacity:0.45;border-style:dashed;}
 .var-item.var-drag-over{border-color:var(--acc2);background:rgba(90,255,206,.05);}
-/* Inner content column (everything except the handle) */
+/* Placeholder shown in the list while dragging */
+.var-drag-placeholder{
+  border-radius:7px;
+  border:2px dashed rgba(90,255,206,.35);
+  background:rgba(90,255,206,.03);
+  flex-shrink:0;
+}
+/* Warning symbol: bottom-left of container */
+.var-warn-btn{
+  position:absolute;bottom:2px;left:3px;
+  width:22px;height:22px;
+  display:flex;align-items:center;justify-content:center;
+  color:#3a3a60;font-size:1.95rem;cursor:default;
+  transition:color .2s,filter .2s;line-height:1;
+}
+.var-warn-btn:hover{ color:#8080a8; }
+.var-warn-btn.var-warn-active{
+  color:#e8c84a;
+  filter:drop-shadow(0 0 6px rgba(232,200,74,.7));
+}
+.var-warn-btn.var-warn-active:hover{
+  color:#f0d86a;
+  filter:drop-shadow(0 0 9px rgba(232,200,74,.9));
+}
+/* Custom tooltip for warning */
+.var-warn-tip{
+  display:none;
+  position:absolute;bottom:calc(100% + 6px);left:0;
+  background:#0e0e1c;border:1px solid var(--border2);border-radius:5px;
+  color:#9090c8;font-family:var(--mono);font-size:.68rem;
+  padding:4px 9px;white-space:nowrap;
+  box-shadow:0 4px 16px rgba(0,0,0,.45);
+  z-index:1000;pointer-events:none;
+}
+.var-warn-btn:hover .var-warn-tip{ display:block; }
+/* Inner content column (handle is absolute, so inner fills container) */
 .var-item-inner{flex:1;min-width:0;display:flex;flex-direction:column;gap:9px;}
 .var-item-header{display:flex;align-items:center;gap:8px;}
 
@@ -509,7 +556,7 @@ header{
 
 /* MathQuill theme override */
 .mq-math-mode, .mq-editable-field{
-  font-size:16px !important;
+  font-size:20px !important;
   color:var(--text) !important;
   background:transparent !important;
   border:none !important;
@@ -536,9 +583,14 @@ header{
 .var-result{
   font-size:.8rem;font-family:var(--mono);color:#5a5a90;
   min-height:16px;padding:0 2px;transition:color .15s;
+  display:flex;align-items:center;
 }
-.var-result.var-result-ok{color:#5affce;opacity:.9;}
-.var-result.var-result-partial{color:#a0a8e8;opacity:.85;}
+.var-result .mq-math-mode,
+.var-result .mq-editable-field,
+.var-result span.mq-root-block,
+.var-result .mq-root-block *{ color:inherit !important; font-size:.8rem !important; }
+.var-result.var-result-ok{ color:#5affce;opacity:.9; }
+.var-result.var-result-partial{ color:#a0a8e8;opacity:.85; }
 
 /* parameter slider row (value now in MathField above) */
 .var-param-valrow{display:none;} /* hidden — value shown in MQ */
@@ -570,8 +622,8 @@ header{
 .var-list-name-mq:focus-within{border-bottom-color:var(--acc);}
 /* Make the MQ field inside the name box compact and inline */
 .var-list-name-mq .mq-editable-field{
-  font-size:14px !important;
-  min-height:18px !important;
+  font-size:20px !important;
+  min-height:22px !important;
   padding:0 !important;
 }
 
