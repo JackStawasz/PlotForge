@@ -37,7 +37,12 @@ function snapshotForUndo(){
   const snap = JSON.stringify({
     plots: plots.map(p=>({
       ...p,
-      curves: p.curves.map(c=>({...c, jsData:null}))
+      curves: p.curves.map(c=>({
+        ...c,
+        // Preserve jsData for list curves (no template) so undo restores them.
+        // Null jsData only for template curves — those get recomputed by renderJS.
+        jsData: c.template ? null : (c.jsData ? { x:[...c.jsData.x], y:[...c.jsData.y], discrete: c.jsData.discrete } : null),
+      }))
     })),
     variables: variables.map(v=>({
       id: v.id, kind: v.kind,
@@ -76,7 +81,6 @@ function performRedo(){
 
 function restoreSnapshot(snap){
   const state = JSON.parse(snap);
-  // Support both old format (array) and new format ({plots, variables})
   const restoredPlots = Array.isArray(state) ? state : state.plots;
   const restoredVars  = Array.isArray(state) ? null  : state.variables;
 
@@ -87,11 +91,16 @@ function restoreSnapshot(snap){
   if(ap && activeCurveIdx >= ap.curves.length) activeCurveIdx = 0;
   renderDOM();
   for(const p of plots){
-    if(p.curves.some(c=>c.template)) renderJS(p.id, false);
+    // Re-render template curves; list curves already have jsData from snapshot
+    if(p.curves.some(c=>c.template)){
+      renderJS(p.id, false);
+    } else if(p.curves.some(c=>c.jsData)){
+      // List-only plot: draw directly with restored jsData
+      drawChart(p);
+    }
   }
   refreshCfg();
 
-  // Restore variables if present in snapshot
   if(restoredVars && typeof renderVariables === 'function'){
     variables.length = 0;
     for(const rv of restoredVars) variables.push(rv);

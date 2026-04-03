@@ -714,6 +714,27 @@ function wireLegendDrag(box, pid){
     p.view.legend_y_frac = (wh-bh)>0 ? nt/(wh-bh) : 0;
   });
   window.addEventListener('mouseup', ()=>{ if(!dragging) return; dragging=false; box.classList.remove('dragging'); });
+
+  // Double-click legend row → activate that curve and open Line Settings tab
+  box.addEventListener('dblclick', e=>{
+    const row = e.target.closest('.ol-row');
+    if(!row) return;
+    const rowIdx = [...box.querySelectorAll('.ol-row')].indexOf(row);
+    if(rowIdx < 0) return;
+    // Activate the plot and select the curve
+    activePid = pid;
+    const p = gp(pid); if(!p) return;
+    const realCurves = p.curves.filter(c=>c.jsData||c.template);
+    const curve = realCurves[rowIdx];
+    if(!curve) return;
+    activeCurveIdx = p.curves.indexOf(curve);
+    syncActiveHighlight();
+    // Open Line Settings tab in the right cfg panel
+    setCfgTab('line');
+    refreshCfg();
+    refreshLineCurveSelector();
+    e.stopPropagation();
+  });
 }
 
 function wireOverlayLegend(p){
