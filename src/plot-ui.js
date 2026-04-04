@@ -583,7 +583,7 @@ function toggleFullscreen(pid){
     card.classList.add('plot-fs');
     document.getElementById('plotList')?.classList.add('has-fullscreen');
     _fullscreenPid = pid;
-    // Inject floating exit button
+    // Inject floating exit button (replaces hidden topbar)
     let exitBtn = document.getElementById('fsExitBtn');
     if(!exitBtn){
       exitBtn = document.createElement('button');
@@ -602,7 +602,7 @@ function exitFullscreen(pid){
   const fpid = pid ?? _fullscreenPid; if(fpid==null) return;
   const card = document.querySelector(`.plot-card[data-pid="${fpid}"]`); if(!card) return;
   if(!card.classList.contains('plot-fs')) return;
-  // Remove floating exit button
+  // Hide floating exit button
   const exitBtn = document.getElementById('fsExitBtn');
   if(exitBtn) exitBtn.style.display = 'none';
   card.classList.add('plot-fs-exit');

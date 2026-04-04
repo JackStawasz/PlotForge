@@ -141,23 +141,19 @@
   animation:fsEnter .22s cubic-bezier(.22,1,.36,1) forwards;
 }
 .plot-card.plot-fs .cbody{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;}
-/* Hide the entire topbar in fullscreen — the floating exit btn replaces it */
+/* Hide topbar in fullscreen — floating exit button replaces it */
 .plot-card.plot-fs .ctop{ display:none; }
-/* Floating exit-fullscreen button — top-right corner, always on top */
+/* Floating exit fullscreen button */
 .fs-exit-btn{
   position:fixed;top:14px;right:18px;z-index:1100;
-  background:rgba(12,12,24,.72);
-  border:1px solid var(--border2);border-radius:6px;
+  background:rgba(12,12,24,.82);border:1px solid var(--border2);border-radius:6px;
   color:#9898c8;font-family:var(--mono);font-size:.78rem;
-  padding:6px 13px;cursor:pointer;
-  backdrop-filter:blur(4px);
+  padding:6px 13px;cursor:pointer;backdrop-filter:blur(4px);
   transition:color .12s,border-color .12s,background .12s;
-  white-space:nowrap;display:none;
+  white-space:nowrap;display:none;align-items:center;gap:6px;
   box-shadow:0 4px 16px rgba(0,0,0,.4);
 }
 .fs-exit-btn:hover{border-color:var(--acc2);color:var(--acc2);background:rgba(90,255,206,.08);}
-.plot-card.plot-fs ~ .fs-exit-btn,
-body:has(.plot-card.plot-fs) .fs-exit-btn{ display:flex;align-items:center;gap:6px; }
 .plot-card.plot-fs .chart-region{
   flex:1;min-height:0;
   display:grid;
@@ -394,7 +390,7 @@ body:has(.plot-card.plot-fs) .fs-exit-btn{ display:flex;align-items:center;gap:6
 /* axis labels */
 .ax-xlabel{position:absolute;bottom:4px;left:28px;right:0;text-align:center;height:24px;line-height:24px;}
 .ax-ylabel{position:absolute;top:32px;bottom:48px;left:0;width:28px;display:flex;align-items:center;justify-content:center;overflow:visible;}
-.ax-ylabel .lbl-inp{transform:rotate(-90deg);white-space:nowrap;}
+.ax-ylabel .lbl-inp{transform:rotate(-90deg);white-space:nowrap;position:absolute;width:max-content;}
 .lbl-inp{
   background:transparent;border:1px solid transparent;border-radius:3px;
   color:#eeeeff;font-family:var(--mono);
@@ -547,3 +543,30 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 .tpl-card-dot.general{background:#d4ff5a}
 .tpl-card-dot.other{background:#ff6faa}
 .tpl-card-dot.advanced{background:#38bdf8}
+/* ═══ BACKEND RECONNECT BANNER ══════════════════════════════════════════ */
+.conn-banner{
+  position:fixed;top:72px;left:50%;transform:translateX(-50%) translateY(-8px);
+  background:var(--s1);border:1px solid var(--border2);border-radius:8px;
+  padding:9px 18px 9px 14px;
+  display:flex;align-items:center;gap:10px;
+  font-family:var(--mono);font-size:.72rem;color:#9898c8;
+  box-shadow:0 6px 28px rgba(0,0,0,.5);
+  z-index:9000;
+  opacity:0;pointer-events:none;
+  transition:opacity .2s ease,transform .2s ease;
+  white-space:nowrap;
+}
+.conn-banner.visible{
+  opacity:1;pointer-events:auto;
+  transform:translateX(-50%) translateY(0);
+}
+.conn-banner-dot{
+  width:7px;height:7px;border-radius:50%;flex-shrink:0;
+  background:#ff6faa;
+  animation:conn-pulse .9s ease-in-out infinite alternate;
+}
+.conn-banner.conn-banner-ok .conn-banner-dot{background:#5aff9a;animation:none;}
+.conn-banner-countdown{
+  font-size:.65rem;color:#5a5a88;margin-left:2px;min-width:38px;
+}
+@keyframes conn-pulse{from{opacity:.4;transform:scale(.85)}to{opacity:1;transform:scale(1.1)}}

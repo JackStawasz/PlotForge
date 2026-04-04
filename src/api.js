@@ -236,24 +236,62 @@ async function tryConnect(){
 }
 
 let _reconnectTimer = null;
+let _countdownTimer = null;
+const _reconnectIntervalSec = 3;
 
 function startReconnectPoller(){
-  if(_reconnectTimer) return; // already polling
+  if(_reconnectTimer) return;
+  _showConnBanner('Connecting to backend…', false);
+  _startCountdown(_reconnectIntervalSec);
   _reconnectTimer = setInterval(async ()=>{
     const ok = await tryConnect();
     if(ok){
-      clearInterval(_reconnectTimer);
-      _reconnectTimer = null;
-      // Re-render topbars so mpl buttons become active
+      clearInterval(_reconnectTimer); _reconnectTimer = null;
+      clearInterval(_countdownTimer); _countdownTimer = null;
       plots.forEach((p, i)=>updateTopbar(p.id));
-      // Rebuild modal template grid
       buildModalNavAndGrid?.();
+    } else {
+      _startCountdown(_reconnectIntervalSec);
     }
-  }, 3000);
+  }, _reconnectIntervalSec * 1000);
 }
 
 function setConn(s, _msg){
   document.getElementById('cdot').className = 'cdot'+(s==='ok'?' ok':s==='err'?' err':'');
+  if(s === 'ok'){
+    clearInterval(_countdownTimer); _countdownTimer = null;
+    _showConnBanner('Backend connected', true);
+    setTimeout(_hideConnBanner, 2200);
+  } else if(s === 'err' && !_reconnectTimer){
+    _showConnBanner('Connecting to backend…', false);
+    _startCountdown(_reconnectIntervalSec);
+  }
+}
+
+function _showConnBanner(msg, isOk){
+  const banner = document.getElementById('connBanner'); if(!banner) return;
+  document.getElementById('connBannerMsg').textContent = msg;
+  banner.classList.toggle('conn-banner-ok', isOk);
+  banner.classList.add('visible');
+  const cd = document.getElementById('connBannerCountdown');
+  if(cd) cd.textContent = isOk ? '' : '';
+}
+
+function _hideConnBanner(){
+  const banner = document.getElementById('connBanner'); if(!banner) return;
+  banner.classList.remove('visible');
+}
+
+function _startCountdown(seconds){
+  clearInterval(_countdownTimer);
+  const cd = document.getElementById('connBannerCountdown'); if(!cd) return;
+  let remaining = seconds;
+  cd.textContent = `retry in ${remaining}s`;
+  _countdownTimer = setInterval(()=>{
+    remaining--;
+    if(remaining <= 0){ cd.textContent = 'retrying…'; clearInterval(_countdownTimer); _countdownTimer = null; }
+    else { cd.textContent = `retry in ${remaining}s`; }
+  }, 1000);
 }
 
 // ═══ MATPLOTLIB CALLS ════════════════════════════════════════════════════
