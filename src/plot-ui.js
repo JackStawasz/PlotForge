@@ -59,9 +59,6 @@ function renderDOM(){
   });
   list.appendChild(ghost);
   list.addEventListener('click', e=>{
-    // Guard: if the target has been removed from the DOM (e.g. topbar rebuilt by
-    // revertToJS mid-click), do not treat it as a background click / deselect.
-    if(!document.contains(e.target)) return;
     const onCard = e.target.closest('.plot-card');
     const onGhost = e.target.closest('.add-card');
     // If not on a card or ghost AND not on a button that already handled action,
@@ -171,9 +168,8 @@ function wireAxisLabelInputs(p){
     ti.addEventListener('keydown', e=>{ if(e.key==='Enter') ti.blur(); });
   }
 
-  // Set after layout is complete (double-rAF ensures canvas has been painted and
-  // has non-zero offsetWidth/offsetHeight before we measure it), then keep in sync.
-  requestAnimationFrame(()=>requestAnimationFrame(updateLabelMaxWidths));
+  // Set immediately, then update when canvas resizes
+  updateLabelMaxWidths();
   if(wrap){
     new ResizeObserver(updateLabelMaxWidths).observe(wrap);
   }
@@ -587,6 +583,17 @@ function toggleFullscreen(pid){
     card.classList.add('plot-fs');
     document.getElementById('plotList')?.classList.add('has-fullscreen');
     _fullscreenPid = pid;
+    // Inject floating exit button
+    let exitBtn = document.getElementById('fsExitBtn');
+    if(!exitBtn){
+      exitBtn = document.createElement('button');
+      exitBtn.id = 'fsExitBtn';
+      exitBtn.className = 'fs-exit-btn';
+      exitBtn.innerHTML = '&#x26F6; exit full screen';
+      exitBtn.addEventListener('click', ()=>exitFullscreen(_fullscreenPid));
+      document.body.appendChild(exitBtn);
+    }
+    exitBtn.style.display = 'flex';
     setTimeout(()=>{ resizeAndRefresh(pid); }, 30);
   }
 }
@@ -595,6 +602,9 @@ function exitFullscreen(pid){
   const fpid = pid ?? _fullscreenPid; if(fpid==null) return;
   const card = document.querySelector(`.plot-card[data-pid="${fpid}"]`); if(!card) return;
   if(!card.classList.contains('plot-fs')) return;
+  // Remove floating exit button
+  const exitBtn = document.getElementById('fsExitBtn');
+  if(exitBtn) exitBtn.style.display = 'none';
   card.classList.add('plot-fs-exit');
   card.addEventListener('animationend', ()=>{
     card.classList.remove('plot-fs','plot-fs-exit');
