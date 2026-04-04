@@ -102,9 +102,11 @@ function handleFilesDrop(fileList){
   for(const f of fileList){
     if(uploadedFiles.find(u=>u.name===f.name && u.size===f.size)) continue;
     uploadedFiles.push(f);
-    // .pkl files: send to backend for unpickling, import as variables
-    if(f.name.toLowerCase().endsWith('.pkl')){
+    const ext = f.name.split('.').pop().toLowerCase();
+    if(ext === 'pkl'){
       uploadPickleFile(f);
+    } else if(ext === 'json' || ext === 'csv'){
+      importDataFile(f);
     }
   }
   renderFilesList();
@@ -116,11 +118,12 @@ function renderFilesList(){
   uploadedFiles.forEach((f,i)=>{
     const item = document.createElement('div'); item.className = 'file-item';
     const ext = f.name.split('.').pop().toLowerCase();
-    const isPkl = ext === 'pkl';
+    const isPkl  = ext === 'pkl';
+    const isData = ext === 'json' || ext === 'csv';
     const icon = isPkl ? '🥒'
       : ext==='csv'?'&#x1F4CA;':ext==='json'?'{}':ext==='txt'?'&#x1F4C4;':ext==='py'?'&#x1F40D;':'&#x1F4C1;';
     const kb = f.size<1024 ? f.size+'B' : f.size<1048576 ? (f.size/1024).toFixed(1)+'KB' : (f.size/1048576).toFixed(1)+'MB';
-    const statusBadge = isPkl
+    const statusBadge = (isPkl || isData)
       ? `<span class="file-pkl-badge" id="pkl-badge-${i}">→ vars</span>`
       : '';
     item.innerHTML = `<span class="file-item-icon">${icon}</span><span class="file-item-name" title="${f.name}">${f.name}</span>${statusBadge}<span class="file-item-size">${kb}</span><button class="file-item-del" data-idx="${i}">&#10005;</button>`;
@@ -135,13 +138,17 @@ function renderFilesList(){
       renderFilesList();
     });
 
-    // Re-import pkl on click of the badge
-    if(isPkl){
+    // Re-import on badge click
+    if(isPkl || isData){
       const badge = item.querySelector(`#pkl-badge-${i}`);
       if(badge){
         badge.style.cursor = 'pointer';
         badge.title = 'Click to re-import as variables';
-        badge.addEventListener('click', e=>{ e.stopPropagation(); uploadPickleFile(f, badge); });
+        if(isPkl){
+          badge.addEventListener('click', e=>{ e.stopPropagation(); uploadPickleFile(f, badge); });
+        } else {
+          badge.addEventListener('click', e=>{ e.stopPropagation(); importDataFile(f, badge); });
+        }
       }
     }
     list.appendChild(item);
@@ -180,7 +187,137 @@ async function uploadPickleFile(f, badgeEl){
   }
 }
 
-// Show a modal previewing what will be imported, then call onConfirm or onCancel
+// ─── JSON / CSV client-side import ──────────────────────────────────────────
+
+// Parse a JSON file into the same { name: {kind, value/items} } shape as pkl.
+// Supports: top-level dict of scalars/arrays, or array-of-objects (each key → list).
+function parseJsonVars(text){
+  let parsed;
+  try{ parsed = JSON.parse(text); }
+  catch(e){ return {error: `Invalid JSON: ${e.message}`}; }
+
+  const result = {};
+
+  if(Array.isArray(parsed)){
+    // Array of objects → each key becomes a list
+    if(!parsed.length) return {error: 'JSON array is empty'};
+    if(typeof parsed[0] !== 'object' || parsed[0] === null)
+      return {error: 'JSON top-level array must contain objects'};
+    const keys = Object.keys(parsed[0]);
+    for(const k of keys){
+      const items = [];
+      for(const row of parsed){
+        const v = parseFloat(row[k]);
+        if(isNaN(v)) break;
+        items.push(v);
+      }
+      if(items.length === parsed.length){
+        result[k] = items.length === 1
+          ? {kind:'constant', value:items[0]}
+          : {kind:'list', items};
+      }
+    }
+  } else if(typeof parsed === 'object' && parsed !== null){
+    // Dict: scalars → constant, arrays → list
+    for(const [k, v] of Object.entries(parsed)){
+      if(typeof v === 'number' && isFinite(v)){
+        result[k] = {kind:'constant', value:v};
+      } else if(Array.isArray(v)){
+        try{
+          const items = v.map(x=>{ const n=parseFloat(x); if(isNaN(n)) throw 0; return n; });
+          result[k] = items.length === 1
+            ? {kind:'constant', value:items[0]}
+            : {kind:'list', items};
+        }catch{ /* skip non-numeric arrays */ }
+      }
+    }
+  } else {
+    return {error: 'JSON must be an object or array of objects'};
+  }
+
+  if(!Object.keys(result).length) return {error: 'No numeric values found in JSON'};
+  return {variables: result};
+}
+
+// Parse a CSV file. First row = headers (variable names), subsequent rows = data.
+// Each column that is fully numeric becomes a list variable; single-row CSVs → constants.
+function parseCsvVars(text){
+  const lines = text.trim().split(/\r?\n/).filter(l=>l.trim());
+  if(lines.length < 2) return {error: 'CSV must have a header row and at least one data row'};
+
+  // Split respecting quoted fields
+  const splitRow = row => {
+    const cells = []; let cur = '', inQ = false;
+    for(const ch of row){
+      if(ch === '"'){ inQ = !inQ; }
+      else if(ch === ',' && !inQ){ cells.push(cur.trim()); cur = ''; }
+      else { cur += ch; }
+    }
+    cells.push(cur.trim());
+    return cells;
+  };
+
+  const headers = splitRow(lines[0]).map(h=>h.replace(/^"|"$/g,'').trim());
+  const columns = headers.map(()=>[]);
+
+  for(let r = 1; r < lines.length; r++){
+    const cells = splitRow(lines[r]);
+    for(let c = 0; c < headers.length; c++){
+      const v = parseFloat(cells[c]);
+      columns[c].push(isNaN(v) ? null : v);
+    }
+  }
+
+  const result = {};
+  for(let c = 0; c < headers.length; c++){
+    const name = headers[c]; if(!name) continue;
+    const items = columns[c].filter(v=>v !== null);
+    if(!items.length) continue;
+    result[name] = items.length === 1
+      ? {kind:'constant', value:items[0]}
+      : {kind:'list', items};
+  }
+
+  if(!Object.keys(result).length) return {error: 'No numeric columns found in CSV'};
+  return {variables: result};
+}
+
+// Read a .json or .csv file, parse it, show confirmation modal, then import.
+function importDataFile(f, badgeEl){
+  const fileIdx = uploadedFiles.indexOf(f);
+  const badge = badgeEl || document.querySelector(`#pkl-badge-${fileIdx}`);
+  const setBadge = (text, cls) => {
+    if(badge){ badge.textContent = text; badge.className = 'file-pkl-badge' + (cls ? ' '+cls : ''); }
+  };
+  setBadge('loading…', 'pkl-loading');
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    const ext = f.name.split('.').pop().toLowerCase();
+    const parsed = ext === 'json' ? parseJsonVars(text) : parseCsvVars(text);
+    if(parsed.error){
+      setBadge('error', 'pkl-error');
+      if(badge) badge.title = parsed.error;
+      console.warn('Import error:', parsed.error);
+      return;
+    }
+    showPickleConfirmModal(f.name, parsed.variables, ()=>{
+      importPickleVars(parsed.variables, f.name);
+      const count = Object.keys(parsed.variables).length;
+      setBadge(`✓ ${count} var${count!==1?'s':''}`, 'pkl-ok');
+    }, ()=>{
+      setBadge('→ vars', '');
+    });
+  };
+  reader.onerror = () => {
+    setBadge('error', 'pkl-error');
+    console.warn('FileReader error for', f.name);
+  };
+  reader.readAsText(f);
+}
+
+
 function showPickleConfirmModal(filename, varsData, onConfirm, onCancel){
   const backdrop = document.createElement('div');
   backdrop.className = 'pkl-modal-backdrop';

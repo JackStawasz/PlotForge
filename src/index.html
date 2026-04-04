@@ -93,8 +93,8 @@
       <div class="sb-pane-inner">
         <div class="files-drop-zone" id="filesDropZone">
           <div class="fdz-icon">&#8853;</div>
-          <div class="fdz-text">Drop files here<br><span>or click to browse</span></div>
-          <input type="file" id="filesInput" multiple style="display:none"/>
+          <div class="fdz-text">Drop files here<br><span>or click to browse · .pkl .json .csv</span></div>
+          <input type="file" id="filesInput" multiple accept=".pkl,.json,.csv" style="display:none"/>
         </div>
         <div class="files-list" id="filesList"></div>
       </div>
@@ -294,13 +294,6 @@
   </aside>
 
 </div><!-- .shell -->
-
-<!-- Backend reconnect notification banner -->
-<div class="conn-banner" id="connBanner">
-  <div class="conn-banner-dot"></div>
-  <span id="connBannerMsg">Connecting to backend…</span>
-  <span class="conn-banner-countdown" id="connBannerCountdown"></span>
-</div>
 
 <script src="math.js"></script>
 <script src="API.js"></script>
