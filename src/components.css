@@ -116,9 +116,10 @@
 .chart-title-inp:focus{border-color:var(--acc2);background:rgba(90,255,206,.04);color:var(--acc2)}
 .canvas-wrap{
   position:relative;user-select:none;background:var(--s1);overflow:hidden;cursor:grab;
+  aspect-ratio:90/42;width:100%;
 }
 .canvas-wrap.panning{cursor:grabbing}
-.canvas-wrap canvas{display:block;width:100%}
+.canvas-wrap canvas{display:block;width:100%;height:100%}
 
 /* Full-screen plot card */
 @keyframes fsEnter{
@@ -140,6 +141,23 @@
   animation:fsEnter .22s cubic-bezier(.22,1,.36,1) forwards;
 }
 .plot-card.plot-fs .cbody{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;}
+/* Hide the entire topbar in fullscreen — the floating exit btn replaces it */
+.plot-card.plot-fs .ctop{ display:none; }
+/* Floating exit-fullscreen button — top-right corner, always on top */
+.fs-exit-btn{
+  position:fixed;top:14px;right:18px;z-index:1100;
+  background:rgba(12,12,24,.72);
+  border:1px solid var(--border2);border-radius:6px;
+  color:#9898c8;font-family:var(--mono);font-size:.78rem;
+  padding:6px 13px;cursor:pointer;
+  backdrop-filter:blur(4px);
+  transition:color .12s,border-color .12s,background .12s;
+  white-space:nowrap;display:none;
+  box-shadow:0 4px 16px rgba(0,0,0,.4);
+}
+.fs-exit-btn:hover{border-color:var(--acc2);color:var(--acc2);background:rgba(90,255,206,.08);}
+.plot-card.plot-fs ~ .fs-exit-btn,
+body:has(.plot-card.plot-fs) .fs-exit-btn{ display:flex;align-items:center;gap:6px; }
 .plot-card.plot-fs .chart-region{
   flex:1;min-height:0;
   display:grid;
@@ -155,7 +173,7 @@
 }
 /* Canvas wrap: column 2, row 2 — fills remaining space */
 .plot-card.plot-fs .chart-region .canvas-wrap{
-  grid-column:2;grid-row:2;min-height:0;height:100%;
+  grid-column:2;grid-row:2;min-height:0;height:100%;aspect-ratio:unset;
 }
 .plot-card.plot-fs .chart-region .canvas-wrap canvas{height:100%!important;width:100%!important;}
 /* X-axis label: column 2, row 3 — always visible */

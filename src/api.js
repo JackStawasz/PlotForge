@@ -205,6 +205,20 @@ async function boot(){
   initCfgPanel();
   snapshotForUndo(); // initial state
   if(!connected) startReconnectPoller();
+
+  // Resize all JS charts when the main plot column changes size (fixes vertical expansion).
+  const plotListEl = document.getElementById('plotList');
+  if(plotListEl){
+    new ResizeObserver(()=>{
+      for(const p of (typeof plots !== 'undefined' ? plots : [])){
+        if(!p.mplMode && chartInstances[p.id]){
+          chartInstances[p.id].resize();
+          renderTextAnnotations(p.id);
+          refreshOverlayLegend(p.id);
+        }
+      }
+    }).observe(plotListEl);
+  }
 }
 
 async function tryConnect(){

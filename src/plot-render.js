@@ -507,14 +507,14 @@ function drawChart(p){
     const dc = p.curves.find(c=>c.jsData?.discrete);
     chartInstances[p.id] = new Chart(ctx, {
       type:'bar', data:{labels:dc?.jsData.x.map(n=>n)||[], datasets:allDatasets},
-      options:{responsive:true,maintainAspectRatio:true,animation:animOpts,
+      options:{responsive:true,maintainAspectRatio:false,animation:animOpts,
         plugins:{legend:{display:false},tooltip:tooltipOpts()},scales}
     });
   }else{
     scales.x.type = v.x_log ? 'logarithmic' : 'linear';
     chartInstances[p.id] = new Chart(ctx, {
       type:'line', data:{datasets:allDatasets},
-      options:{responsive:true,maintainAspectRatio:true,animation:animOpts,
+      options:{responsive:true,maintainAspectRatio:false,animation:animOpts,
         plugins:{legend:{display:false},tooltip:{...tooltipOpts(),callbacks:{
           title:items=>`x = ${Number(items[0].parsed.x).toFixed(4)}`,
           label:item=>item.dataset._axisLine ? null : `${item.dataset.label}: y = ${Number(item.parsed.y)?.toFixed(5)?? '—'}`,
@@ -839,10 +839,7 @@ function onPanMove(e, p){
   if(!xPx||!yPx) return;
   const dxD=(dx/xPx)*(p.view.x_max-p.view.x_min), dyD=(dy/yPx)*(p.view.y_max-p.view.y_min);
   p.view.x_min-=dxD; p.view.x_max-=dxD; p.view.y_min+=dyD; p.view.y_max+=dyD;
-  // Only update the existing chart in-place during pan — do NOT call renderJS here.
-  // renderJS rebuilds tick callbacks which can cause grid lines to appear/disappear
-  // due to floating-point variance in val%step even when the axis span is unchanged.
-  applyScaleLimits(ch.options.scales, p.view); ch.update('none'); syncCfgDomain();
+  applyScaleLimits(ch.options.scales, p.view); ch.update('none'); syncCfgDomain(); renderJS(p.id, false);
 }
 
 function endPan(p){
