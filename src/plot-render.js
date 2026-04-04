@@ -839,7 +839,10 @@ function onPanMove(e, p){
   if(!xPx||!yPx) return;
   const dxD=(dx/xPx)*(p.view.x_max-p.view.x_min), dyD=(dy/yPx)*(p.view.y_max-p.view.y_min);
   p.view.x_min-=dxD; p.view.x_max-=dxD; p.view.y_min+=dyD; p.view.y_max+=dyD;
-  applyScaleLimits(ch.options.scales, p.view); ch.update('none'); syncCfgDomain(); renderJS(p.id, false);
+  // Only update the existing chart in-place during pan — do NOT call renderJS here.
+  // renderJS rebuilds tick callbacks which can cause grid lines to appear/disappear
+  // due to floating-point variance in val%step even when the axis span is unchanged.
+  applyScaleLimits(ch.options.scales, p.view); ch.update('none'); syncCfgDomain();
 }
 
 function endPan(p){

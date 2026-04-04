@@ -59,6 +59,9 @@ function renderDOM(){
   });
   list.appendChild(ghost);
   list.addEventListener('click', e=>{
+    // Guard: if the target has been removed from the DOM (e.g. topbar rebuilt by
+    // revertToJS mid-click), do not treat it as a background click / deselect.
+    if(!document.contains(e.target)) return;
     const onCard = e.target.closest('.plot-card');
     const onGhost = e.target.closest('.add-card');
     // If not on a card or ghost AND not on a button that already handled action,
@@ -168,8 +171,9 @@ function wireAxisLabelInputs(p){
     ti.addEventListener('keydown', e=>{ if(e.key==='Enter') ti.blur(); });
   }
 
-  // Set immediately, then update when canvas resizes
-  updateLabelMaxWidths();
+  // Set after layout is complete (double-rAF ensures canvas has been painted and
+  // has non-zero offsetWidth/offsetHeight before we measure it), then keep in sync.
+  requestAnimationFrame(()=>requestAnimationFrame(updateLabelMaxWidths));
   if(wrap){
     new ResizeObserver(updateLabelMaxWidths).observe(wrap);
   }
