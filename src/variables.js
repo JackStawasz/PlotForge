@@ -3,6 +3,29 @@ let MQ = null;
 const variables = [];
 let varIdCtr = 0;
 
+// Format a numeric result for display in MathQuill.
+// Rule: use scientific notation (a·10^n) when |exponent| > 6, plain decimal otherwise.
+// Examples: 0.001 → "0.001", 4e-8 → "4\cdot10^{-8}", 1e14 → "1\cdot10^{14}"
+function fmtNum(val){
+  if(!isFinite(val)) return String(val);
+  if(val === 0) return '0';
+  // Exact integers in plain range — no formatting needed
+  if(Number.isInteger(val) && Math.abs(val) < 1e7) return String(val);
+  const abs = Math.abs(val);
+  const exp = Math.floor(Math.log10(abs));
+  // |exp| <= 6: show as plain decimal (toPrecision to avoid float noise)
+  if(Math.abs(exp) <= 6){
+    // Strip trailing zeros but keep enough sig figs
+    return parseFloat(val.toPrecision(6)).toString();
+  }
+  // |exp| > 6: scientific notation as LaTeX
+  const coeff = val / Math.pow(10, exp);
+  const coeffRounded = parseFloat(coeff.toPrecision(4));
+  if(coeffRounded === 1)  return `10^{${exp}}`;
+  if(coeffRounded === -1) return `-10^{${exp}}`;
+  return `${coeffRounded}\\cdot10^{${exp}}`;
+}
+
 function initMathQuill(){
   try{ MQ = MathQuill.getInterface(2); }catch(e){ MQ = null; }
 }
@@ -357,6 +380,8 @@ function addVariable(kind='constant', opts={}){
   if(!opts.silent){
     if(typeof snapshotForUndo === 'function') snapshotForUndo();
     setTimeout(()=>{
+      const pane = document.querySelector('#sbPaneVars .sb-pane-inner');
+      if(pane) pane.scrollTop = pane.scrollHeight;
       const mq = document.querySelector(`#vmq_${v.id} .mq-editable-field`);
       if(mq) mq.click();
     }, 80);
@@ -869,7 +894,7 @@ function evaluateConstant(v){
   // ── Try pure-JS numeric evaluation first (instant) ───────────────────
   const val = evalLatexExpr(v.exprLatex || '', ctx);
   if(val !== null && val !== undefined){
-    const formatted = Number.isInteger(val) ? String(val) : parseFloat(val.toPrecision(6)).toString();
+    const formatted = fmtNum(val);
     _renderResultMQ(el, '= ' + formatted, 'var-result var-result-ok');
     // Cancel any pending backend/invalid calls — we already have a full numeric result
     clearTimeout(v._evalTimer);
@@ -912,9 +937,7 @@ function evaluateConstant(v){
       if(!elNow) return;
 
       if(result.is_numeric && result.value !== null){
-        const fmt = Number.isInteger(result.value)
-          ? String(result.value)
-          : parseFloat(result.value.toPrecision(6)).toString();
+        const fmt = fmtNum(result.value);
         _renderResultMQ(elNow, '= ' + fmt, 'var-result var-result-ok');
         if(v._warning) v._warning.clearInvalid();
       } else if(result.latex && result.latex.trim()){
