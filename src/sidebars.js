@@ -100,14 +100,22 @@ let uploadedFiles = [];
 
 function handleFilesDrop(fileList){
   for(const f of fileList){
-    if(uploadedFiles.find(u=>u.name===f.name && u.size===f.size)) continue;
-    uploadedFiles.push(f);
     const ext = f.name.split('.').pop().toLowerCase();
-    if(ext === 'pkl'){
-      uploadPickleFile(f);
-    } else if(ext === 'json' || ext === 'csv'){
-      importDataFile(f);
+    const isImportable = ext === 'pkl' || ext === 'json' || ext === 'csv';
+    const existingIdx = uploadedFiles.findIndex(u => u.name === f.name);
+    const isOverwrite = existingIdx !== -1 && isImportable;
+
+    // Exact duplicate (same name + same size, non-importable) — skip silently
+    if(existingIdx !== -1 && !isImportable && uploadedFiles[existingIdx].size === f.size) continue;
+
+    if(existingIdx !== -1){
+      uploadedFiles[existingIdx] = f; // replace file entry regardless
+    } else {
+      uploadedFiles.push(f);
     }
+
+    if(ext === 'pkl')        uploadPickleFile(f, null, isOverwrite);
+    else if(isImportable && typeof importDataFile === 'function') importDataFile(f, null, isOverwrite);
   }
   renderFilesList();
 }
@@ -118,12 +126,12 @@ function renderFilesList(){
   uploadedFiles.forEach((f,i)=>{
     const item = document.createElement('div'); item.className = 'file-item';
     const ext = f.name.split('.').pop().toLowerCase();
-    const isPkl  = ext === 'pkl';
-    const isData = ext === 'json' || ext === 'csv';
+    const isPkl = ext === 'pkl';
     const icon = isPkl ? '🥒'
       : ext==='csv'?'&#x1F4CA;':ext==='json'?'{}':ext==='txt'?'&#x1F4C4;':ext==='py'?'&#x1F40D;':'&#x1F4C1;';
     const kb = f.size<1024 ? f.size+'B' : f.size<1048576 ? (f.size/1024).toFixed(1)+'KB' : (f.size/1048576).toFixed(1)+'MB';
-    const statusBadge = (isPkl || isData)
+    const isImportable = isPkl || ext === 'json' || ext === 'csv';
+    const statusBadge = isImportable
       ? `<span class="file-pkl-badge" id="pkl-badge-${i}">→ vars</span>`
       : '';
     item.innerHTML = `<span class="file-item-icon">${icon}</span><span class="file-item-name" title="${f.name}">${f.name}</span>${statusBadge}<span class="file-item-size">${kb}</span><button class="file-item-del" data-idx="${i}">&#10005;</button>`;
@@ -138,17 +146,17 @@ function renderFilesList(){
       renderFilesList();
     });
 
-    // Re-import on badge click
-    if(isPkl || isData){
+    // Re-import on badge click for pkl, json, csv
+    if(isImportable){
       const badge = item.querySelector(`#pkl-badge-${i}`);
       if(badge){
         badge.style.cursor = 'pointer';
         badge.title = 'Click to re-import as variables';
-        if(isPkl){
-          badge.addEventListener('click', e=>{ e.stopPropagation(); uploadPickleFile(f, badge); });
-        } else {
-          badge.addEventListener('click', e=>{ e.stopPropagation(); importDataFile(f, badge); });
-        }
+        badge.addEventListener('click', e=>{
+          e.stopPropagation();
+          if(isPkl) uploadPickleFile(f, badge);
+          else importDataFile(f, badge, true);
+        });
       }
     }
     list.appendChild(item);
@@ -156,7 +164,7 @@ function renderFilesList(){
 }
 
 // Send .pkl to backend, show confirmation modal, then import
-async function uploadPickleFile(f, badgeEl){
+async function uploadPickleFile(f, badgeEl, isOverwrite=false){
   const badge = badgeEl || document.querySelector(`[title="${f.name}"]`)?.closest('.file-item')?.querySelector('.file-pkl-badge');
   const setBadge = (text, cls) => {
     if(badge){ badge.textContent = text; badge.className = 'file-pkl-badge' + (cls ? ' '+cls : ''); }
@@ -180,17 +188,81 @@ async function uploadPickleFile(f, badgeEl){
       setBadge(`✓ ${count} var${count!==1?'s':''}`, 'pkl-ok');
     }, ()=>{
       setBadge('→ vars', ''); // cancelled — reset badge
-    });
+    }, isOverwrite);
   }catch(e){
     setBadge('error', 'pkl-error');
     console.warn('Pickle upload failed:', e);
   }
 }
 
+// Show a modal previewing what will be imported, then call onConfirm or onCancel.
+// Pass isOverwrite=true to show an overwrite-warning banner above the variable list.
+function showPickleConfirmModal(filename, varsData, onConfirm, onCancel, isOverwrite=false){
+  const backdrop = document.createElement('div');
+  backdrop.className = 'pkl-modal-backdrop';
+
+  const shortName = filename.length > 28 ? '…' + filename.slice(-26) : filename;
+  const varEntries = Object.entries(varsData);
+
+  let varRowsHTML = '';
+  for(const [name, info] of varEntries){
+    const kindCls = info.kind === 'constant' ? 'kind-constant' : 'kind-list';
+    const kindLabel = info.kind === 'constant' ? 'Const' : 'List';
+    let preview = '';
+    if(info.kind === 'constant'){
+      preview = String(info.value);
+    } else if(info.kind === 'list'){
+      const items = info.items || [];
+      if(items.length <= 4){
+        preview = '[' + items.map(x=>parseFloat(x.toPrecision(4))).join(', ') + ']';
+      } else {
+        preview = `[${parseFloat(items[0].toPrecision(3))}, …, ${parseFloat(items[items.length-1].toPrecision(3))}]  (${items.length})`;
+      }
+    }
+    varRowsHTML += `
+      <div class="pkl-modal-var-row">
+        <span class="pkl-modal-var-name">${name}</span>
+        <span class="pkl-modal-var-type ${kindCls}">${kindLabel}</span>
+        <span class="pkl-modal-var-preview">${preview}</span>
+      </div>`;
+  }
+
+  const overwriteBanner = isOverwrite ? `
+    <div class="pkl-overwrite-banner">
+      ⚠ <strong>${shortName}</strong> was already imported — confirming will replace its existing variables.
+    </div>` : '';
+
+  backdrop.innerHTML = `
+    <div class="pkl-modal">
+      <div class="pkl-modal-header">
+        <div class="pkl-modal-title">${isOverwrite ? 'Re-import variables?' : 'Import variables from file?'}</div>
+        <div class="pkl-modal-subtitle">${shortName} · ${varEntries.length} variable${varEntries.length!==1?'s':''}</div>
+      </div>
+      ${overwriteBanner}
+      <div class="pkl-modal-varlist">${varRowsHTML}</div>
+      <div class="pkl-modal-footer">
+        <button class="pkl-modal-btn cancel" id="pklCancel">Cancel</button>
+        <button class="pkl-modal-btn confirm" id="pklConfirm">${isOverwrite ? 'Overwrite' : 'Import all'}</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(backdrop);
+
+  const close = () => backdrop.remove();
+
+  backdrop.querySelector('#pklCancel').addEventListener('click', ()=>{ close(); onCancel?.(); });
+  backdrop.querySelector('#pklConfirm').addEventListener('click', ()=>{
+    if(isOverwrite && typeof removeVariablesBySource === 'function'){
+      removeVariablesBySource(filename);
+    }
+    close(); onConfirm?.();
+  });
+  backdrop.addEventListener('click', e=>{ if(e.target === backdrop){ close(); onCancel?.(); } });
+  const onKey = e=>{ if(e.key==='Escape'){ close(); onCancel?.(); document.removeEventListener('keydown',onKey); } };
+  document.addEventListener('keydown', onKey);
+}
 // ─── JSON / CSV client-side import ──────────────────────────────────────────
 
-// Parse a JSON file into the same { name: {kind, value/items} } shape as pkl.
-// Supports: top-level dict of scalars/arrays, or array-of-objects (each key → list).
 function parseJsonVars(text){
   let parsed;
   try{ parsed = JSON.parse(text); }
@@ -199,7 +271,6 @@ function parseJsonVars(text){
   const result = {};
 
   if(Array.isArray(parsed)){
-    // Array of objects → each key becomes a list
     if(!parsed.length) return {error: 'JSON array is empty'};
     if(typeof parsed[0] !== 'object' || parsed[0] === null)
       return {error: 'JSON top-level array must contain objects'};
@@ -218,7 +289,6 @@ function parseJsonVars(text){
       }
     }
   } else if(typeof parsed === 'object' && parsed !== null){
-    // Dict: scalars → constant, arrays → list
     for(const [k, v] of Object.entries(parsed)){
       if(typeof v === 'number' && isFinite(v)){
         result[k] = {kind:'constant', value:v};
@@ -239,13 +309,10 @@ function parseJsonVars(text){
   return {variables: result};
 }
 
-// Parse a CSV file. First row = headers (variable names), subsequent rows = data.
-// Each column that is fully numeric becomes a list variable; single-row CSVs → constants.
 function parseCsvVars(text){
   const lines = text.trim().split(/\r?\n/).filter(l=>l.trim());
   if(lines.length < 2) return {error: 'CSV must have a header row and at least one data row'};
 
-  // Split respecting quoted fields
   const splitRow = row => {
     const cells = []; let cur = '', inQ = false;
     for(const ch of row){
@@ -282,8 +349,7 @@ function parseCsvVars(text){
   return {variables: result};
 }
 
-// Read a .json or .csv file, parse it, show confirmation modal, then import.
-function importDataFile(f, badgeEl){
+function importDataFile(f, badgeEl, isOverwrite=false){
   const fileIdx = uploadedFiles.indexOf(f);
   const badge = badgeEl || document.querySelector(`#pkl-badge-${fileIdx}`);
   const setBadge = (text, cls) => {
@@ -303,12 +369,15 @@ function importDataFile(f, badgeEl){
       return;
     }
     showPickleConfirmModal(f.name, parsed.variables, ()=>{
+      if(isOverwrite && typeof removeVariablesBySource === 'function'){
+        removeVariablesBySource(f.name);
+      }
       importPickleVars(parsed.variables, f.name);
       const count = Object.keys(parsed.variables).length;
       setBadge(`✓ ${count} var${count!==1?'s':''}`, 'pkl-ok');
     }, ()=>{
       setBadge('→ vars', '');
-    });
+    }, isOverwrite);
   };
   reader.onerror = () => {
     setBadge('error', 'pkl-error');
@@ -317,62 +386,6 @@ function importDataFile(f, badgeEl){
   reader.readAsText(f);
 }
 
-
-function showPickleConfirmModal(filename, varsData, onConfirm, onCancel){
-  const backdrop = document.createElement('div');
-  backdrop.className = 'pkl-modal-backdrop';
-
-  const shortName = filename.length > 28 ? '…' + filename.slice(-26) : filename;
-  const varEntries = Object.entries(varsData);
-
-  let varRowsHTML = '';
-  for(const [name, info] of varEntries){
-    const kindCls = info.kind === 'constant' ? 'kind-constant' : 'kind-list';
-    const kindLabel = info.kind === 'constant' ? 'Const' : 'List';
-    let preview = '';
-    if(info.kind === 'constant'){
-      preview = String(info.value);
-    } else if(info.kind === 'list'){
-      const items = info.items || [];
-      if(items.length <= 4){
-        preview = '[' + items.map(x=>parseFloat(x.toPrecision(4))).join(', ') + ']';
-      } else {
-        preview = `[${parseFloat(items[0].toPrecision(3))}, …, ${parseFloat(items[items.length-1].toPrecision(3))}]  (${items.length})`;
-      }
-    }
-    varRowsHTML += `
-      <div class="pkl-modal-var-row">
-        <span class="pkl-modal-var-name">${name}</span>
-        <span class="pkl-modal-var-type ${kindCls}">${kindLabel}</span>
-        <span class="pkl-modal-var-preview">${preview}</span>
-      </div>`;
-  }
-
-  backdrop.innerHTML = `
-    <div class="pkl-modal">
-      <div class="pkl-modal-header">
-        <div class="pkl-modal-title">Import variables from file?</div>
-        <div class="pkl-modal-subtitle">${shortName} · ${varEntries.length} variable${varEntries.length!==1?'s':''}</div>
-      </div>
-      <div class="pkl-modal-varlist">${varRowsHTML}</div>
-      <div class="pkl-modal-footer">
-        <button class="pkl-modal-btn cancel" id="pklCancel">Cancel</button>
-        <button class="pkl-modal-btn confirm" id="pklConfirm">Import all</button>
-      </div>
-    </div>`;
-
-  document.body.appendChild(backdrop);
-
-  const close = () => backdrop.remove();
-
-  backdrop.querySelector('#pklCancel').addEventListener('click', ()=>{ close(); onCancel?.(); });
-  backdrop.querySelector('#pklConfirm').addEventListener('click', ()=>{ close(); onConfirm?.(); });
-  // Click outside to cancel
-  backdrop.addEventListener('click', e=>{ if(e.target === backdrop){ close(); onCancel?.(); } });
-  // Escape to cancel
-  const onKey = e=>{ if(e.key==='Escape'){ close(); onCancel?.(); document.removeEventListener('keydown',onKey); } };
-  document.addEventListener('keydown', onKey);
-}
 // ═══ RIGHT SIDEBAR: CFG PANEL ════════════════════════════════════════════
 let cfgActiveTab = 'plot';
 
