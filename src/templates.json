@@ -1080,25 +1080,70 @@
     "category": "advanced",
     "label": "Legendre Polynomial",
     "equation": "P_ℓ(x)",
-    "x_default": [
-      -1,
-      1
-    ],
+    "x_default": [-1, 1],
     "params": {
-      "ell": {
-        "label": "Degree (ℓ)",
-        "default": 3,
-        "min": 0,
-        "max": 10,
-        "step": 1
-      },
-      "a": {
-        "label": "Scale (a)",
-        "default": 1.0,
-        "min": -5.0,
-        "max": 5.0,
-        "step": 0.1
-      }
+      "ell": { "label": "Degree (ℓ)", "default": 3, "min": 0, "max": 10, "step": 1 },
+      "a":   { "label": "Scale (a)",  "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
+    }
+  },
+  "sinc": {
+    "category": "advanced",
+    "label": "Sinc",
+    "equation": "A·sinc(f·x)",
+    "x_default": [-4, 4],
+    "params": {
+      "A": { "label": "Amplitude (A)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
+      "f": { "label": "Frequency (f)", "default": 1.0, "min": 0.1,  "max": 10.0, "step": 0.1 }
+    }
+  },
+  "bessel": {
+    "category": "advanced",
+    "label": "Bessel J_n",
+    "equation": "A·J_n(x)",
+    "x_default": [0, 20],
+    "params": {
+      "n": { "label": "Order (n)",    "default": 0,   "min": 0,    "max": 10,   "step": 1   },
+      "A": { "label": "Scale (A)",    "default": 1.0, "min": -5.0, "max": 5.0,  "step": 0.1 }
+    }
+  },
+  "fresnel_c": {
+    "category": "advanced",
+    "label": "Fresnel C(x)",
+    "equation": "A·C(f·x)",
+    "x_default": [-4, 4],
+    "params": {
+      "A": { "label": "Scale (A)",    "default": 1.0, "min": -3.0, "max": 3.0,  "step": 0.1 },
+      "f": { "label": "Frequency (f)","default": 1.0, "min": 0.1,  "max": 5.0,  "step": 0.1 }
+    }
+  },
+  "fresnel_s": {
+    "category": "advanced",
+    "label": "Fresnel S(x)",
+    "equation": "A·S(f·x)",
+    "x_default": [-4, 4],
+    "params": {
+      "A": { "label": "Scale (A)",    "default": 1.0, "min": -3.0, "max": 3.0,  "step": 0.1 },
+      "f": { "label": "Frequency (f)","default": 1.0, "min": 0.1,  "max": 5.0,  "step": 0.1 }
+    }
+  },
+  "erf": {
+    "category": "advanced",
+    "label": "Error Function",
+    "equation": "A·erf(f·x)",
+    "x_default": [-3, 3],
+    "params": {
+      "A": { "label": "Scale (A)",    "default": 1.0, "min": -3.0, "max": 3.0,  "step": 0.1 },
+      "f": { "label": "Width (f)",    "default": 1.0, "min": 0.1,  "max": 10.0, "step": 0.1 }
+    }
+  },
+  "airy": {
+    "category": "advanced",
+    "label": "Airy Ai(x)",
+    "equation": "A·Ai(f·x)",
+    "x_default": [-8, 3],
+    "params": {
+      "A": { "label": "Scale (A)",    "default": 1.0, "min": -5.0, "max": 5.0,  "step": 0.1 },
+      "f": { "label": "Stretch (f)",  "default": 1.0, "min": 0.1,  "max": 5.0,  "step": 0.1 }
     }
   }
 }

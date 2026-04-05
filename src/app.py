@@ -158,6 +158,34 @@ def generate_xy(tkey, params, view):
         from numpy.polynomial.legendre import legval
         coeffs=[0]*ell+[1]
         y=a*legval(x,coeffs)
+    elif tkey == "sinc":
+        x=_xrange(view,xd,600); A=p.get("A",1); f=p.get("f",1)
+        arg=np.pi*f*x
+        # normalized sinc: sin(pi*f*x)/(pi*f*x), limit 1 at x=0
+        y=A*np.where(np.abs(arg)<1e-10, 1.0, np.sin(arg)/arg)
+    elif tkey == "bessel":
+        from scipy.special import jv as _jv
+        x=_xrange(view,xd,600); n=max(0,int(round(p.get("n",0)))); A=p.get("A",1)
+        y=A*_jv(n, x)
+    elif tkey == "fresnel_c":
+        from scipy.special import fresnel as _fresnel
+        x=_xrange(view,xd,600); A=p.get("A",1); f=p.get("f",1)
+        S_val, C_val=_fresnel(f*x)
+        y=A*C_val
+    elif tkey == "fresnel_s":
+        from scipy.special import fresnel as _fresnel
+        x=_xrange(view,xd,600); A=p.get("A",1); f=p.get("f",1)
+        S_val, C_val=_fresnel(f*x)
+        y=A*S_val
+    elif tkey == "erf":
+        from scipy.special import erf as _erf
+        x=_xrange(view,xd,600); A=p.get("A",1); f=p.get("f",1)
+        y=A*_erf(f*x)
+    elif tkey == "airy":
+        from scipy.special import airy as _airy
+        x=_xrange(view,xd,600); A=p.get("A",1); f=p.get("f",1)
+        Ai, Aip, Bi, Bip=_airy(f*x)
+        y=A*Ai
     else:
         raise ValueError(f"Unknown template '{tkey}'")
     return x, y

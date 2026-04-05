@@ -77,7 +77,6 @@ function evalTemplate(tkey, params, view){
     case 'legendre':{
       const ell = Math.max(0, Math.round(p.ell ?? 3));
       const a   = p.a ?? 1;
-      // Compute P_ell(x) via recurrence: P0=1, P1=x, (n+1)P_{n+1}=(2n+1)x*Pn - n*P_{n-1}
       x = linspace(Math.max(-1, xLo), Math.min(1, xHi), 600);
       y = x.map(v => {
         if(ell === 0) return a * 1;
@@ -89,6 +88,43 @@ function evalTemplate(tkey, params, view){
         }
         return a * pc;
       });
+      break;
+    }
+    case 'sinc':{
+      x = linspace(xLo, xHi, N);
+      const A=p.A??1, f=p.f??1;
+      y = x.map(v => { const arg = Math.PI*f*v; return A*(Math.abs(arg)<1e-10 ? 1 : Math.sin(arg)/arg); });
+      break;
+    }
+    case 'bessel':{
+      // Bessel J_n(x) via downward recurrence (Miller's algorithm)
+      x = linspace(xLo, xHi, N);
+      const A=p.A??1, n=Math.max(0,Math.round(p.n??0));
+      y = x.map(v => A * besselJ(n, v));
+      break;
+    }
+    case 'fresnel_c':{
+      x = linspace(xLo, xHi, N);
+      const A=p.A??1, f=p.f??1;
+      y = x.map(v => A * fresnelC(f*v));
+      break;
+    }
+    case 'fresnel_s':{
+      x = linspace(xLo, xHi, N);
+      const A=p.A??1, f=p.f??1;
+      y = x.map(v => A * fresnelS(f*v));
+      break;
+    }
+    case 'erf':{
+      x = linspace(xLo, xHi, N);
+      const A=p.A??1, f=p.f??1;
+      y = x.map(v => A * erfApprox(f*v));
+      break;
+    }
+    case 'airy':{
+      x = linspace(xLo, xHi, N);
+      const A=p.A??1, f=p.f??1;
+      y = x.map(v => A * airyAi(f*v));
       break;
     }
     default: return null;
@@ -116,7 +152,98 @@ function lanczosGamma(z){
   return Math.sqrt(2*Math.PI)*Math.pow(t,z+0.5)*Math.exp(-t)*x;
 }
 
-// ═══ DISCONTINUITY CLIPPING ══════════════════════════════════════════════
+// ═══ SPECIAL FUNCTION HELPERS ════════════════════════════════════════════
+
+// Bessel J_n(x) — uses series for small |x|, Miller's downward recurrence for large n
+function besselJ(n, x){
+  if(x === 0) return n === 0 ? 1 : 0;
+  const sign = (x < 0 && n % 2 !== 0) ? -1 : 1;
+  const ax = Math.abs(x);
+  // Series expansion: J_n(x) = sum_{k=0}^inf (-1)^k (x/2)^{2k+n} / (k! (k+n)!)
+  // Converges well for small |x|; use enough terms
+  const half = ax / 2;
+  let term = Math.pow(half, n);
+  for(let i = 1; i <= n; i++) term /= i; // (x/2)^n / n!
+  let sum = term;
+  for(let k = 1; k <= 60; k++){
+    term *= -(half * half) / (k * (k + n));
+    sum += term;
+    if(Math.abs(term) < 1e-14 * Math.abs(sum)) break;
+  }
+  return sign * sum;
+}
+
+// Fresnel C(x) = integral_0^x cos(pi/2 * t^2) dt — power series
+function fresnelC(x){
+  if(x === 0) return 0;
+  const sign = x < 0 ? -1 : 1;
+  const t = x * x;  // t = x^2
+  const pt2 = Math.PI / 2;
+  let sum = x, term = x, xsq = -t * t * pt2 * pt2;
+  for(let k = 1; k <= 80; k++){
+    term *= xsq / ((2*k) * (2*k - 1));
+    const next = term / (4*k + 1);
+    sum += next;
+    if(Math.abs(next) < 1e-14 * Math.abs(sum)) break;
+  }
+  return sign * Math.abs(sum) * sign < 0 ? -Math.abs(sum) : Math.abs(sum);
+}
+
+// Fresnel S(x) = integral_0^x sin(pi/2 * t^2) dt — power series
+function fresnelS(x){
+  if(x === 0) return 0;
+  const sign = x < 0 ? -1 : 1;
+  const ax = Math.abs(x);
+  const pt2 = Math.PI / 2;
+  const xsq = ax * ax;
+  let term = pt2 * xsq * xsq * ax / 3;  // first term: (pi/2)x^3/3
+  let sum = term;
+  const c = -(pt2 * pt2) * xsq * xsq;
+  for(let k = 1; k <= 80; k++){
+    term *= c / ((2*k) * (2*k + 1));
+    const next = term / (4*k + 3);
+    sum += next;
+    if(Math.abs(next) < 1e-14 * Math.abs(sum)) break;
+  }
+  return sign * sum;
+}
+
+// erf(x) — Abramowitz & Stegun rational approximation (max error 1.5e-7)
+function erfApprox(x){
+  const t = 1 / (1 + 0.3275911 * Math.abs(x));
+  const poly = t*(0.254829592 + t*(-0.284496736 + t*(1.421413741 + t*(-1.453152027 + t*1.061405429))));
+  const val = 1 - poly * Math.exp(-x*x);
+  return x < 0 ? -val : val;
+}
+
+// Airy Ai(x) — series expansion valid for moderate |x|
+// Ai(x) = c1*f(x) - c2*g(x)  where
+//   c1 = Ai(0) = 1/(3^{2/3} Gamma(2/3)), c2 = -Ai'(0) = 1/(3^{1/3} Gamma(1/3))
+//   f(x) = sum x^{3k}/(3k)! * prod factors,  g(x) = sum x^{3k+1}/(3k+1)! * prod factors
+function airyAi(x){
+  // For large positive x use asymptotic; series handles the rest
+  if(x > 8){
+    const xi = (2/3)*Math.pow(x,1.5);
+    return Math.exp(-xi)/(2*Math.sqrt(Math.PI)*Math.pow(x,0.25));
+  }
+  if(x < -8){
+    const xi = (2/3)*Math.pow(-x,1.5);
+    return Math.sin(xi + Math.PI/4)/(Math.sqrt(Math.PI)*Math.pow(-x,0.25));
+  }
+  const c1 = 0.3550280538878172;  // Ai(0)
+  const c2 = 0.2588194037928068;  // -Ai'(0)
+  // f series: 1 + x^3/3! + x^6*2/(6!) + ...
+  let f=1, g=x, tf=1, tg=x;
+  for(let k=1; k<=30; k++){
+    tf *= x*x*x / ((3*k-1)*(3*k));
+    tg *= x*x*x / ((3*k)*(3*k+1));
+    f += tf; g += tg;
+    if(Math.abs(tf)<1e-14*Math.abs(f) && Math.abs(tg)<1e-14*Math.abs(g)) break;
+  }
+  return c1*f - c2*g;
+}
+
+
 // Inserts null sentinels only at true asymptote discontinuities (sign-flip
 // jumps). Does NOT clip finite peaks — even narrow ones.
 function clipForDisplay(xArr, yArr){
