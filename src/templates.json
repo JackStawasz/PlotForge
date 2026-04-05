@@ -4,10 +4,7 @@
     "subfolder": "Sine Family",
     "label": "Sine",
     "equation": "A·sin(f·x + φ)",
-    "x_default": [
-      0,
-      6.283
-    ],
+    "x_default": [0, 6.283],
     "params": {
       "A": {
         "label": "Amplitude (A)",
@@ -37,10 +34,7 @@
     "subfolder": "Sine Family",
     "label": "Arcsine",
     "equation": "A·arcsin(x)",
-    "x_default": [
-      -1,
-      1
-    ],
+    "x_default": [-1, 1],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -56,10 +50,7 @@
     "subfolder": "Sine Family",
     "label": "Sinh",
     "equation": "A·sinh(f·x)",
-    "x_default": [
-      -3,
-      3
-    ],
+    "x_default": [-3, 3],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -82,10 +73,7 @@
     "subfolder": "Sine Family",
     "label": "Arcsinh",
     "equation": "A·arcsinh(f·x)",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -108,10 +96,7 @@
     "subfolder": "Cosine Family",
     "label": "Cosine",
     "equation": "A·cos(f·x + φ)",
-    "x_default": [
-      0,
-      6.283
-    ],
+    "x_default": [0, 6.283],
     "params": {
       "A": {
         "label": "Amplitude (A)",
@@ -141,10 +126,7 @@
     "subfolder": "Cosine Family",
     "label": "Arccosine",
     "equation": "A·arccos(x)",
-    "x_default": [
-      -1,
-      1
-    ],
+    "x_default": [-1, 1],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -160,10 +142,7 @@
     "subfolder": "Cosine Family",
     "label": "Cosh",
     "equation": "A·cosh(f·x)",
-    "x_default": [
-      -3,
-      3
-    ],
+    "x_default": [-3, 3],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -186,10 +165,7 @@
     "subfolder": "Cosine Family",
     "label": "Arccosh",
     "equation": "A·arccosh(f·x)",
-    "x_default": [
-      1.001,
-      5
-    ],
+    "x_default": [1.001, 5],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -212,10 +188,7 @@
     "subfolder": "Tangent Family",
     "label": "Tangent",
     "equation": "A·tan(f·x)",
-    "x_default": [
-      -1.5,
-      1.5
-    ],
+    "x_default": [-1.5, 1.5],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -238,10 +211,7 @@
     "subfolder": "Tangent Family",
     "label": "Arctangent",
     "equation": "A·arctan(f·x)",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -264,10 +234,7 @@
     "subfolder": "Tangent Family",
     "label": "Tanh",
     "equation": "A·tanh(f·x)",
-    "x_default": [
-      -4,
-      4
-    ],
+    "x_default": [-4, 4],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -290,10 +257,7 @@
     "subfolder": "Tangent Family",
     "label": "Arctanh",
     "equation": "A·arctanh(f·x)",
-    "x_default": [
-      -0.99,
-      0.99
-    ],
+    "x_default": [-0.99, 0.99],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -316,10 +280,7 @@
     "subfolder": "Cosecant Family",
     "label": "Cosecant",
     "equation": "A·csc(f·x)",
-    "x_default": [
-      0.1,
-      3.04
-    ],
+    "x_default": [0.1, 3.04],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -342,10 +303,7 @@
     "subfolder": "Cosecant Family",
     "label": "Arccosecant",
     "equation": "A·arccsc(x)",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -361,10 +319,7 @@
     "subfolder": "Cosecant Family",
     "label": "Csch",
     "equation": "A·csch(f·x)",
-    "x_default": [
-      -4,
-      4
-    ],
+    "x_default": [-4, 4],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -387,10 +342,7 @@
     "subfolder": "Cosecant Family",
     "label": "Arccsch",
     "equation": "A·arccsch(x)",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -406,10 +358,7 @@
     "subfolder": "Secant Family",
     "label": "Secant",
     "equation": "A·sec(f·x)",
-    "x_default": [
-      -1.4,
-      1.4
-    ],
+    "x_default": [-1.4, 1.4],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -432,10 +381,7 @@
     "subfolder": "Secant Family",
     "label": "Arcsecant",
     "equation": "A·arcsec(x)",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -451,10 +397,7 @@
     "subfolder": "Secant Family",
     "label": "Sech",
     "equation": "A·sech(f·x)",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -477,10 +420,7 @@
     "subfolder": "Secant Family",
     "label": "Arcsech",
     "equation": "A·arcsech(x)",
-    "x_default": [
-      0.001,
-      0.999
-    ],
+    "x_default": [0.001, 0.999],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -496,10 +436,7 @@
     "subfolder": "Cotangent Family",
     "label": "Cotangent",
     "equation": "A·cot(f·x)",
-    "x_default": [
-      0.1,
-      3.04
-    ],
+    "x_default": [0.1, 3.04],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -522,10 +459,7 @@
     "subfolder": "Cotangent Family",
     "label": "Arccotangent",
     "equation": "A·arccot(f·x)",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -548,10 +482,7 @@
     "subfolder": "Cotangent Family",
     "label": "Coth",
     "equation": "A·coth(f·x)",
-    "x_default": [
-      -4,
-      4
-    ],
+    "x_default": [-4, 4],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -574,10 +505,7 @@
     "subfolder": "Cotangent Family",
     "label": "Arccoth",
     "equation": "A·arccoth(x)",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -592,10 +520,7 @@
     "category": "bell",
     "label": "Gaussian",
     "equation": "A·exp(−(x−μ)²/(2σ²))",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "A": {
         "label": "Amplitude (A)",
@@ -624,10 +549,7 @@
     "category": "bell",
     "label": "Lorentzian",
     "equation": "A·γ²/((x−x₀)²+γ²)",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "A": {
         "label": "Amplitude (A)",
@@ -656,10 +578,7 @@
     "category": "bell",
     "label": "Binomial PMF",
     "equation": "C(n,k)·p^k·(1−p)^(n−k)",
-    "x_default": [
-      0,
-      30
-    ],
+    "x_default": [0, 30],
     "params": {
       "n": {
         "label": "Trials (n)",
@@ -681,10 +600,7 @@
     "category": "bell",
     "label": "Poisson PMF",
     "equation": "λ^k·e^(−λ)/k!",
-    "x_default": [
-      0,
-      20
-    ],
+    "x_default": [0, 20],
     "params": {
       "lam": {
         "label": "λ (rate)",
@@ -699,10 +615,7 @@
     "category": "bell",
     "label": "Laplace",
     "equation": "A/(2b)·exp(−|x−μ|/b)",
-    "x_default": [
-      -6,
-      6
-    ],
+    "x_default": [-6, 6],
     "params": {
       "A": {
         "label": "Scale (A)",
@@ -731,10 +644,7 @@
     "category": "lines",
     "label": "Linear",
     "equation": "m·x + b",
-    "x_default": [
-      -10,
-      10
-    ],
+    "x_default": [-10, 10],
     "params": {
       "m": {
         "label": "Slope (m)",
@@ -756,10 +666,7 @@
     "category": "lines",
     "label": "Vertical Line",
     "equation": "x = c",
-    "x_default": [
-      -10,
-      10
-    ],
+    "x_default": [-10, 10],
     "params": {
       "c": {
         "label": "x position (c)",
@@ -774,10 +681,7 @@
     "category": "lines",
     "label": "Horizontal Line",
     "equation": "y = c",
-    "x_default": [
-      -10,
-      10
-    ],
+    "x_default": [-10, 10],
     "params": {
       "c": {
         "label": "y value (c)",
@@ -792,10 +696,7 @@
     "category": "general",
     "label": "Polynomial",
     "equation": "Σ aₙ·xⁿ",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "degree": {
         "label": "Degree",
@@ -887,10 +788,7 @@
     "category": "general",
     "label": "Logarithmic",
     "equation": "a·log_b(x) + c",
-    "x_default": [
-      0.01,
-      10
-    ],
+    "x_default": [0.01, 10],
     "params": {
       "a": {
         "label": "Scale (a)",
@@ -919,10 +817,7 @@
     "category": "general",
     "label": "Exponential",
     "equation": "a·b^(s·x)",
-    "x_default": [
-      -3,
-      3
-    ],
+    "x_default": [-3, 3],
     "params": {
       "a": {
         "label": "Amplitude (a)",
@@ -951,10 +846,7 @@
     "category": "general",
     "label": "Nth Root",
     "equation": "a · x^(1/n)",
-    "x_default": [
-      0,
-      5
-    ],
+    "x_default": [0, 5],
     "params": {
       "a": {
         "label": "Scale (a)",
@@ -976,10 +868,7 @@
     "category": "other",
     "label": "Reciprocal",
     "equation": "a / (x + h)",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "a": {
         "label": "Scale (a)",
@@ -1001,10 +890,7 @@
     "category": "other",
     "label": "Factorial",
     "equation": "a · Γ(x+1)",
-    "x_default": [
-      0,
-      6
-    ],
+    "x_default": [0, 6],
     "params": {
       "a": {
         "label": "Scale (a)",
@@ -1019,10 +905,7 @@
     "category": "other",
     "label": "Ceiling",
     "equation": "a · ⌈x⌉",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "a": {
         "label": "Scale (a)",
@@ -1037,10 +920,7 @@
     "category": "other",
     "label": "Floor",
     "equation": "a · ⌊x⌋",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "a": {
         "label": "Scale (a)",
@@ -1055,10 +935,7 @@
     "category": "other",
     "label": "Absolute Value",
     "equation": "a · |x + h|",
-    "x_default": [
-      -5,
-      5
-    ],
+    "x_default": [-5, 5],
     "params": {
       "a": {
         "label": "Scale (a)",
