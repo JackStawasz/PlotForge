@@ -1368,11 +1368,41 @@ function buildListBody(item, v, lenInp){
   const cellsWrap = document.createElement('div');
   cellsWrap.className = 'var-list-cells';
 
+  // Show transient warnings while the user is actively typing in the length box
+  lenInp.addEventListener('input', ()=>{
+    const raw = lenInp.value;
+    const num = parseFloat(raw);
+    if(raw === '' || isNaN(num)){
+      if(v._warning) v._warning.setInvalid('List length must be a positive integer');
+      return;
+    }
+    if(!Number.isInteger(num)){
+      if(v._warning) v._warning.setInvalid('List length must be an integer');
+      return;
+    }
+    if(num < 1){
+      if(v._warning) v._warning.setInvalid('List length must be at least 1');
+      return;
+    }
+    // Value looks valid while typing — clear transient warning
+    if(v._warning) v._warning.clearInvalid();
+  });
+
+  // Commit on change (Enter / blur): clamp, reset display, clear warning
   lenInp.addEventListener('change', ()=>{
-    const n = Math.max(1, Math.min(999, parseInt(lenInp.value)||1));
+    const raw = lenInp.value;
+    const num = parseFloat(raw);
+    // Invalid or non-integer or <1 → reset to current length
+    if(isNaN(num) || !Number.isInteger(num) || num < 1){
+      lenInp.value = v.listLength;
+      if(v._warning) v._warning.clearInvalid();
+      return;
+    }
+    const n = Math.min(999, num);
     lenInp.value = n; v.listLength = n;
     while(v.listItems.length < n) v.listItems.push(0);
     v.listItems = v.listItems.slice(0, n);
+    if(v._warning) v._warning.clearInvalid();
     rebuildListCells(v, cellsWrap);
     rebuildEditIndex(v, editRow);
   });
