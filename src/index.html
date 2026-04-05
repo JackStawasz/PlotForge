@@ -37,7 +37,7 @@
     <div class="tpl-modal" id="tplModal">
       <div class="tpl-modal-header">
         <div class="tpl-modal-title"><em>Plot</em>Forge <span>Add Curve</span></div>
-        <div class="tpl-modal-search-wrap">
+        <div class="tpl-modal-search-wrap" id="tplSearchWrap">
           <input type="text" class="tpl-search-inp" id="tplSearchInp" placeholder="Search templates..."/>
         </div>
         <button class="tpl-modal-close" id="tplModalClose">&#10005;</button>
@@ -46,20 +46,21 @@
         <div class="tpl-modal-nav" id="tplModalNav"></div>
         <div class="tpl-modal-content-col">
           <div class="tpl-modal-grid" id="tplModalGrid"></div>
-          <div class="tpl-modal-footer" id="tplModalFooter" style="display:none">
-            <div class="tpl-modal-sel-info" id="tplModalSelectedInfo"></div>
-            <div class="tpl-modal-params-row" id="tplModalParams"></div>
-            <button class="tpl-modal-add-btn" id="tplModalAddBtn" disabled>
-              <span>&#8853;</span> Add to Plot
-            </button>
-          </div>
-          <!-- List vs List section -->
+          <!-- List-vs-list panel: shown when Lists nav is active -->
           <div class="lvl-section" id="lvlSection" style="display:none">
             <div class="lvl-title">Plot list vs list</div>
             <div class="lvl-hint" id="lvlHint">Select an X variable</div>
             <div class="lvl-picker-row" id="lvlXRow"></div>
             <div class="lvl-picker-row" id="lvlYRow" style="display:none"></div>
-            <button class="lvl-add-btn" id="lvlAddBtn" disabled>⊕ Add list curve</button>
+            <button class="lvl-add-btn" id="lvlAddBtn" disabled style="display:none">⊕ Add list curve</button>
+          </div>
+          <!-- Footer: always visible, faded when nothing selected -->
+          <div class="tpl-modal-footer" id="tplModalFooter" style="opacity:0.3;pointer-events:none">
+            <div class="tpl-modal-sel-info" id="tplModalSelectedInfo">Select a template above</div>
+            <div class="tpl-modal-params-row" id="tplModalParams"></div>
+            <button class="tpl-modal-add-btn" id="tplModalAddBtn" disabled>
+              <span>&#8853;</span> Add to Plot
+            </button>
           </div>
         </div>
       </div>
@@ -93,8 +94,8 @@
       <div class="sb-pane-inner">
         <div class="files-drop-zone" id="filesDropZone">
           <div class="fdz-icon">&#8853;</div>
-          <div class="fdz-text">Drop files here<br><span>or click to browse · .pkl .json .csv</span></div>
-          <input type="file" id="filesInput" multiple accept=".pkl,.json,.csv" style="display:none"/>
+          <div class="fdz-text">Drop files here<br><span>or click to browse</span></div>
+          <input type="file" id="filesInput" multiple style="display:none"/>
         </div>
         <div class="files-list" id="filesList"></div>
       </div>

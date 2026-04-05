@@ -17,14 +17,21 @@ function buildModalNavAndGrid(){
     catMeta[cat].push({key,tpl});
   }
   const allBtn=document.createElement('button'); allBtn.className='tpl-nav-item active'; allBtn.dataset.cat='all';
-  allBtn.innerHTML=`<span class="tpl-nav-dot" style="background:var(--muted)"></span>All`;
-  allBtn.addEventListener('click',()=>setModalCat('all')); nav.appendChild(allBtn);
+  allBtn.innerHTML=`<span class="tpl-nav-dot" style="background:var(--muted)"></span>All Templates`;
+  allBtn.addEventListener('click',()=>{ _setModalMode('templates'); setModalCat('all'); }); nav.appendChild(allBtn);
   for(const cat of catOrder){
     const meta=CAT_META[cat]||{label:cat,dotClass:''};
     const btn=document.createElement('button'); btn.className='tpl-nav-item'; btn.dataset.cat=cat;
     btn.innerHTML=`<span class="tpl-nav-dot ${meta.dotClass}"></span>${meta.label}`;
-    btn.addEventListener('click',()=>setModalCat(cat)); nav.appendChild(btn);
+    btn.addEventListener('click',()=>{ _setModalMode('templates'); setModalCat(cat); }); nav.appendChild(btn);
   }
+  // Divider + Lists entry
+  const divider=document.createElement('div');
+  divider.style.cssText='height:1px;background:var(--border);margin:6px 4px;flex-shrink:0';
+  nav.appendChild(divider);
+  const listsBtn=document.createElement('button'); listsBtn.className='tpl-nav-item'; listsBtn.dataset.cat='__lists__';
+  listsBtn.innerHTML=`<span class="tpl-nav-dot" style="background:#ffb347"></span>Lists`;
+  listsBtn.addEventListener('click',()=>_setModalMode('lists')); nav.appendChild(listsBtn);
   for(const cat of catOrder){
     const meta=CAT_META[cat]||{label:cat,dotClass:''};
     const hdr=document.createElement('div'); hdr.className='tpl-cat-header'; hdr.dataset.cat=cat;
@@ -50,6 +57,12 @@ function buildModalNavAndGrid(){
 }
 
 function setModalCat(cat){
+  // Clear selection when switching categories
+  document.querySelectorAll('.tpl-card').forEach(c=>c.classList.remove('selected'));
+  modalSelTpl = null;
+  const footer = document.getElementById('tplModalFooter');
+  if(footer){ footer.style.opacity='0.3'; footer.style.pointerEvents='none'; }
+
   document.querySelectorAll('.tpl-nav-item').forEach(b=>b.classList.toggle('active',b.dataset.cat===cat));
   const grid=document.getElementById('tplModalGrid'); if(!grid) return;
   grid.querySelectorAll('.tpl-card,.tpl-cat-header').forEach(el=>{
@@ -78,9 +91,12 @@ function selectModalTemplate(key){
   const info=document.getElementById('tplModalSelectedInfo');
   const params=document.getElementById('tplModalParams');
   const addBtn=document.getElementById('tplModalAddBtn');
-  if(!TEMPLATES[key]){if(footer)footer.style.display='none';return;}
+  if(!TEMPLATES[key]){
+    if(footer){ footer.style.opacity='0.3'; footer.style.pointerEvents='none'; }
+    return;
+  }
   const tpl=TEMPLATES[key];
-  footer.style.display='flex';
+  if(footer){ footer.style.opacity=''; footer.style.pointerEvents=''; footer.style.display='flex'; }
   info.innerHTML=`<strong>${tpl.label}</strong><br><em>${tpl.equation}</em>`;
   params.innerHTML='';
   for(const [pk,pd] of Object.entries(tpl.params)){
@@ -120,8 +136,8 @@ function openTemplateModal(){
   document.getElementById('tplModalBackdrop')?.classList.add('open');
   const addBtn=document.getElementById('tplModalAddBtn');
   if(addBtn) addBtn.disabled=!activePid||!modalSelTpl;
-  refreshLvlSection();
-  setTimeout(()=>document.getElementById('tplSearchInp')?.focus(),50);
+  _setModalMode(_modalMode);
+  setTimeout(()=>{ if(_modalMode==='templates') document.getElementById('tplSearchInp')?.focus(); },50);
 }
 
 function closeTemplateModal(){
@@ -131,7 +147,10 @@ function closeTemplateModal(){
 function wireTemplateModal(){
   document.getElementById('tplModalClose')?.addEventListener('click',closeTemplateModal);
   document.getElementById('tplModalBackdrop')?.addEventListener('click',e=>{ if(e.target===document.getElementById('tplModalBackdrop')) closeTemplateModal(); });
-  document.getElementById('tplModalAddBtn')?.addEventListener('click',addFromModal);
+  document.getElementById('tplModalAddBtn')?.addEventListener('click',()=>{
+    if(_modalMode==='lists') addListCurve();
+    else addFromModal();
+  });
   document.getElementById('tplSearchInp')?.addEventListener('input',function(){filterModalTemplates(this.value);});
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeTemplateModal(); });
   document.getElementById('lvlAddBtn')?.addEventListener('click', addListCurve);
@@ -140,21 +159,55 @@ function wireTemplateModal(){
 // ─── List vs List ──────────────────────────────────────────────────────────
 let _lvlXName = null; // selected X list variable name
 let _lvlYName = null; // selected Y list variable name
+let _modalMode = 'templates'; // 'templates' | 'lists'
+
+// Switch the modal between template-browsing and list-plotting modes
+function _setModalMode(mode){
+  _modalMode = mode;
+  const grid   = document.getElementById('tplModalGrid');
+  const lvl    = document.getElementById('lvlSection');
+  const footer = document.getElementById('tplModalFooter');
+  const search = document.getElementById('tplSearchWrap') || document.querySelector('.tpl-modal-search-wrap');
+  const isLists = mode === 'lists';
+
+  if(grid)   grid.style.display   = isLists ? 'none' : '';
+  if(search) search.style.visibility = isLists ? 'hidden' : '';
+  if(lvl){
+    lvl.style.display = isLists ? 'flex' : 'none';
+    if(isLists) refreshLvlSection();
+  }
+  // Footer: show in both modes; lists mode updates its content via refreshLvlSection
+  if(footer){
+    footer.style.display = 'flex';
+    if(!isLists){
+      // Restore template footer state
+      const hasTemplate = !!(modalSelTpl && TEMPLATES[modalSelTpl]);
+      footer.style.opacity = hasTemplate ? '' : '0.3';
+      footer.style.pointerEvents = hasTemplate ? '' : 'none';
+    }
+  }
+  document.querySelectorAll('.tpl-nav-item').forEach(b=>{
+    if(isLists){ b.classList.toggle('active', b.dataset.cat==='__lists__'); }
+  });
+}
 
 function refreshLvlSection(){
   const section = document.getElementById('lvlSection'); if(!section) return;
   const lists = (typeof variables !== 'undefined') ? variables.filter(v=>v.kind==='list' && v.name) : [];
   if(!lists.length){ section.style.display='none'; return; }
-  section.style.display = 'flex';
+  if(_modalMode === 'lists') section.style.display = 'flex';
 
   // Reset if previously selected vars were removed
   if(_lvlXName && !lists.find(v=>v.name===_lvlXName)) _lvlXName = null;
   if(_lvlYName && !lists.find(v=>v.name===_lvlYName)) _lvlYName = null;
 
-  const hint = document.getElementById('lvlHint');
-  const xRow = document.getElementById('lvlXRow');
-  const yRow = document.getElementById('lvlYRow');
-  const addBtn = document.getElementById('lvlAddBtn');
+  const hint   = document.getElementById('lvlHint');
+  const xRow   = document.getElementById('lvlXRow');
+  const yRow   = document.getElementById('lvlYRow');
+  const addBtn = document.getElementById('lvlAddBtn'); // kept for compat
+  const mainBtn = document.getElementById('tplModalAddBtn');
+  const mainInfo = document.getElementById('tplModalSelectedInfo');
+  const footer  = document.getElementById('tplModalFooter');
 
   // Build X picker (all lists)
   xRow.innerHTML = '';
@@ -173,7 +226,9 @@ function refreshLvlSection(){
   if(!_lvlXName){
     hint.textContent = 'Select an X variable';
     yRow.style.display = 'none';
-    addBtn.disabled = true;
+    if(addBtn) addBtn.disabled = true;
+    if(mainBtn && _modalMode==='lists'){ mainBtn.disabled=true; }
+    if(footer && _modalMode==='lists'){ footer.style.opacity='0.3'; footer.style.pointerEvents='none'; }
     return;
   }
 
@@ -200,10 +255,17 @@ function refreshLvlSection(){
 
   if(!_lvlYName){
     hint.textContent = `X = ${_lvlXName} (${xLen} pts) — select Y`;
-    addBtn.disabled = true;
+    if(addBtn) addBtn.disabled = true;
+    if(mainBtn && _modalMode==='lists'){ mainBtn.disabled=true; }
+    if(footer && _modalMode==='lists'){ footer.style.opacity='0.3'; footer.style.pointerEvents='none'; }
   } else {
     hint.textContent = `${_lvlXName} vs ${_lvlYName} (${xLen} pts)`;
-    addBtn.disabled = !activePid;
+    if(addBtn) addBtn.disabled = !activePid;
+    if(_modalMode==='lists'){
+      if(mainBtn){ mainBtn.disabled=!activePid; }
+      if(mainInfo) mainInfo.innerHTML=`<strong>${_lvlYName} vs ${_lvlXName}</strong><br><em>${xLen} data points</em>`;
+      if(footer){ footer.style.opacity=activePid?'':'0.3'; footer.style.pointerEvents=activePid?'':'none'; }
+    }
   }
 }
 
@@ -507,14 +569,14 @@ function drawChart(p){
     const dc = p.curves.find(c=>c.jsData?.discrete);
     chartInstances[p.id] = new Chart(ctx, {
       type:'bar', data:{labels:dc?.jsData.x.map(n=>n)||[], datasets:allDatasets},
-      options:{responsive:true,maintainAspectRatio:false,animation:animOpts,
+      options:{responsive:true,maintainAspectRatio:true,animation:animOpts,
         plugins:{legend:{display:false},tooltip:tooltipOpts()},scales}
     });
   }else{
     scales.x.type = v.x_log ? 'logarithmic' : 'linear';
     chartInstances[p.id] = new Chart(ctx, {
       type:'line', data:{datasets:allDatasets},
-      options:{responsive:true,maintainAspectRatio:false,animation:animOpts,
+      options:{responsive:true,maintainAspectRatio:true,animation:animOpts,
         plugins:{legend:{display:false},tooltip:{...tooltipOpts(),callbacks:{
           title:items=>`x = ${Number(items[0].parsed.x).toFixed(4)}`,
           label:item=>item.dataset._axisLine ? null : `${item.dataset.label}: y = ${Number(item.parsed.y)?.toFixed(5)?? '—'}`,
