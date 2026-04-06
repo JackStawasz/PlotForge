@@ -596,12 +596,14 @@ def evaluate_variables():
             if '_' in nm:
                 base, sub = nm.split('_', 1)
                 pat = r'(?<![a-zA-Z\\])' + re.escape(base) + r'_(?:\{' + re.escape(sub) + r'\}|' + re.escape(sub) + r')(?![a-zA-Z0-9_])'
-                processed = re.sub(pat, lat_ph, processed)
+                _repl = lat_ph
+                processed = re.sub(pat, lambda m, r=_repl: r, processed)
 
         # Replace plain single-letter names that are in our encoding
         for nm, (lat_ph, _) in sorted(name_enc.items(), key=lambda x: -len(x[0])):
             if '_' not in nm and len(nm) == 1:
-                processed = re.sub(r'(?<![a-zA-Z\\])' + re.escape(nm) + r'(?![a-zA-Z_])', lat_ph, processed)
+                _repl = lat_ph
+                processed = re.sub(r'(?<![a-zA-Z\\])' + re.escape(nm) + r'(?![a-zA-Z_])', lambda m, r=_repl: r, processed)
 
         # ── Step 3: parse with SymPy ──────────────────────────────────────
         try:
