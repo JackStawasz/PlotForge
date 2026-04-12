@@ -533,7 +533,6 @@ header{
   padding:2px 7px;border-radius:3px;flex-shrink:0;
 }
 .var-kind-constant { background:rgba(90,255,206,.12); color:#5affce; border:1px solid rgba(90,255,206,.3); }
-.var-kind-variable { background:rgba(90,255,206,.12); color:#5affce; border:1px solid rgba(90,255,206,.3); }
 .var-kind-parameter{ background:rgba(212,255,90,.10); color:#d4ff5a; border:1px solid rgba(212,255,90,.3); }
 .var-kind-equation  { background:rgba(167,139,250,.12); color:#a78bfa; border:1px solid rgba(167,139,250,.3); }
 .var-kind-list      { background:rgba(255,179,71,.10);  color:#ffb347; border:1px solid rgba(255,179,71,.3);  }
@@ -608,9 +607,7 @@ header{
 .var-result.var-result-ok{ color:#5affce;opacity:.9; }
 .var-result.var-result-partial{ color:#a0a8e8;opacity:.85; }
 
-/* parameter slider row (value now in MathField above) */
-.var-param-valrow{display:none;}
-.var-param-valinp{display:none;}
+/* slider row — visible only when the RHS is a plain numeric value */
 .var-param-sliderrow{display:none;align-items:center;gap:5px;}
 .var-param-sliderrow.visible{display:flex;}
 .var-param-slider{flex:1;height:2px;}
@@ -622,11 +619,6 @@ header{
 }
 .var-param-bound:hover,.var-param-bound:focus{
   border-color:var(--border2);background:var(--s2);color:#9898c8;
-}
-
-/* List subheader: name (left) + length (right) */
-.var-list-subheader{
-  display:flex;align-items:center;justify-content:space-between;gap:6px;
 }
 
 /* MathQuill name field for list variables */

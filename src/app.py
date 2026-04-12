@@ -13,8 +13,6 @@ _here = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_here, "templates.json"), encoding="utf-8") as _f:
     TEMPLATES = json.load(_f)
 
-
-
 # ── Data generators ──────────────────────────────────────────────────────────
 from scipy.stats import binom as _binom, poisson as _poisson
 
@@ -194,7 +192,7 @@ def generate_xy(tkey, params, view):
 BG="#080810"; SURFACE="#12121c"; GRID_C="#1a1a2c"; TEXT_C="#c0c0e0"; SPINE_C="#222236"
 
 def _apply_mask(x, y, ci):
-    """Apply x/y mask: keep points where x in (xMin,xMax) and y in (yMin,yMax)."""
+    """Keep only points where x ∈ (xMin, xMax) and y ∈ (yMin, yMax)."""
     xn=ci.get("mask_x_min"); xx=ci.get("mask_x_max")
     yn=ci.get("mask_y_min"); yx=ci.get("mask_y_max")
     if xn is None and xx is None and yn is None and yx is None:
@@ -207,16 +205,13 @@ def _apply_mask(x, y, ci):
     return x[mask], y[mask]
 
 
-
 def _hex_to_rgb01(h):
     h=h.lstrip('#')
     return tuple(int(h[i:i+2],16)/255 for i in (0,2,4))
 
 def render_matplotlib_multi(curves_data, view, labels, text_annotations=None):
-    """
-    curves_data: list of dicts with keys:
-      x, y, is_discrete, line_color, line_width, line_style,
-      marker, marker_size, fill_under, fill_alpha, label
+    """Render one or more curves to a PNG via Matplotlib and return a base64 string.
+    Each entry in curves_data is a dict with x, y, style, and label fields.
     """
     bg_color      = view.get("bg_color", BG)
     surface_color = view.get("surface_color", SURFACE)
@@ -363,9 +358,8 @@ def get_templates(): return jsonify(TEMPLATES)
 
 @app.route("/api/unpickle", methods=["POST"])
 def unpickle_file():
-    """Accept a .pkl file upload, unpickle it, and return its contents as JSON.
-    The pickle object must be a dict. Values that are numeric scalars become
-    'constant' variables; array-like values become 'list' variables.
+    """Accept a .pkl upload, unpickle it, and return its contents as JSON variables.
+    The pickle must contain a dict; numeric scalars → 'constant', array-likes → 'list'.
     """
     import pickle, numbers
     if "file" not in request.files:
@@ -433,9 +427,6 @@ def plot_matplotlib():
             "fill_alpha":view.get("fill_alpha",.15),
             "label":body.get("label",""),
         }]
-    if not curves_in and not body.get("template"):
-        # Allow empty plot — render axes only
-        curves_in = []
     try:
         curves_data=[]
         for ci in curves_in:
@@ -482,10 +473,8 @@ def plot_matplotlib():
 
 @app.route("/api/evaluate", methods=["POST"])
 def evaluate_variables():
-    """
-    Evaluate a batch of variable definitions using SymPy.
-    Processes variables in order so each resolved value is available to later ones.
-
+    """Evaluate a batch of variable definitions using SymPy.
+    Processes in order so each resolved value is available to later ones.
     Request:  { "variables": [{ "id", "name", "expr_latex", "kind" }, ...] }
     Response: { "results":   [{ "id", "value", "latex", "is_numeric", "error" }, ...] }
     """
@@ -497,11 +486,11 @@ def evaluate_variables():
     body = request.get_json(silent=True) or {}
     var_defs = body.get("variables", [])
 
-    # parse_latex emits these as Symbol names rather than constants
+    # parse_latex treats 'pi' and 'e' as Symbol names — substitute the real constants
     CONST_SUBS = [(Symbol('pi'), SPI), (Symbol('e'), E)]
 
-    # Greek letters as single-atom placeholders for \text{long_name}
-    # (parse_latex treats multi-char tokens as implicit products of single letters)
+    # Greek placeholder atoms used when encoding \text{long_name} → single parse_latex tokens
+    # (parse_latex would treat multi-char tokens as implicit products of single letters)
     GREEK_POOL = [
         ('\\alpha','alpha'), ('\\beta','beta'), ('\\gamma','gamma'),
         ('\\delta','delta'), ('\\varepsilon','varepsilon'), ('\\zeta','zeta'),

@@ -39,8 +39,6 @@ function snapshotForUndo(){
       ...p,
       curves: p.curves.map(c=>({
         ...c,
-        // Preserve jsData for list curves (no template) so undo restores them.
-        // Null jsData only for template curves — those get recomputed by renderJS.
         jsData: c.template ? null : (c.jsData ? { x:[...c.jsData.x], y:[...c.jsData.y], discrete: c.jsData.discrete } : null),
       }))
     })),
@@ -136,8 +134,7 @@ function defView(){
 }
 
 function pickCurveColor(existingCurves){
-  // Only consider curves that are actually plotted when deduplicating colors.
-  // Phantom blank curves (no template, no jsData) shouldn't consume a color slot.
+  // Only count curves that are actually rendered; blank placeholder curves don't consume a color slot.
   const realCurves = existingCurves.filter(c => c.template || c.jsData);
   const used = new Set(realCurves.map(c => c.line_color));
   for(const color of CURVE_COLORS){
@@ -273,8 +270,6 @@ function _showConnBanner(msg, isOk){
   document.getElementById('connBannerMsg').textContent = msg;
   banner.classList.toggle('conn-banner-ok', isOk);
   banner.classList.add('visible');
-  const cd = document.getElementById('connBannerCountdown');
-  if(cd) cd.textContent = isOk ? '' : '';
 }
 
 function _hideConnBanner(){

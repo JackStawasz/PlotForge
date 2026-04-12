@@ -61,8 +61,7 @@ function renderDOM(){
   list.addEventListener('click', e=>{
     const onCard = e.target.closest('.plot-card');
     const onGhost = e.target.closest('.add-card');
-    // If not on a card or ghost AND not on a button that already handled action,
-    // deselect. We must check the closest card at event time (before any DOM replacement).
+    // Click on the background (not a card or ghost) → deselect active plot
     if(!onCard && !onGhost){ activePid=null; syncActiveHighlight(); refreshCfg(); refreshSidebar(); }
   });
   refreshCfg(); refreshSidebar();
@@ -198,8 +197,8 @@ function applyBgColorToCanvas(pid){
 }
 
 // ═══ TEXT ANNOTATIONS ════════════════════════════════════════════════════
-// Font size is stored/reported in "logical pt" units matching the right-panel
-// controls. JS renders at size*JS_ANN_SCALE px to match matplotlib output size.
+// Annotation font sizes are stored in logical pt to match the right-panel controls.
+// JS renders at size * JS_ANN_SCALE px so on-screen size matches the matplotlib export.
 const JS_ANN_SCALE = 1.4;
 
 let _annMenu = null;
@@ -211,14 +210,10 @@ function closeAnnMenu(){
 // Convert plot-data coords → canvas fraction for a given chart instance
 function dataToFrac(ch, dataX, dataY){
   const sx=ch.scales.x, sy=ch.scales.y;
-  const fracX = (sx.right-sx.left)>0 ? (dataX-sx.min)/(sx.max-sx.min) : 0.5;
-  const fracY = (sy.bottom-sy.top)>0 ? 1 - (dataY-sy.min)/(sy.max-sy.min) : 0.5;
-  // canvas fraction relative to full canvas size
   const cw=ch.canvas.width, ch_=ch.canvas.height;
-  const pxX = sx.left + fracX*(sx.right-sx.left);
-  const pxY = sy.top  + (1-fracX)*(sy.bottom-sy.top); // not used
-  const pxY2= sy.top  + (1 - (dataY-sy.min)/(sy.max-sy.min)) * (sy.bottom-sy.top);
-  return { x: pxX/cw, y: pxY2/ch_ };
+  const pxX = sx.left + (dataX - sx.min) / (sx.max - sx.min) * (sx.right - sx.left);
+  const pxY = sy.top  + (1 - (dataY - sy.min) / (sy.max - sy.min)) * (sy.bottom - sy.top);
+  return { x: pxX/cw, y: pxY/ch_ };
 }
 
 // Convert canvas fraction → plot-data coords
@@ -391,10 +386,6 @@ function showAnnMenu(ann, pid, menuBtnEl){
     if(!menu.contains(e.target) && e.target!==menuBtnEl){ closeAnnMenu(); document.removeEventListener('mousedown',onOutside); }
   };
   setTimeout(()=>document.addEventListener('mousedown',onOutside), 10);
-}
-
-function makeSep(){
-  const d=document.createElement('div'); d.className='ann-menu-sep'; return d;
 }
 
 function scheduleMplDebounce(pid){
@@ -749,10 +740,7 @@ function wireAllCfgInputs(){
       }
     });
   }
-
-
   document.getElementById('undoBtn')?.addEventListener('click', performUndo);
   document.getElementById('redoBtn')?.addEventListener('click', performRedo);
   updateUndoRedoBtns();
-
 }

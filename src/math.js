@@ -173,11 +173,11 @@ function besselJ(n, x){
   return sign * sum;
 }
 
-// Fresnel C(x) = integral_0^x cos(pi/2 * t^2) dt — power series
+// Fresnel C(x) = integral_0^x cos(π/2 · t²) dt — power series
+// sum is initialized to x (carrying sign), so return it directly.
 function fresnelC(x){
   if(x === 0) return 0;
-  const sign = x < 0 ? -1 : 1;
-  const t = x * x;  // t = x^2
+  const t   = x * x;
   const pt2 = Math.PI / 2;
   let sum = x, term = x, xsq = -t * t * pt2 * pt2;
   for(let k = 1; k <= 80; k++){
@@ -186,10 +186,10 @@ function fresnelC(x){
     sum += next;
     if(Math.abs(next) < 1e-14 * Math.abs(sum)) break;
   }
-  return sign * Math.abs(sum) * sign < 0 ? -Math.abs(sum) : Math.abs(sum);
+  return sum;
 }
 
-// Fresnel S(x) = integral_0^x sin(pi/2 * t^2) dt — power series
+// Fresnel S(x) = integral_0^x sin(π/2 · t²) dt — power series
 function fresnelS(x){
   if(x === 0) return 0;
   const sign = x < 0 ? -1 : 1;
@@ -244,8 +244,8 @@ function airyAi(x){
 }
 
 
-// Inserts null sentinels only at true asymptote discontinuities (sign-flip
-// jumps). Does NOT clip finite peaks — even narrow ones.
+// Insert null sentinels only at true asymptote discontinuities (sign-flip
+// jumps above a large threshold). Does NOT clip finite peaks.
 function clipForDisplay(xArr, yArr){
   const n = xArr.length;
   if(n < 4) return {x:xArr, y:yArr};
@@ -319,8 +319,8 @@ function niceSliderStep(min,max){
 }
 
 // ═══ ADAPTIVE SAMPLING ═══════════════════════════════════════════════════
-// Detects intervals with large |Δy| and inserts extra evaluated points so
-// narrow peaks (e.g. thin Lorentzians) are never dropped on zoom-out.
+// Inserts extra evaluated points into intervals with large |Δy| so narrow
+// peaks (e.g. thin Lorentzians) are resolved correctly on zoom-out.
 function adaptiveSample(xArr, yArr, evalFn, maxExtra=600){
   const n = xArr.length;
   if(n < 2 || !evalFn) return {x:xArr, y:yArr};

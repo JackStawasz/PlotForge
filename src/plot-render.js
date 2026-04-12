@@ -1,6 +1,7 @@
 // ═══ TEMPLATE MODAL ══════════════════════════════════════════════════════
 let modalSelTpl = null;
 
+// Called by tryConnect after TEMPLATES loads; rebuilds the nav and card grid.
 function buildCategories(){
   buildModalNavAndGrid();
 }
@@ -42,7 +43,7 @@ function buildModalNavAndGrid(){
       // Build card with a placeholder span for the equation; MQ renders it after insertion
       card.innerHTML=`<div class="tpl-card-dot ${meta.dotClass}"></div><div class="tpl-card-label">${tpl.label}</div><div class="tpl-card-eq"><span class="tpl-card-eq-mq"></span></div>`;
       card.addEventListener('click',()=>selectModalTemplate(key)); grid.appendChild(card);
-      // Render the equation with MathQuill StaticMath after the element is in the DOM
+      // Render the equation string via MQ StaticMath once the card is in the DOM
       requestAnimationFrame(()=>{
         const mqSpan = card.querySelector('.tpl-card-eq-mq');
         if(mqSpan && MQ){
@@ -204,7 +205,7 @@ function refreshLvlSection(){
   const hint   = document.getElementById('lvlHint');
   const xRow   = document.getElementById('lvlXRow');
   const yRow   = document.getElementById('lvlYRow');
-  const addBtn = document.getElementById('lvlAddBtn'); // kept for compat
+  const addBtn = document.getElementById('lvlAddBtn');
   const mainBtn = document.getElementById('tplModalAddBtn');
   const mainInfo = document.getElementById('tplModalSelectedInfo');
   const footer  = document.getElementById('tplModalFooter');

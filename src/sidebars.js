@@ -26,9 +26,8 @@ function initResizableSidebars(){
 function makeResizable(elId, defaultPx, minPx, maxPx, edge, cssVar){
   const el = document.getElementById(elId); if(!el) return;
 
-  // Collapse threshold: if dragged below minPx - 40px, collapse
+  // Collapse threshold: if dragged below minPx - 40px, snap to collapsed
   const COLLAPSE_THRESHOLD = minPx - 40;
-  const COLLAPSED_PX = 0;
   let collapsed = false;
   let lastExpandedW = defaultPx;
 
@@ -50,7 +49,7 @@ function makeResizable(elId, defaultPx, minPx, maxPx, edge, cssVar){
     el.classList.toggle('sidebar-collapsed', collapsed);
     expandBtn.style.display = collapsed ? 'flex' : 'none';
     if(collapsed){
-      document.documentElement.style.setProperty(cssVar, COLLAPSED_PX + 'px');
+      document.documentElement.style.setProperty(cssVar, '0px');
     }
   }
 
@@ -163,7 +162,8 @@ function renderFilesList(){
   });
 }
 
-// Send .pkl to backend, show confirmation modal, then import
+// Send a .pkl file to the backend, parse it, show a confirmation modal, then import.
+// badgeEl: the "→ vars" badge element to update; falls back to a DOM query if null.
 async function uploadPickleFile(f, badgeEl, isOverwrite=false){
   const badge = badgeEl || document.querySelector(`[title="${f.name}"]`)?.closest('.file-item')?.querySelector('.file-pkl-badge');
   const setBadge = (text, cls) => {
@@ -195,8 +195,8 @@ async function uploadPickleFile(f, badgeEl, isOverwrite=false){
   }
 }
 
-// Show a modal previewing what will be imported, then call onConfirm or onCancel.
-// Pass isOverwrite=true to show an overwrite-warning banner above the variable list.
+// Render a preview modal of the variables about to be imported, then call onConfirm or onCancel.
+// isOverwrite=true shows a warning banner when the file was already imported.
 function showPickleConfirmModal(filename, varsData, onConfirm, onCancel, isOverwrite=false){
   const backdrop = document.createElement('div');
   backdrop.className = 'pkl-modal-backdrop';
@@ -261,8 +261,9 @@ function showPickleConfirmModal(filename, varsData, onConfirm, onCancel, isOverw
   const onKey = e=>{ if(e.key==='Escape'){ close(); onCancel?.(); document.removeEventListener('keydown',onKey); } };
   document.addEventListener('keydown', onKey);
 }
-// ─── JSON / CSV client-side import ──────────────────────────────────────────
-
+// ═══ JSON / CSV CLIENT-SIDE IMPORT ═══════════════════════════════════════
+// Parse JSON text into a variables dict. Accepts an object or an array of objects.
+// Numeric values become 'constant'; numeric arrays become 'list'.
 function parseJsonVars(text){
   let parsed;
   try{ parsed = JSON.parse(text); }
@@ -309,6 +310,8 @@ function parseJsonVars(text){
   return {variables: result};
 }
 
+// Parse CSV text into a variables dict. Header row provides names;
+// columns with all-numeric values become 'list' (or 'constant' if length 1).
 function parseCsvVars(text){
   const lines = text.trim().split(/\r?\n/).filter(l=>l.trim());
   if(lines.length < 2) return {error: 'CSV must have a header row and at least one data row'};
@@ -397,6 +400,7 @@ function setCfgTab(tab){
   document.getElementById('cfgPaneLine')?.style.setProperty('display', tab==='line'?'flex':'none');
 }
 
+// Format a domain boundary value for display (5 sig-figs, empty string for null/Infinity).
 function fmtDomain(v){ if(v==null||!isFinite(v)) return ''; return parseFloat(v.toPrecision(5)).toString(); }
 
 function getEffectiveDomain(pid){
@@ -628,7 +632,7 @@ function commitDomainInput(id, axis, minMax){
   else { _applyDomainToChart(p); if(p.curves.some(c=>c.template)) renderJS(activePid, false); }
 }
 
-// Immediately apply p.view domain to an existing Chart.js instance without re-rendering curves.
+// Apply p.view domain limits to an existing Chart.js instance without recomputing curve data.
 function _applyDomainToChart(p){
   const ch = chartInstances[p?.id]; if(!ch) return;
   applyScaleLimits(ch.options.scales, p.view);
@@ -636,6 +640,8 @@ function _applyDomainToChart(p){
   syncCfgDomain();
 }
 
+// Read all cfg inputs into state, apply font sizes, and re-render or re-export.
+// Debounces the undo snapshot to avoid flooding the stack during slider drags.
 function triggerCfgRender(){
   if(activePid===null) return;
   readCfgIntoActive();

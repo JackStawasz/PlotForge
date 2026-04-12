@@ -296,8 +296,6 @@
 .ann-menu-item.danger{color:var(--acc3);}
 .ann-menu-item.danger:hover{background:rgba(255,111,170,.08);}
 .ann-menu-icon{width:16px;text-align:center;flex-shrink:0;font-size:.8rem;}
-/* No more separators — use spacing instead */
-.ann-menu-sep{display:none;}
 /* Full-width sub-section (text content) */
 .ann-menu-sub{padding:6px 14px 4px;display:flex;flex-direction:column;gap:5px;}
 .ann-menu-sub label{font-size:.61rem;color:#7070a0;letter-spacing:.06em;text-transform:uppercase;}
@@ -335,7 +333,6 @@
   transition:border-color .12s;
 }
 .ann-menu-inp-hex:focus{border-color:var(--acc2);}
-.ann-menu-inline{display:flex;gap:6px;align-items:center;}
 .ann-lock-group{display:flex;gap:4px;flex-shrink:0;}
 .ann-lock-btn{
   padding:3px 8px;
