@@ -529,6 +529,8 @@ function refreshCfg(){
   setCfgTab(cfgActiveTab);
   syncCfgDomain();
   const v = p.view;
+  const plotThemeSel = document.getElementById('c_plot_theme');
+  if(plotThemeSel) plotThemeSel.value = v.chart_theme === 'light' ? 'light' : 'dark';
   document.getElementById('c_grid').checked = v.show_grid;
   sv('c_galpha', v.grid_alpha ?? 0.5);
   document.getElementById('c_galpha_val').textContent = Math.round((v.grid_alpha ?? 0.5)*100)+'%';
@@ -694,6 +696,12 @@ function resetDomainToDefault(){
 }
 
 function initCfgPanel(){
+  // Plot theme select — applies a full theme preset to the active plot
+  document.getElementById('c_plot_theme')?.addEventListener('change', function(){
+    if(activePid === null) return;
+    if(typeof applyPlotTheme === 'function') applyPlotTheme(this.value, activePid, true);
+  });
+
   document.getElementById('c_bg_color')?.addEventListener('input', function(){
     document.getElementById('c_bg_hex').value = this.value;
     triggerCfgRender();

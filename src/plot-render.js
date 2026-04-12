@@ -556,7 +556,9 @@ function drawChart(p){
     } else {
       ch.data.datasets = allDatasets;
       if(hasDiscrete) ch.data.labels = p.curves.find(c=>c.jsData?.discrete)?.jsData.x.map(n=>n) || [];
-      const galpha = v.grid_alpha ?? 0.5, gc = `rgba(60,60,100,${galpha})`;
+      const isLight = v.chart_theme === 'light';
+      const galpha = v.grid_alpha ?? 0.5;
+      const gc = isLight ? `rgba(50,80,180,${galpha})` : `rgba(60,60,100,${galpha})`;
       ch.options.scales.x.grid.display=v.show_grid; ch.options.scales.x.grid.color=gc;
       ch.options.scales.y.grid.display=v.show_grid; ch.options.scales.y.grid.color=gc;
       ch.options.scales.x.ticks.callback = v.x_log ? makeLogTickCb() : makeTickCb('x');
@@ -566,19 +568,20 @@ function drawChart(p){
   }
 
   destroyChart(p.id); const ctx = canvas.getContext('2d');
+  const ct = v.chart_theme ?? 'dark';
   if(hasDiscrete){
     const dc = p.curves.find(c=>c.jsData?.discrete);
     chartInstances[p.id] = new Chart(ctx, {
       type:'bar', data:{labels:dc?.jsData.x.map(n=>n)||[], datasets:allDatasets},
       options:{responsive:true,maintainAspectRatio:true,animation:animOpts,
-        plugins:{legend:{display:false},tooltip:tooltipOpts()},scales}
+        plugins:{legend:{display:false},tooltip:tooltipOpts(ct)},scales}
     });
   }else{
     scales.x.type = v.x_log ? 'logarithmic' : 'linear';
     chartInstances[p.id] = new Chart(ctx, {
       type:'line', data:{datasets:allDatasets},
       options:{responsive:true,maintainAspectRatio:true,animation:animOpts,
-        plugins:{legend:{display:false},tooltip:{...tooltipOpts(),callbacks:{
+        plugins:{legend:{display:false},tooltip:{...tooltipOpts(ct),callbacks:{
           title:items=>`x = ${Number(items[0].parsed.x).toFixed(4)}`,
           label:item=>item.dataset._axisLine ? null : `${item.dataset.label}: y = ${Number(item.parsed.y)?.toFixed(5)?? '—'}`,
         }}},scales}
@@ -594,7 +597,9 @@ function tensionFor(lc){ return lc==='cubic'?0.4:lc==='bezier'?0.6:0; }
 function buildAxisLineDatasets(v){
   if(!v.show_axis_lines) return [];
   const alpha = v.axis_alpha ?? 0.6;
-  const color = `rgba(180,180,220,${alpha})`;
+  const color = v.chart_theme === 'light'
+    ? `rgba(30,50,140,${alpha})`
+    : `rgba(180,180,220,${alpha})`;
   const big = 1e9;
   return [
     { // y=0 line (horizontal)
@@ -623,19 +628,24 @@ function makeTickCb(axisKey){
 }
 
 function buildScales(v){
-  const galpha = v.grid_alpha ?? 0.5, gc = `rgba(60,60,100,${galpha})`;
+  const isLight = v.chart_theme === 'light';
+  const galpha = v.grid_alpha ?? 0.5;
+  const gc = isLight
+    ? `rgba(50,80,180,${galpha})`
+    : `rgba(60,60,100,${galpha})`;
+  const tickColor = isLight ? '#2a3570' : '#b0b0e0';
   const s = {
     x:{
       type: v.x_log ? 'logarithmic' : 'linear',
       border:{ display:true, color:gc },
-      ticks:{color:'#b0b0e0',font:{family:"'IBM Plex Mono'",size:10},maxTicksLimit:12,
+      ticks:{color:tickColor,font:{family:"'IBM Plex Mono'",size:10},maxTicksLimit:12,
              callback: v.x_log ? makeLogTickCb() : makeTickCb('x')},
       grid:{color:gc,display:v.show_grid, drawBorder:true},
     },
     y:{
       type: v.y_log ? 'logarithmic' : 'linear',
       border:{ display:true, color:gc },
-      ticks:{color:'#b0b0e0',font:{family:"'IBM Plex Mono'",size:10},maxTicksLimit:10,
+      ticks:{color:tickColor,font:{family:"'IBM Plex Mono'",size:10},maxTicksLimit:10,
              callback: v.y_log ? makeLogTickCb() : makeTickCb('y')},
       grid:{color:gc,display:v.show_grid, drawBorder:true},
     },
@@ -662,12 +672,14 @@ function applyScaleLimits(scales, v){
   if(v.y_max!=null) scales.y.max=v.y_max; else delete scales.y.max;
 }
 
-function tooltipOpts(){
-  return {
-    backgroundColor:'#0c0c18', borderColor:'#252540', borderWidth:1,
-    titleColor:'#d4ff5a', bodyColor:'#d0d0ee',
-    titleFont:{family:"'IBM Plex Mono'",size:10}, bodyFont:{family:"'IBM Plex Mono'",size:10},
-  };
+function tooltipOpts(chartTheme = 'dark'){
+  return chartTheme === 'light'
+    ? { backgroundColor:'#eef2ff', borderColor:'#a0aacc', borderWidth:1,
+        titleColor:'#1a2060', bodyColor:'#2a3478',
+        titleFont:{family:"'IBM Plex Mono'",size:10}, bodyFont:{family:"'IBM Plex Mono'",size:10} }
+    : { backgroundColor:'#0c0c18', borderColor:'#252540', borderWidth:1,
+        titleColor:'#d4ff5a', bodyColor:'#d0d0ee',
+        titleFont:{family:"'IBM Plex Mono'",size:10}, bodyFont:{family:"'IBM Plex Mono'",size:10} };
 }
 
 function hexAlpha(hex,a){

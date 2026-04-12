@@ -61,7 +61,7 @@ function showVarTypePicker(){
   picker.id = 'var-type-picker';
   picker.style.cssText = [
     'position:fixed','z-index:99998',
-    'background:#0e0e1c','border:1px solid #3a3a6a','border-radius:8px',
+    'background:var(--s1)','border:1px solid var(--border2)','border-radius:8px',
     'box-shadow:0 8px 28px rgba(0,0,0,.55)',
     'font-family:var(--mono,monospace)','font-size:.8rem',
     'min-width:178px','overflow:hidden','padding:4px 0',
@@ -76,9 +76,9 @@ function showVarTypePicker(){
   types.forEach(t=>{
     const row = document.createElement('button');
     row.style.cssText = 'display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:none;padding:9px 14px;cursor:pointer;transition:background .08s;text-align:left;';
-    row.innerHTML = `<span style="font-size:1.05rem;width:22px;text-align:center;flex-shrink:0;color:#5affce;opacity:.85">${t.icon}</span>`
-      + `<span><span style="color:#d0d0ee;font-size:.8rem;display:block">${t.label}</span>`
-      + `<span style="color:#5a5a90;font-size:.68rem">${t.desc}</span></span>`;
+    row.innerHTML = `<span style="font-size:1.05rem;width:22px;text-align:center;flex-shrink:0;color:var(--acc2);opacity:.85">${t.icon}</span>`
+      + `<span><span style="color:var(--text);font-size:.8rem;display:block">${t.label}</span>`
+      + `<span style="color:var(--muted);font-size:.68rem">${t.desc}</span></span>`;
     row.addEventListener('mouseenter', ()=>{ row.style.background='rgba(90,255,206,.07)'; });
     row.addEventListener('mouseleave', ()=>{ row.style.background='transparent'; });
     row.addEventListener('mousedown', e=>{ e.preventDefault(); e.stopPropagation(); });

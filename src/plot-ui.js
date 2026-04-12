@@ -634,13 +634,13 @@ document.addEventListener('fullscreenchange', ()=>{
   tip.id = 'ctop-tip';
   tip.style.cssText = [
     'position:fixed',
-    'background:#0c0c18',
-    'border:1px solid #3c3c6a',
+    'background:var(--s1)',
+    'border:1px solid var(--border2)',
     'border-radius:5px',
     'padding:4px 10px',
     'font-family:var(--mono,monospace)',
     'font-size:.68rem',
-    'color:#c8c8e8',
+    'color:var(--text)',
     'pointer-events:none',
     'z-index:9999',
     'opacity:0',
@@ -704,6 +704,11 @@ document.addEventListener('fullscreenchange', ()=>{
 })();
 
 function wireAllCfgInputs(){
+  // Site theme toggle (gear panel)
+  document.getElementById('siteThemeToggle')?.addEventListener('change', function(){
+    if(typeof applySiteTheme === 'function') applySiteTheme(this.checked ? 'light' : 'dark', true);
+  });
+
   // Escape: exit plot fullscreen. If browser is also in F11 fullscreen,
   // first Escape exits plot-fs; browser handles its own Escape separately.
   document.addEventListener('keydown', e=>{

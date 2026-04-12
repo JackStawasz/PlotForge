@@ -48,7 +48,7 @@ function getLatexDropdown(){
     _latexDropdown.id = 'latex-ac-dropdown';
     _latexDropdown.style.cssText = [
       'position:fixed','z-index:99999',
-      'background:#0e0e1c','border:1px solid #3a3a6a','border-radius:6px',
+      'background:var(--s0)','border:1px solid var(--border2)','border-radius:6px',
       'box-shadow:0 6px 24px rgba(0,0,0,.55)',
       'font-family:var(--mono,monospace)','font-size:.8rem',
       'min-width:160px','max-width:260px','overflow:hidden','display:none',
@@ -72,7 +72,7 @@ function showLatexDropdown(mf, items, anchorEl, mqEl){
     const row = document.createElement('div');
     row.className = 'latex-ac-item';
     row.textContent = cmd;
-    row.style.cssText = 'padding:6px 14px;cursor:pointer;color:#c8c8ee;transition:background .08s;white-space:nowrap;';
+    row.style.cssText = 'padding:6px 14px;cursor:pointer;color:var(--text);transition:background .08s;white-space:nowrap;';
     row.addEventListener('mouseenter', ()=>{ _latexDropdownIdx=i; highlightLatexItem(); });
     row.addEventListener('mousedown', e=>{ e.preventDefault(); applyLatexCompletion(mf, mqEl, cmd); });
     dd.appendChild(row);
@@ -103,7 +103,7 @@ function highlightLatexItem(){
   if(!items) return;
   items.forEach((el, i)=>{
     el.style.background = i===_latexDropdownIdx ? 'rgba(90,255,206,.12)' : '';
-    el.style.color       = i===_latexDropdownIdx ? '#5affce' : '#c8c8ee';
+    el.style.color       = i===_latexDropdownIdx ? 'var(--acc2)' : 'var(--text)';
   });
 }
 
