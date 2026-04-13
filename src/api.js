@@ -214,6 +214,7 @@ async function boot(){
         if(!p.mplMode && chartInstances[p.id]){
           chartInstances[p.id].resize();
           renderTextAnnotations(p.id);
+          renderShapeAnnotations(p.id);
           refreshOverlayLegend(p.id);
         }
       }

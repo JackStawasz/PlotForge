@@ -471,7 +471,7 @@ function renderJS(pid, firstRender=false){
     const innerEl = document.getElementById(`cinner_${pid}`); if(!innerEl) return;
     if(!document.getElementById(`chart_${pid}`)){
       innerEl.innerHTML = buildInnerHTML(p);
-      setTimeout(()=>{ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); applyBgColorToCanvas(pid); syncCfgDomain(); updateTopbar(pid); }, 0);
+      setTimeout(()=>{ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); renderShapeAnnotations(p.id); applyBgColorToCanvas(pid); syncCfgDomain(); updateTopbar(pid); }, 0);
     } else {
       drawChart(p); syncCfgDomain(); applyBgColorToCanvas(pid);
     }
@@ -486,7 +486,7 @@ function renderJS(pid, firstRender=false){
   const innerEl = document.getElementById(`cinner_${pid}`); if(!innerEl) return;
   if(!document.getElementById(`chart_${pid}`)){
     innerEl.innerHTML = buildInnerHTML(p);
-    setTimeout(()=>{ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); applyBgColorToCanvas(pid); syncCfgDomain(); updateTopbar(pid); }, 0);
+    setTimeout(()=>{ drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); renderShapeAnnotations(p.id); applyBgColorToCanvas(pid); syncCfgDomain(); updateTopbar(pid); }, 0);
     return;
   }
   drawChart(p); syncCfgDomain(); refreshOverlayLegend(pid); applyBgColorToCanvas(pid);
@@ -563,7 +563,10 @@ function drawChart(p){
       ch.options.scales.y.grid.display=v.show_grid; ch.options.scales.y.grid.color=gc;
       ch.options.scales.x.ticks.callback = v.x_log ? makeLogTickCb() : makeTickCb('x');
       ch.options.scales.y.ticks.callback = v.y_log ? makeLogTickCb() : makeTickCb('y');
-      applyScaleLimits(ch.options.scales, v); ch.update('none'); refreshOverlayLegend(p.id); updatePlotLockedAnnotations(p.id); return;
+      // Ensure afterBuildTicks is always set correctly for log axes
+      ch.options.scales.x.afterBuildTicks = v.x_log ? makeLogAfterBuildTicks() : undefined;
+      ch.options.scales.y.afterBuildTicks = v.y_log ? makeLogAfterBuildTicks() : undefined;
+      applyScaleLimits(ch.options.scales, v); ch.update('none'); refreshOverlayLegend(p.id); updatePlotLockedAnnotations(p.id); renderShapeAnnotations(p.id); return;
     }
   }
 
@@ -634,34 +637,89 @@ function buildScales(v){
     ? `rgba(50,80,180,${galpha})`
     : `rgba(60,60,100,${galpha})`;
   const tickColor = isLight ? '#2a3570' : '#b0b0e0';
-  const s = {
-    x:{
-      type: v.x_log ? 'logarithmic' : 'linear',
-      border:{ display:true, color:gc },
-      ticks:{color:tickColor,font:{family:"'IBM Plex Mono'",size:10},maxTicksLimit:12,
-             callback: v.x_log ? makeLogTickCb() : makeTickCb('x')},
-      grid:{color:gc,display:v.show_grid, drawBorder:true},
+
+  // Shared tick config builder — log axes get afterBuildTicks for correct grid alignment
+  const axisCfg = (isLog, axisKey) => ({
+    type: isLog ? 'logarithmic' : 'linear',
+    border:{ display:true, color:gc },
+    ticks:{
+      color:tickColor,
+      font:{family:"'IBM Plex Mono'",size:10},
+      // maxTicksLimit only for linear — log scales manage their own tick count via afterBuildTicks
+      ...(isLog ? {} : {maxTicksLimit: axisKey==='x' ? 12 : 10}),
+      callback: isLog ? makeLogTickCb() : makeTickCb(axisKey),
     },
-    y:{
-      type: v.y_log ? 'logarithmic' : 'linear',
-      border:{ display:true, color:gc },
-      ticks:{color:tickColor,font:{family:"'IBM Plex Mono'",size:10},maxTicksLimit:10,
-             callback: v.y_log ? makeLogTickCb() : makeTickCb('y')},
-      grid:{color:gc,display:v.show_grid, drawBorder:true},
-    },
-  };
-  applyScaleLimits(s, v); return s;
+    grid:{color:gc, display:v.show_grid, drawBorder:true},
+    // Force tick positions at log-decade boundaries so grid lines are semantically correct
+    ...(isLog ? {afterBuildTicks: makeLogAfterBuildTicks()} : {}),
+  });
+
+  const s = { x: axisCfg(v.x_log, 'x'), y: axisCfg(v.y_log, 'y') };
+  applyScaleLimits(s, v);
+  return s;
 }
 
+// ─── Logarithmic axis helpers ─────────────────────────────────────────────
+// Minimum positive value accepted on a log axis — guards against log(0).
+const MIN_LOG_VAL = 1e-300;
+
+// Clamp any log-axis view limits to strictly positive values.
+// Called after every pan/zoom mutation before writing back to the chart.
+function clampLogLimits(v){
+  if(v.x_log){
+    v.x_min = Math.max(MIN_LOG_VAL, v.x_min ?? MIN_LOG_VAL);
+    v.x_max = Math.max(MIN_LOG_VAL, v.x_max ?? 1);
+    if(v.x_min >= v.x_max) v.x_max = v.x_min * 10;
+  }
+  if(v.y_log){
+    v.y_min = Math.max(MIN_LOG_VAL, v.y_min ?? MIN_LOG_VAL);
+    v.y_max = Math.max(MIN_LOG_VAL, v.y_max ?? 1);
+    if(v.y_min >= v.y_max) v.y_max = v.y_min * 10;
+  }
+}
+
+// afterBuildTicks callback for Chart.js logarithmic scales.
+// Forces ticks at every power-of-10 within the visible range, plus integer
+// multiples 2–9 within each decade when the range spans ≤ 3 decades.
+// This ensures grid lines always land at semantically correct positions.
+function makeLogAfterBuildTicks(){
+  return function(scale){
+    const lo = scale.min, hi = scale.max;
+    if(!lo || !hi || lo <= 0 || hi <= 0 || !isFinite(lo) || !isFinite(hi)) return;
+    const logLo  = Math.floor(Math.log10(lo) - 1e-9);
+    const logHi  = Math.ceil (Math.log10(hi) + 1e-9);
+    const decades = logHi - logLo;
+    const wantSubs = decades <= 3; // subdivisions only when range is narrow
+    const ticks = [];
+    for(let exp = logLo; exp <= logHi; exp++){
+      const base = Math.pow(10, exp);
+      if(base >= lo * (1-1e-9) && base <= hi * (1+1e-9)) ticks.push({value: base});
+      if(wantSubs){
+        for(let sub = 2; sub <= 9; sub++){
+          const sv = base * sub;
+          if(sv > lo && sv < hi) ticks.push({value: sv});
+        }
+      }
+    }
+    ticks.sort((a, b) => a.value - b.value);
+    scale.ticks = ticks;
+  };
+}
+
+// Tick label callback for log axes.
+// Powers of 10 → formatted label; subdivision multiples → no label (grid line only).
 function makeLogTickCb(){
   return function(val){
-    // Show labels at powers of 10
+    if(val <= 0 || !isFinite(val)) return null;
     const log = Math.log10(val);
-    if(Math.abs(log - Math.round(log)) > 0.01) return null;
     const exp = Math.round(log);
-    if(exp === 0) return '1';
-    if(exp === 1) return '10';
-    return `10^${exp}`;
+    if(Math.abs(log - exp) < 1e-9){
+      if(exp ===  0) return '1';
+      if(exp ===  1) return '10';
+      if(exp === -1) return '0.1';
+      return `10^${exp}`;
+    }
+    return null; // subdivision: grid line drawn via afterBuildTicks, no label
   };
 }
 
@@ -838,14 +896,15 @@ function removeCurve(pid, idx){
 }
 
 // ═══ CHART INTERACTIONS ══════════════════════════════════════════════════
+// Use Chart.js's built-in getValueForPixel so both linear and log axes
+// invert correctly — no manual interpolation needed.
 function pixelToData(ch, clientX, clientY){
   const canvas=ch.canvas, rect=canvas.getBoundingClientRect();
   const scaleX=rect.width/canvas.width, scaleY=rect.height/canvas.height;
   const px=(clientX-rect.left)/scaleX, py=(clientY-rect.top)/scaleY;
-  const sx=ch.scales.x, sy=ch.scales.y;
   return {
-    dataX: sx.min + (sx.max-sx.min)*(px-sx.left)/(sx.right-sx.left),
-    dataY: sy.max - (sy.max-sy.min)*(py-sy.top)/(sy.bottom-sy.top),
+    dataX: ch.scales.x.getValueForPixel(px),
+    dataY: ch.scales.y.getValueForPixel(py),
   };
 }
 
@@ -880,14 +939,31 @@ function wireInteraction(p){
   wrap.addEventListener('wheel', e=>{
     e.preventDefault();
     const ch = chartInstances[p.id]; if(!ch) return;
-    const {dataX,dataY} = pixelToData(ch, e.clientX, e.clientY);
-    const factor = e.deltaY>0 ? 1.15 : 1/1.15;
-    const xMin=p.view.x_min, xMax=p.view.x_max, yMin=p.view.y_min, yMax=p.view.y_max;
-    const nxMin=dataX+(xMin-dataX)*factor, nxMax=dataX+(xMax-dataX)*factor;
-    const xSO=xMax-xMin, xSN=nxMax-nxMin, ySO=yMax-yMin, ySN=ySO*(xSN/xSO);
-    p.view.x_min=nxMin; p.view.x_max=nxMax;
-    p.view.y_min=dataY+(yMin-dataY)*(ySN/ySO); p.view.y_max=dataY+(yMax-dataY)*(ySN/ySO);
-    applyScaleLimits(ch.options.scales, p.view); ch.update('none'); syncCfgDomain(); renderJS(p.id, false);
+    const {dataX, dataY} = pixelToData(ch, e.clientX, e.clientY);
+    const factor = e.deltaY > 0 ? 1.15 : 1/1.15; // >1 zooms out
+    const v = p.view;
+
+    // Zoom each axis in its own space: log axes scale multiplicatively, linear additively.
+    if(v.x_log){
+      const la = Math.log(Math.max(dataX, MIN_LOG_VAL));
+      v.x_min = Math.exp(la + (Math.log(Math.max(v.x_min, MIN_LOG_VAL)) - la) * factor);
+      v.x_max = Math.exp(la + (Math.log(Math.max(v.x_max, MIN_LOG_VAL)) - la) * factor);
+    } else {
+      v.x_min = dataX + (v.x_min - dataX) * factor;
+      v.x_max = dataX + (v.x_max - dataX) * factor;
+    }
+
+    if(v.y_log){
+      const la = Math.log(Math.max(dataY, MIN_LOG_VAL));
+      v.y_min = Math.exp(la + (Math.log(Math.max(v.y_min, MIN_LOG_VAL)) - la) * factor);
+      v.y_max = Math.exp(la + (Math.log(Math.max(v.y_max, MIN_LOG_VAL)) - la) * factor);
+    } else {
+      v.y_min = dataY + (v.y_min - dataY) * factor;
+      v.y_max = dataY + (v.y_max - dataY) * factor;
+    }
+
+    clampLogLimits(v);
+    applyScaleLimits(ch.options.scales, v); ch.update('none'); syncCfgDomain(); renderJS(p.id, false);
   }, {passive:false});
   wrap.addEventListener('mousedown', e=>{
     if(e.button!==0) return;
@@ -912,9 +988,35 @@ function onPanMove(e, p){
   st.startX=e.clientX; st.startY=e.clientY;
   const sx=ch.scales.x, sy=ch.scales.y, xPx=sx.right-sx.left, yPx=sy.bottom-sy.top;
   if(!xPx||!yPx) return;
-  const dxD=(dx/xPx)*(p.view.x_max-p.view.x_min), dyD=(dy/yPx)*(p.view.y_max-p.view.y_min);
-  p.view.x_min-=dxD; p.view.x_max-=dxD; p.view.y_min+=dyD; p.view.y_max+=dyD;
-  applyScaleLimits(ch.options.scales, p.view); ch.update('none'); syncCfgDomain(); renderJS(p.id, false);
+  const v = p.view;
+
+  // X-axis: log → shift by a ratio (uniform translation in log space);
+  //         linear → shift by a linear delta.
+  if(v.x_log){
+    const logSpan = Math.log(v.x_max) - Math.log(v.x_min);
+    const dLog = (dx / xPx) * logSpan; // positive dx → shift domain left
+    v.x_min = Math.exp(Math.log(v.x_min) - dLog);
+    v.x_max = Math.exp(Math.log(v.x_max) - dLog);
+  } else {
+    const dxD = (dx / xPx) * (v.x_max - v.x_min);
+    v.x_min -= dxD;
+    v.x_max -= dxD;
+  }
+
+  // Y-axis: positive dy (mouse down in pixels) → shift domain up (see higher y values).
+  if(v.y_log){
+    const logSpan = Math.log(v.y_max) - Math.log(v.y_min);
+    const dLog = (dy / yPx) * logSpan; // positive dy → shift domain up
+    v.y_min = Math.exp(Math.log(v.y_min) + dLog);
+    v.y_max = Math.exp(Math.log(v.y_max) + dLog);
+  } else {
+    const dyD = (dy / yPx) * (v.y_max - v.y_min);
+    v.y_min += dyD;
+    v.y_max += dyD;
+  }
+
+  clampLogLimits(v);
+  applyScaleLimits(ch.options.scales, v); ch.update('none'); syncCfgDomain(); renderJS(p.id, false);
 }
 
 function endPan(p){

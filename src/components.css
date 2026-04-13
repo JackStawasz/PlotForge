@@ -579,3 +579,68 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
   font-size:.65rem;color:var(--muted);margin-left:2px;min-width:38px;
 }
 @keyframes conn-pulse{from{opacity:.4;transform:scale(.85)}to{opacity:1;transform:scale(1.1)}}
+
+/* ═══ SHAPE ANNOTATIONS ══════════════════════════════════════════════════ */
+/* Shape picker dropdown */
+.shape-picker{
+  position:fixed;
+  background:var(--s1);border:1px solid var(--border2);border-radius:9px;
+  padding:6px;
+  display:flex;gap:5px;
+  box-shadow:0 8px 32px rgba(0,0,0,.55);
+  z-index:9100;
+}
+.shape-pick-btn{
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding:8px 12px;
+  background:transparent;border:1px solid var(--border);border-radius:7px;
+  color:var(--text);cursor:pointer;
+  font-family:var(--mono);
+  transition:background .12s,border-color .12s;
+  min-width:52px;
+}
+.shape-pick-btn:hover{ background:var(--s2); border-color:var(--acc2); }
+.shape-pick-icon{ font-size:1.15rem; color:var(--acc2); line-height:1; }
+.shape-pick-lbl{ font-size:.62rem; color:var(--muted); }
+
+/* Shape hamburger — identical behaviour to .ann-hamburger */
+.shape-hamburger{
+  position:absolute;top:-8px;right:-8px;
+  width:16px;height:16px;border-radius:50%;
+  background:var(--s2);border:1px solid var(--border2);
+  color:var(--muted);font-size:.65rem;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;opacity:0;
+  transition:opacity .12s;
+  z-index:30;padding:0;line-height:1;
+}
+.shape-ann:hover .shape-hamburger{ opacity:1; }
+.shape-hamburger:hover{ background:var(--s3,var(--s2)); color:var(--acc2); }
+
+/* Arrow handles */
+.shape-arr-handle{ position:relative; }
+.shape-arr-handle:hover{ opacity:1 !important; }
+
+/* Shape menu divider */
+.ann-menu-divider{
+  height:1px;background:var(--border);margin:3px 0;
+}
+
+/* Range input inside ann-menu-row-inline */
+.ann-menu-row-inline input[type=range]{
+  -webkit-appearance:none;appearance:none;
+  height:3px;border-radius:2px;
+  background:var(--border2);outline:none;cursor:pointer;flex-shrink:0;
+}
+.ann-menu-row-inline input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:12px;height:12px;border-radius:50%;
+  background:var(--acc2);cursor:pointer;border:none;
+}
+.ann-menu-row-inline input[type=range]::-moz-range-thumb{
+  width:12px;height:12px;border-radius:50%;border:none;
+  background:var(--acc2);cursor:pointer;
+}
+
+/* Shape menu reuses ann-menu base; just keep z-index consistent */
+.shape-menu{ z-index:9050; }
+

@@ -29,7 +29,7 @@ function updateCardContent(pid){
   destroyChart(pid); innerEl.innerHTML = buildInnerHTML(p);
   if(!p.mplMode){
     setTimeout(()=>{
-      drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id);
+      drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); renderShapeAnnotations(p.id);
     }, 0);
   }
 }
@@ -67,7 +67,7 @@ function renderDOM(){
   refreshCfg(); refreshSidebar();
   setTimeout(()=>{
     for(const p of plots){
-      drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id);
+      drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); renderShapeAnnotations(p.id);
     }
   }, 0);
 }
@@ -89,7 +89,7 @@ function buildCard(p, i){
   card.addEventListener('click', e=>{
     if(activePid !== p.id){ activePid=p.id; activeCurveIdx=0; syncActiveHighlight(); refreshCfg(); refreshSidebar(); }
     const btn = e.target.closest('[data-action]');
-    if(btn) handleAction(btn.dataset.action, parseInt(btn.dataset.pid));
+    if(btn) handleAction(btn.dataset.action, parseInt(btn.dataset.pid), btn);
   }, true);
   return card;
 }
@@ -110,6 +110,7 @@ function buildTopbarInner(p, i){
     <div class="cactions-center">
       ${mplBtn}
       <button class="cbtn text-btn" data-pid="${p.id}" data-action="addtext" ${annDisabled}>✎ annotate</button>
+      <button class="cbtn shape-btn" data-pid="${p.id}" data-action="addshape" ${annDisabled}>▣ shape</button>
     </div>
     <div class="cactions-right">
       <span class="ctop-coords" id="ctop_coords_${p.id}"></span>
@@ -513,6 +514,433 @@ function renderTextAnnotations(pid){
   });
 }
 
+// ═══ SHAPE ANNOTATIONS ═══════════════════════════════════════════════════
+let _shapePickerEl = null;
+let _shapeMenuEl   = null;
+
+function closeShapePicker(){ if(_shapePickerEl){ _shapePickerEl.remove(); _shapePickerEl=null; } }
+function closeShapeMenu(){   if(_shapeMenuEl){  _shapeMenuEl.remove();  _shapeMenuEl=null;  } }
+
+function _hexToRgba(hex, alpha){
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function showShapePicker(pid, btnEl){
+  closeShapePicker(); closeAnnMenu(); closeShapeMenu();
+  const p = gp(pid); if(!p || p.mplMode) return;
+
+  const menu = document.createElement('div');
+  menu.className = 'shape-picker';
+  _shapePickerEl = menu;
+
+  [
+    { type:'point',  icon:'●', label:'Point'  },
+    { type:'circle', icon:'○', label:'Circle' },
+    { type:'square', icon:'□', label:'Square' },
+    { type:'arrow',  icon:'→', label:'Arrow'  },
+  ].forEach(({type,icon,label})=>{
+    const btn = document.createElement('button');
+    btn.className = 'shape-pick-btn';
+    btn.innerHTML = `<span class="shape-pick-icon">${icon}</span><span class="shape-pick-lbl">${label}</span>`;
+    btn.addEventListener('click', e=>{
+      e.stopPropagation();
+      closeShapePicker();
+      addShapeAnnotation(pid, type);
+    });
+    menu.appendChild(btn);
+  });
+
+  document.body.appendChild(menu);
+  const r = btnEl.getBoundingClientRect();
+  const mw = menu.offsetWidth || 130;
+  menu.style.top  = (r.bottom + 6)+'px';
+  menu.style.left = Math.max(8, r.left + r.width/2 - mw/2)+'px';
+
+  const outside = e=>{
+    if(!menu.contains(e.target) && e.target!==btnEl){ closeShapePicker(); document.removeEventListener('mousedown', outside); }
+  };
+  setTimeout(()=>document.addEventListener('mousedown', outside), 0);
+}
+
+function addShapeAnnotation(pid, type){
+  const p = gp(pid); if(!p) return;
+  if(!p.shapeAnnotations) p.shapeAnnotations = [];
+  const sh = {
+    id: mkCid(), type,
+    x_frac:0.5, y_frac:0.5,
+    x2_frac:0.7, y2_frac:0.3,
+    color:'#5affce',
+    size: type==='point' ? 9 : 30,
+    stroke_width: 2,
+    fill_color: '#5affce',
+    fill_alpha: 0,
+    lock:'plot',
+    data_x:null, data_y:null,
+    data_x2:null, data_y2:null,
+  };
+  const ch = chartInstances[pid];
+  if(ch){
+    const d = fracToData(ch, 0.5, 0.5); sh.data_x=d.dataX; sh.data_y=d.dataY;
+    if(type==='arrow'){ const d2=fracToData(ch,0.7,0.3); sh.data_x2=d2.dataX; sh.data_y2=d2.dataY; }
+  }
+  p.shapeAnnotations.push(sh);
+  renderShapeAnnotations(pid);
+  snapshotForUndo();
+}
+
+function renderShapeAnnotations(pid){
+  const p = gp(pid); if(!p) return;
+  const wrap = document.getElementById(`cwrap_${pid}`); if(!wrap) return;
+
+  wrap.querySelectorAll('.shape-ann,.shape-arr-el').forEach(el=>el.remove());
+  if(!p.shapeAnnotations || !p.shapeAnnotations.length) return;
+
+  const ch = chartInstances[pid];
+  if(ch){
+    p.shapeAnnotations.forEach(sh=>{
+      if(sh.lock!=='plot') return;
+      if(sh.data_x!=null){ const f=dataToFrac(ch,sh.data_x,sh.data_y); sh.x_frac=Math.max(0,Math.min(1,f.x)); sh.y_frac=Math.max(0,Math.min(1,f.y)); }
+      if(sh.type==='arrow' && sh.data_x2!=null){ const f2=dataToFrac(ch,sh.data_x2,sh.data_y2); sh.x2_frac=Math.max(0,Math.min(1,f2.x)); sh.y2_frac=Math.max(0,Math.min(1,f2.y)); }
+    });
+  }
+
+  p.shapeAnnotations.forEach(sh=>_renderOneShape(sh,pid,wrap));
+}
+
+function _applyVisStyle(vis, sh){
+  const s  = sh.size;
+  const sw = sh.stroke_width ?? 2;
+  const fill = (sh.fill_alpha > 0) ? _hexToRgba(sh.fill_color || sh.color, sh.fill_alpha) : 'transparent';
+  if(sh.type==='point'){
+    vis.style.cssText = `width:${s}px;height:${s}px;border-radius:50%;background:${sh.color}`;
+  } else if(sh.type==='circle'){
+    vis.style.cssText = `width:${s}px;height:${s}px;border-radius:50%;border:${sw}px solid ${sh.color};background:${fill};box-sizing:border-box`;
+  } else {
+    vis.style.cssText = `width:${s}px;height:${s}px;border:${sw}px solid ${sh.color};background:${fill};box-sizing:border-box`;
+  }
+}
+
+function _renderOneShape(sh, pid, wrap){
+  if(sh.type==='arrow'){ _renderArrow(sh,pid,wrap); return; }
+
+  const outer = document.createElement('div');
+  outer.className = 'shape-ann';
+  outer.dataset.shapeId = sh.id;
+  outer.style.cssText = `position:absolute;left:${sh.x_frac*100}%;top:${sh.y_frac*100}%;transform:translate(-50%,-50%);z-index:25;cursor:move;user-select:none`;
+
+  const vis = document.createElement('div');
+  vis.className = 'shape-visual';
+  _applyVisStyle(vis, sh);
+  outer.appendChild(vis);
+
+  const hbg = document.createElement('button');
+  hbg.className = 'shape-hamburger';
+  hbg.innerHTML = '&#8942;';
+  hbg.addEventListener('mousedown', e=>{ e.stopPropagation(); e.preventDefault(); showShapeMenu(sh,pid,hbg); });
+  outer.appendChild(hbg);
+
+  outer.addEventListener('mouseenter', ()=>{ vis.style.outline='1px dashed rgba(90,255,206,.4)'; hbg.style.opacity='1'; });
+  outer.addEventListener('mouseleave', ()=>{ vis.style.outline=''; hbg.style.opacity='0'; });
+
+  let drag=false, lx=0, ly=0;
+  outer.addEventListener('mousedown', e=>{
+    if(e.target===hbg) return;
+    drag=true; lx=e.clientX; ly=e.clientY;
+    e.preventDefault(); e.stopPropagation(); outer.style.cursor='grabbing';
+  });
+  const onMove = e=>{
+    if(!drag) return;
+    const rect=wrap.getBoundingClientRect();
+    sh.x_frac = Math.max(0,Math.min(1, sh.x_frac+(e.clientX-lx)/rect.width));
+    sh.y_frac = Math.max(0,Math.min(1, sh.y_frac+(e.clientY-ly)/rect.height));
+    lx=e.clientX; ly=e.clientY;
+    outer.style.left=(sh.x_frac*100)+'%'; outer.style.top=(sh.y_frac*100)+'%';
+    if(sh.lock==='plot'){ const c=chartInstances[pid]; if(c){ const d=fracToData(c,sh.x_frac,sh.y_frac); sh.data_x=d.dataX; sh.data_y=d.dataY; } }
+  };
+  const onUp = ()=>{ if(drag){ drag=false; outer.style.cursor='move'; snapshotForUndo(); } };
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+
+  wrap.appendChild(outer);
+}
+
+function _renderArrow(sh, pid, wrap){
+  const ww=wrap.offsetWidth||300, wh=wrap.offsetHeight||200;
+  const x1=sh.x_frac*ww, y1=sh.y_frac*wh, x2=sh.x2_frac*ww, y2=sh.y2_frac*wh;
+  const dx=x2-x1, dy=y2-y1;
+  const len=Math.sqrt(dx*dx+dy*dy)||1;
+  const ang=Math.atan2(dy,dx)*180/Math.PI;
+  const sw = sh.stroke_width ?? 2;
+  const hw = Math.max(8, sw*4.5), hh = Math.max(4, sw*2.2);
+
+  const mkEl = (cls, css)=>{
+    const d=document.createElement('div'); d.className='shape-arr-el '+cls;
+    d.dataset.shapeId=sh.id; d.style.cssText=css; return d;
+  };
+
+  // Line
+  const lineEl = mkEl('shape-arr-line',
+    `position:absolute;left:${x1}px;top:${y1-sw/2}px;width:${len}px;height:${sw}px;background:${sh.color};transform-origin:0 50%;transform:rotate(${ang}deg);z-index:21;pointer-events:none`);
+
+  // Arrowhead
+  const headEl = mkEl('shape-arr-head',
+    `position:absolute;left:${x2}px;top:${y2}px;width:0;height:0;border-left:${hw}px solid ${sh.color};border-top:${hh}px solid transparent;border-bottom:${hh}px solid transparent;transform:translate(0,-50%) rotate(${ang}deg);transform-origin:0 50%;z-index:21;pointer-events:none`);
+
+  // Wide transparent hitbox (same rotation center as the line, but taller for easy hover)
+  const hitH = Math.max(20, sw + 16);
+  const hitEl = mkEl('shape-arr-hit',
+    `position:absolute;left:${x1}px;top:${y1+sw/2-hitH/2}px;width:${len}px;height:${hitH}px;background:transparent;transform-origin:0 50%;transform:rotate(${ang}deg);z-index:22;cursor:move`);
+
+  // Handles — hidden by default, shown on arrow hover
+  const mkHandle = (hx,hy,role)=>{
+    const h=mkEl('shape-arr-handle',
+      `position:absolute;left:${hx}px;top:${hy}px;transform:translate(-50%,-50%);width:11px;height:11px;border-radius:50%;background:${sh.color};border:1.5px solid rgba(255,255,255,.35);cursor:move;z-index:24;opacity:0;transition:opacity .12s`);
+    h.dataset.role=role; return h;
+  };
+
+  const h1el = mkHandle(x1,y1,'start');
+  const h2el = mkHandle(x2,y2,'end');
+
+  // Shared hover-show / hover-hide logic with a settle timer
+  let hoverTimer=null, arrowDragging=false;
+  const showH = ()=>{ clearTimeout(hoverTimer); h1el.style.opacity='1'; h2el.style.opacity='1'; };
+  const hideH = ()=>{ hoverTimer=setTimeout(()=>{ if(!arrowDragging){ h1el.style.opacity='0'; h2el.style.opacity='0'; } }, 160); };
+  [hitEl, h1el, h2el].forEach(el=>{ el.addEventListener('mouseenter', showH); el.addEventListener('mouseleave', hideH); });
+
+  // Hamburger on start handle
+  const hbg=document.createElement('button');
+  hbg.className='shape-hamburger'; hbg.innerHTML='&#8942;'; hbg.style.opacity='0';
+  hbg.addEventListener('mousedown', e=>{ e.stopPropagation(); e.preventDefault(); showShapeMenu(sh,pid,hbg); });
+  h1el.appendChild(hbg);
+  h1el.addEventListener('mouseenter', ()=>hbg.style.opacity='1');
+  h1el.addEventListener('mouseleave', ()=>hbg.style.opacity='0');
+
+  // Hitbox drag — moves both endpoints together
+  {
+    let drag=false, lx=0, ly=0;
+    hitEl.addEventListener('mousedown', e=>{
+      if(e.target===hbg) return;
+      drag=true; arrowDragging=true; lx=e.clientX; ly=e.clientY;
+      e.preventDefault(); e.stopPropagation();
+    });
+    window.addEventListener('mousemove', e=>{
+      if(!drag) return;
+      const rect=wrap.getBoundingClientRect();
+      const dfx=(e.clientX-lx)/rect.width, dfy=(e.clientY-ly)/rect.height;
+      lx=e.clientX; ly=e.clientY;
+      sh.x_frac =Math.max(0,Math.min(1,sh.x_frac +dfx)); sh.y_frac =Math.max(0,Math.min(1,sh.y_frac +dfy));
+      sh.x2_frac=Math.max(0,Math.min(1,sh.x2_frac+dfx)); sh.y2_frac=Math.max(0,Math.min(1,sh.y2_frac+dfy));
+      if(sh.lock==='plot'){
+        const c=chartInstances[pid]; if(c){
+          const d=fracToData(c,sh.x_frac,sh.y_frac); sh.data_x=d.dataX; sh.data_y=d.dataY;
+          const d2=fracToData(c,sh.x2_frac,sh.y2_frac); sh.data_x2=d2.dataX; sh.data_y2=d2.dataY;
+        }
+      }
+      wrap.querySelectorAll(`.shape-arr-el[data-shape-id="${sh.id}"]`).forEach(el=>el.remove());
+      _renderArrow(sh,pid,wrap);
+    });
+    window.addEventListener('mouseup', ()=>{ if(drag){ drag=false; arrowDragging=false; snapshotForUndo(); } });
+  }
+
+  // Endpoint handle drag factory
+  const makeDrag=(handleEl, isStart)=>{
+    let drag=false, lx=0, ly=0;
+    handleEl.addEventListener('mousedown', e=>{
+      if(e.target===hbg) return;
+      drag=true; arrowDragging=true; lx=e.clientX; ly=e.clientY;
+      e.preventDefault(); e.stopPropagation();
+    });
+    window.addEventListener('mousemove', e=>{
+      if(!drag) return;
+      const rect=wrap.getBoundingClientRect();
+      const dfx=(e.clientX-lx)/rect.width, dfy=(e.clientY-ly)/rect.height;
+      lx=e.clientX; ly=e.clientY;
+      if(isStart){ sh.x_frac=Math.max(0,Math.min(1,sh.x_frac+dfx)); sh.y_frac=Math.max(0,Math.min(1,sh.y_frac+dfy)); }
+      else        { sh.x2_frac=Math.max(0,Math.min(1,sh.x2_frac+dfx)); sh.y2_frac=Math.max(0,Math.min(1,sh.y2_frac+dfy)); }
+      if(sh.lock==='plot'){
+        const c=chartInstances[pid]; if(c){
+          if(isStart){ const d=fracToData(c,sh.x_frac,sh.y_frac); sh.data_x=d.dataX; sh.data_y=d.dataY; }
+          else        { const d=fracToData(c,sh.x2_frac,sh.y2_frac); sh.data_x2=d.dataX; sh.data_y2=d.dataY; }
+        }
+      }
+      wrap.querySelectorAll(`.shape-arr-el[data-shape-id="${sh.id}"]`).forEach(el=>el.remove());
+      _renderArrow(sh,pid,wrap);
+    });
+    window.addEventListener('mouseup', ()=>{ if(drag){ drag=false; arrowDragging=false; snapshotForUndo(); } });
+  };
+
+  makeDrag(h1el, true);
+  makeDrag(h2el, false);
+  wrap.appendChild(lineEl);
+  wrap.appendChild(headEl);
+  wrap.appendChild(hitEl);
+  wrap.appendChild(h1el);
+  wrap.appendChild(h2el);
+}
+
+function showShapeMenu(sh, pid, triggerEl){
+  closeShapeMenu(); closeAnnMenu();
+  const p = gp(pid); if(!p) return;
+
+  const menu = document.createElement('div');
+  menu.className = 'ann-menu shape-menu';
+  _shapeMenuEl = menu;
+
+  // ── Stroke color ─────────────────────────────────────────────────
+  const colorRow = document.createElement('div'); colorRow.className='ann-menu-row-inline';
+  colorRow.innerHTML = `<label>${sh.type==='point'?'Color':'Stroke color'}</label>
+    <div class="ann-menu-color-group">
+      <div class="ann-color-swatch"><input type="color" id="shMenuColor" value="${sh.color}"/></div>
+      <input class="ann-menu-inp ann-menu-inp-hex" id="shMenuColorHex" type="text" value="${sh.color}" maxlength="7"/>
+    </div>`;
+  menu.appendChild(colorRow);
+
+  // ── Stroke width (not for point) ─────────────────────────────────
+  if(sh.type !== 'point'){
+    const swRow = document.createElement('div'); swRow.className='ann-menu-row-inline';
+    swRow.innerHTML = `<label>Stroke width</label><input class="ann-menu-inp ann-menu-inp-sm" id="shMenuSW" type="number" value="${sh.stroke_width??2}" min="1" max="20" step="0.5"/>`;
+    menu.appendChild(swRow);
+  }
+
+  // ── Fill color + alpha (circle / square only) ─────────────────────
+  if(sh.type==='circle' || sh.type==='square'){
+    const divider = document.createElement('div'); divider.className='ann-menu-divider'; menu.appendChild(divider);
+
+    const fillColorRow = document.createElement('div'); fillColorRow.className='ann-menu-row-inline';
+    fillColorRow.innerHTML = `<label>Fill color</label>
+      <div class="ann-menu-color-group">
+        <div class="ann-color-swatch"><input type="color" id="shMenuFill" value="${sh.fill_color||sh.color}"/></div>
+        <input class="ann-menu-inp ann-menu-inp-hex" id="shMenuFillHex" type="text" value="${sh.fill_color||sh.color}" maxlength="7"/>
+      </div>`;
+    menu.appendChild(fillColorRow);
+
+    const alphaRow = document.createElement('div'); alphaRow.className='ann-menu-row-inline';
+    const alphaPct = Math.round((sh.fill_alpha||0)*100);
+    alphaRow.innerHTML = `<label>Fill opacity — <span id="shMenuAlphaVal" style="color:var(--acc2)">${alphaPct}%</span></label>
+      <input type="range" id="shMenuAlpha" min="0" max="1" step="0.05" value="${sh.fill_alpha||0}" style="width:90px"/>`;
+    menu.appendChild(alphaRow);
+  }
+
+  // ── Size (not for arrow) ──────────────────────────────────────────
+  if(sh.type !== 'arrow'){
+    const divider = document.createElement('div'); divider.className='ann-menu-divider'; menu.appendChild(divider);
+    const sizeRow = document.createElement('div'); sizeRow.className='ann-menu-row-inline';
+    sizeRow.innerHTML = `<label>Size (px)</label><input class="ann-menu-inp ann-menu-inp-sm" id="shMenuSize" type="number" value="${sh.size}" min="4" max="200" step="1"/>`;
+    menu.appendChild(sizeRow);
+  }
+
+  // ── Anchor (lock) ────────────────────────────────────────────────
+  {
+    const divider = document.createElement('div'); divider.className='ann-menu-divider'; menu.appendChild(divider);
+    const isPlot = sh.lock==='plot';
+    const lockRow = document.createElement('div'); lockRow.className='ann-menu-row-inline';
+    lockRow.innerHTML = `<label>Anchor</label>
+      <div class="ann-lock-group">
+        <button class="ann-lock-btn${isPlot?' active':''}" id="shLockPlot">Plot</button>
+        <button class="ann-lock-btn${!isPlot?' active':''}" id="shLockWindow">Window</button>
+      </div>`;
+    menu.appendChild(lockRow);
+  }
+
+  // ── Delete ────────────────────────────────────────────────────────
+  {
+    const divider = document.createElement('div'); divider.className='ann-menu-divider'; menu.appendChild(divider);
+    const delBtn = document.createElement('button'); delBtn.className='ann-menu-item danger';
+    delBtn.innerHTML='<span class="ann-menu-icon">✕</span>Delete shape';
+    delBtn.addEventListener('mousedown', e=>{
+      e.preventDefault(); e.stopPropagation();
+      closeShapeMenu();
+      p.shapeAnnotations = (p.shapeAnnotations||[]).filter(s=>s.id!==sh.id);
+      renderShapeAnnotations(pid);
+      snapshotForUndo();
+    });
+    menu.appendChild(delBtn);
+  }
+
+  document.body.appendChild(menu);
+
+  // ── Wire inputs ───────────────────────────────────────────────────
+  const reRender = ()=>renderShapeAnnotations(pid);
+
+  const colorInp = document.getElementById('shMenuColor');
+  const hexInp   = document.getElementById('shMenuColorHex');
+  if(colorInp && hexInp){
+    colorInp.addEventListener('input', ()=>{ sh.color=colorInp.value; hexInp.value=colorInp.value; reRender(); });
+    hexInp.addEventListener('input', ()=>{ if(/^#[0-9a-fA-F]{6}$/.test(hexInp.value)){ sh.color=hexInp.value; colorInp.value=hexInp.value; reRender(); } });
+    colorInp.addEventListener('change', ()=>snapshotForUndo());
+    hexInp.addEventListener('change', ()=>snapshotForUndo());
+  }
+
+  const swInp = document.getElementById('shMenuSW');
+  if(swInp){
+    swInp.addEventListener('input', ()=>{ sh.stroke_width=Math.max(0.5,parseFloat(swInp.value)||2); reRender(); });
+    swInp.addEventListener('change', ()=>snapshotForUndo());
+  }
+
+  const fillInp = document.getElementById('shMenuFill');
+  const fillHex = document.getElementById('shMenuFillHex');
+  if(fillInp && fillHex){
+    fillInp.addEventListener('input', ()=>{ sh.fill_color=fillInp.value; fillHex.value=fillInp.value; reRender(); });
+    fillHex.addEventListener('input', ()=>{ if(/^#[0-9a-fA-F]{6}$/.test(fillHex.value)){ sh.fill_color=fillHex.value; fillInp.value=fillHex.value; reRender(); } });
+    fillInp.addEventListener('change', ()=>snapshotForUndo());
+    fillHex.addEventListener('change', ()=>snapshotForUndo());
+  }
+
+  const alphaInp = document.getElementById('shMenuAlpha');
+  const alphaVal = document.getElementById('shMenuAlphaVal');
+  if(alphaInp && alphaVal){
+    alphaInp.addEventListener('input', ()=>{
+      sh.fill_alpha=parseFloat(alphaInp.value);
+      alphaVal.textContent=Math.round(sh.fill_alpha*100)+'%';
+      reRender();
+    });
+    alphaInp.addEventListener('change', ()=>snapshotForUndo());
+  }
+
+  const sizeInp = document.getElementById('shMenuSize');
+  if(sizeInp){
+    sizeInp.addEventListener('input', ()=>{ sh.size=Math.max(4,parseInt(sizeInp.value)||sh.size); reRender(); });
+    sizeInp.addEventListener('change', ()=>snapshotForUndo());
+  }
+
+  const lockPlotBtn   = document.getElementById('shLockPlot');
+  const lockWindowBtn = document.getElementById('shLockWindow');
+  if(lockPlotBtn && lockWindowBtn){
+    const setLock = mode=>{
+      sh.lock = mode;
+      // Seed/clear data coords on switch
+      if(mode==='plot'){
+        const c=chartInstances[pid]; if(c){
+          const d=fracToData(c,sh.x_frac,sh.y_frac); sh.data_x=d.dataX; sh.data_y=d.dataY;
+          if(sh.type==='arrow'){ const d2=fracToData(c,sh.x2_frac,sh.y2_frac); sh.data_x2=d2.dataX; sh.data_y2=d2.dataY; }
+        }
+      } else { sh.data_x=null; sh.data_y=null; sh.data_x2=null; sh.data_y2=null; }
+      lockPlotBtn.classList.toggle('active', mode==='plot');
+      lockWindowBtn.classList.toggle('active', mode==='window');
+      snapshotForUndo();
+    };
+    lockPlotBtn.addEventListener('mousedown', e=>{ e.preventDefault(); setLock('plot'); });
+    lockWindowBtn.addEventListener('mousedown', e=>{ e.preventDefault(); setLock('window'); });
+  }
+
+  // Position below trigger, flip up if no room
+  const r=triggerEl.getBoundingClientRect();
+  menu.style.visibility='hidden'; menu.style.display='flex';
+  const mh=menu.offsetHeight, mw=menu.offsetWidth;
+  menu.style.visibility=''; menu.style.display='';
+  let top=r.bottom+6, left=r.left+r.width/2-mw/2;
+  if(top+mh > window.innerHeight-8) top=r.top-mh-6;
+  menu.style.top  = Math.max(8,top)+'px';
+  menu.style.left = Math.max(8,Math.min(window.innerWidth-mw-8,left))+'px';
+
+  setTimeout(()=>{
+    const outside=e=>{ if(!menu.contains(e.target)){ closeShapeMenu(); document.removeEventListener('mousedown',outside); } };
+    document.addEventListener('mousedown', outside);
+  }, 0);
+}
+
+
 // ═══ ACTIONS ═════════════════════════════════════════════════════════════
 function duplicatePlot(pid){
   const src = gp(pid); if(!src) return;
@@ -533,7 +961,7 @@ function duplicatePlot(pid){
   if(clone.curves.some(c=>c.template)) renderJS(clone.id, false);
 }
 
-function handleAction(action, pid){
+function handleAction(action, pid, triggerEl){
   // Block dup and del while in fullscreen mode (any plot)
   const anyFs = !!document.querySelector('.plot-card.plot-fs');
   if(anyFs && (action==='dup' || action==='del')) return;
@@ -549,6 +977,11 @@ function handleAction(action, pid){
     // Block annotations in matplotlib mode
     const p = gp(pid); if(p && p.mplMode) return;
     addTextAnnotation(pid); return;
+  }
+  if(action==='addshape'){
+    const p = gp(pid); if(p && p.mplMode) return;
+    showShapePicker(pid, triggerEl);
+    return;
   }
   if(action==='fullscreen') { toggleFullscreen(pid); return; }
   if(action==='del'){
@@ -611,6 +1044,7 @@ function resizeAndRefresh(pid){
     chartInstances[pid].resize();
   }
   renderTextAnnotations(pid);
+  renderShapeAnnotations(pid);
   refreshOverlayLegend(pid);
 }
 
@@ -622,6 +1056,7 @@ document.addEventListener('fullscreenchange', ()=>{
       if(!p.mplMode && chartInstances[p.id]){
         chartInstances[p.id].resize();
         renderTextAnnotations(p.id);
+        renderShapeAnnotations(p.id);
         refreshOverlayLegend(p.id);
       }
     }
@@ -659,6 +1094,7 @@ document.addEventListener('fullscreenchange', ()=>{
     mpl:        '▨  Render with Matplotlib',
     revert:     '⟲  Switch back to interactive',
     addtext:    '✎  Add text annotation',
+    addshape:   '▣  Insert a shape overlay',
     dup:        '⧉  Duplicate this plot',
     fullscreen: '⛶  Toggle full screen',
     del:        '🗑  Delete this plot',
