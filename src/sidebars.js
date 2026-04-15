@@ -529,8 +529,7 @@ function refreshCfg(){
   setCfgTab(cfgActiveTab);
   syncCfgDomain();
   const v = p.view;
-  const plotThemeSel = document.getElementById('c_plot_theme');
-  if(plotThemeSel) plotThemeSel.value = v.chart_theme === 'light' ? 'light' : 'dark';
+  renderPresetList();
   document.getElementById('c_grid').checked = v.show_grid;
   sv('c_galpha', v.grid_alpha ?? 0.5);
   document.getElementById('c_galpha_val').textContent = Math.round((v.grid_alpha ?? 0.5)*100)+'%';
@@ -695,11 +694,94 @@ function resetDomainToDefault(){
   renderJS(p.id, true);
 }
 
+// ═══ PRESET LIST UI ══════════════════════════════════════════════════════
+function renderPresetList(){
+  const container = document.getElementById('presetList'); if(!container) return;
+  container.innerHTML = '';
+
+  const all      = typeof getAllPresets      === 'function' ? getAllPresets()      : [];
+  const activeId = typeof getActivePresetId === 'function' ? getActivePresetId() : 'dark';
+
+  all.forEach(preset=>{
+    const chip = document.createElement('div');
+    chip.className = 'preset-chip' + (preset.id === activeId ? ' active' : '');
+    chip.dataset.presetId = preset.id;
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'preset-chip-name';
+    nameSpan.textContent = preset.name;
+    chip.appendChild(nameSpan);
+
+    if(!preset.builtIn){
+      // Double-click name to rename
+      nameSpan.title = 'Double-click to rename';
+      nameSpan.addEventListener('dblclick', e=>{
+        e.stopPropagation();
+        _beginPresetRename(chip, nameSpan, preset);
+      });
+
+      // Delete button (visible on hover via CSS)
+      const delBtn = document.createElement('button');
+      delBtn.className = 'preset-chip-del';
+      delBtn.innerHTML = '&times;';
+      delBtn.title = 'Delete preset';
+      delBtn.addEventListener('mousedown', e=>{
+        e.stopPropagation(); e.preventDefault();
+        if(typeof deletePreset === 'function') deletePreset(preset.id);
+        renderPresetList();
+      });
+      chip.appendChild(delBtn);
+    }
+
+    chip.addEventListener('click', e=>{
+      if(e.target.closest('.preset-chip-del')) return;
+      if(activePid === null) return;
+      if(typeof applyPreset === 'function') applyPreset(preset.id, activePid, true);
+      // Re-render chip highlights without a full refreshCfg to avoid loop
+      container.querySelectorAll('.preset-chip').forEach(c=>
+        c.classList.toggle('active', c.dataset.presetId === preset.id));
+    });
+
+    container.appendChild(chip);
+  });
+}
+
+function _beginPresetRename(chip, nameSpan, preset){
+  const inp = document.createElement('input');
+  inp.className  = 'preset-chip-inp';
+  inp.value      = preset.name;
+  inp.maxLength  = 32;
+  nameSpan.replaceWith(inp);
+  inp.focus(); inp.select();
+
+  const commit = ()=>{
+    const newName = inp.value.trim() || preset.name;
+    if(typeof renamePreset === 'function') renamePreset(preset.id, newName);
+    renderPresetList();
+  };
+  inp.addEventListener('blur',    commit);
+  inp.addEventListener('keydown', e=>{
+    if(e.key === 'Enter')  { e.preventDefault(); inp.blur(); }
+    if(e.key === 'Escape') { inp.value = preset.name; inp.blur(); }
+    e.stopPropagation();
+  });
+}
+
 function initCfgPanel(){
-  // Plot theme select — applies a full theme preset to the active plot
-  document.getElementById('c_plot_theme')?.addEventListener('change', function(){
+  // Preset new button — captures current plot state into a named preset
+  document.getElementById('presetNewBtn')?.addEventListener('click', ()=>{
     if(activePid === null) return;
-    if(typeof applyPlotTheme === 'function') applyPlotTheme(this.value, activePid, true);
+    const p = gp(activePid); if(!p) return;
+    const allPresets = getAllPresets();
+    const userCount  = allPresets.filter(pr => !pr.builtIn).length;
+    const preset = createPreset('Preset ' + (userCount + 1), p.view);
+    setActivePresetId(preset.id);
+    renderPresetList();
+    // Enter rename mode immediately on the new chip
+    setTimeout(()=>{
+      const chip = document.querySelector(`.preset-chip[data-preset-id="${preset.id}"]`);
+      if(chip){ const ns = chip.querySelector('.preset-chip-name'); if(ns) _beginPresetRename(chip, ns, preset); }
+    }, 0);
   });
 
   document.getElementById('c_bg_color')?.addEventListener('input', function(){

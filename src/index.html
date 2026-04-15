@@ -38,13 +38,6 @@
     </div>
   </header>
 
-  <!-- BACKEND CONNECTION BANNER -->
-  <div class="conn-banner" id="connBanner">
-    <div class="conn-banner-dot"></div>
-    <span id="connBannerMsg">Connecting to backend…</span>
-    <span class="conn-banner-countdown" id="connBannerCountdown"></span>
-  </div>
-
   <!-- ══ TEMPLATE MODAL ══════════════════════════════════════════════ -->
   <div class="tpl-modal-backdrop" id="tplModalBackdrop">
     <div class="tpl-modal" id="tplModal">
@@ -137,12 +130,10 @@
 
         <div>
           <div class="slbl-row">
-            <span class="slbl">Plot Theme</span>
-            <select id="c_plot_theme" class="plot-theme-select">
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
+            <span class="slbl">Plot Preset</span>
+            <button class="preset-new-btn" id="presetNewBtn" title="Save current plot settings as a new preset">+ New</button>
           </div>
+          <div class="preset-list" id="presetList"></div>
         </div>
 
         <div class="cdivider"></div>
