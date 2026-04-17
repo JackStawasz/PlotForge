@@ -1,0 +1,35 @@
+{
+  "sin_default": {
+    "template": "sin",
+    "params": { "A": 1, "f": 1, "phi": 0 },
+    "view": {}
+  },
+  "gaussian_custom": {
+    "template": "gaussian",
+    "params": { "A": 2, "mu": 3, "sig": 0.5 },
+    "view": { "x_min": -2, "x_max": 8 }
+  },
+  "linear_slope2": {
+    "template": "linear",
+    "params": { "m": 2, "b": -1 },
+    "view": { "x_min": -5, "x_max": 5 }
+  },
+  "binomial_n20": {
+    "template": "binomial",
+    "params": { "n": 20, "p": 0.4 },
+    "view": {}
+  },
+  "raw_xy_parabola": {
+    "x": [0, 1, 2, 3, 4, 5],
+    "y": [0, 1, 4, 9, 16, 25],
+    "line_color": "#aaffcc",
+    "line_width": 2,
+    "line_style": "solid",
+    "line_connection": "linear",
+    "marker": "none",
+    "marker_size": 4,
+    "fill_under": false,
+    "fill_alpha": 0.15,
+    "label": "x²"
+  }
+}

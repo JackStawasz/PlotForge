@@ -1,0 +1,30 @@
+{
+  "simple_constant": [
+    { "id": 1, "name": "a", "expr_latex": "4", "kind": "variable" }
+  ],
+  "chained_two": [
+    { "id": 1, "name": "a", "expr_latex": "4",     "kind": "variable" },
+    { "id": 2, "name": "b", "expr_latex": "a + 6", "kind": "variable" }
+  ],
+  "chained_three": [
+    { "id": 1, "name": "a", "expr_latex": "2",       "kind": "variable" },
+    { "id": 2, "name": "b", "expr_latex": "a * 3",   "kind": "variable" },
+    { "id": 3, "name": "c", "expr_latex": "b + 1",   "kind": "variable" }
+  ],
+  "parameter_feeds_variable": [
+    { "id": 1, "name": "n", "expr_latex": "5",     "kind": "parameter" },
+    { "id": 2, "name": "y", "expr_latex": "n^{2}", "kind": "variable"  }
+  ],
+  "pi_expression": [
+    { "id": 1, "name": "x", "expr_latex": "\\pi", "kind": "variable" }
+  ],
+  "fraction_expr": [
+    { "id": 1, "name": "f", "expr_latex": "\\frac{3}{4}", "kind": "variable" }
+  ],
+  "symbolic_only": [
+    { "id": 1, "name": "", "expr_latex": "a + b", "kind": "variable" }
+  ],
+  "malformed_latex": [
+    { "id": 1, "name": "bad", "expr_latex": "\\frac{{{", "kind": "variable" }
+  ]
+}
