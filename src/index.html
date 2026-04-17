@@ -327,6 +327,8 @@
       <button class="stats-tab" id="statsTab_corr">Correlation</button>
       <button class="stats-tab" id="statsTab_hypo">Hypothesis</button>
       <button class="stats-tab" id="statsTab_preprocess">Preprocess</button>
+      <button class="stats-tab" id="statsTab_regression">Regression</button>
+      <button class="stats-tab" id="statsTab_ml">ML Models</button>
       <button class="stats-tab" id="statsTab_data">Data</button>
     </div>
 
@@ -335,7 +337,7 @@
       <div class="stats-controls">
         <div class="stats-ctrl-group">
           <label class="stats-ctrl-label">Variable</label>
-          <select class="stats-select" id="statsVar_describe"></select>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_describe"><span class="stats-chip-empty">No variables yet</span></div>
         </div>
         <button class="stats-run-btn" id="statsRunDescribe">Analyze ▶</button>
       </div>
@@ -353,15 +355,17 @@
             <option value="histogram">Histogram</option>
             <option value="boxplot">Box Plot</option>
             <option value="violin">Violin</option>
+            <option value="qqplot">Q-Q Plot</option>
+            <option value="ecdf">ECDF</option>
           </select>
         </div>
         <div class="stats-ctrl-group" id="statsHistSingleRow">
           <label class="stats-ctrl-label">Variable</label>
-          <select class="stats-select" id="statsVar_histX"></select>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_histSingle"><span class="stats-chip-empty">No variables yet</span></div>
         </div>
         <div class="stats-ctrl-group" id="statsBoxMultiRow" style="display:none">
-          <label class="stats-ctrl-label">Variables <span class="stats-ctrl-hint">(Ctrl/⌘+click)</span></label>
-          <select class="stats-select stats-multi-select" id="statsVar_boxMulti" multiple size="3"></select>
+          <label class="stats-ctrl-label">Variables</label>
+          <div class="stats-chip-group" id="chips_histBox"><span class="stats-chip-empty">No numeric variables yet</span></div>
         </div>
         <div class="stats-ctrl-group" id="statsHistBinsRow">
           <label class="stats-ctrl-label">Bins</label>
@@ -392,11 +396,11 @@
       <div class="stats-controls">
         <div class="stats-ctrl-group">
           <label class="stats-ctrl-label">X variable</label>
-          <select class="stats-select" id="statsVar_fitX"></select>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_fitX"><span class="stats-chip-empty">No numeric variables yet</span></div>
         </div>
         <div class="stats-ctrl-group">
           <label class="stats-ctrl-label">Y variable</label>
-          <select class="stats-select" id="statsVar_fitY"></select>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_fitY"><span class="stats-chip-empty">No numeric variables yet</span></div>
         </div>
         <div class="stats-ctrl-group">
           <label class="stats-ctrl-label">Fit type</label>
@@ -431,8 +435,8 @@
     <div class="stats-pane" id="statsPane_corr">
       <div class="stats-controls">
         <div class="stats-ctrl-group stats-ctrl-group-grow">
-          <label class="stats-ctrl-label">Variables <span class="stats-ctrl-hint">(Ctrl/⌘ + click to select multiple)</span></label>
-          <select class="stats-select stats-multi-select" id="statsVar_corrMulti" multiple size="3"></select>
+          <label class="stats-ctrl-label">Variables</label>
+          <div class="stats-chip-group" id="chips_corr"><span class="stats-chip-empty">No numeric variables yet</span></div>
         </div>
         <button class="stats-run-btn" id="statsRunCorr">Compute ▶</button>
       </div>
@@ -458,15 +462,15 @@
         </div>
         <div class="stats-ctrl-group" id="hypoVar1Row">
           <label class="stats-ctrl-label" id="hypoVar1Label">Variable</label>
-          <select class="stats-select" id="statsVar_hypo1"></select>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_hypo1"><span class="stats-chip-empty">No variables yet</span></div>
         </div>
         <div class="stats-ctrl-group" id="hypoVar2Row" style="display:none">
           <label class="stats-ctrl-label">Variable 2</label>
-          <select class="stats-select" id="statsVar_hypo2"></select>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_hypo2"><span class="stats-chip-empty">No numeric variables yet</span></div>
         </div>
         <div class="stats-ctrl-group" id="hypoAnovaRow" style="display:none">
-          <label class="stats-ctrl-label">Groups <span class="stats-ctrl-hint">(Ctrl/⌘+click)</span></label>
-          <select class="stats-select stats-multi-select" id="statsVar_hypoAnova" multiple size="3"></select>
+          <label class="stats-ctrl-label">Groups</label>
+          <div class="stats-chip-group" id="chips_hypoAnova"><span class="stats-chip-empty">No numeric variables yet</span></div>
         </div>
         <div class="stats-ctrl-group" id="hypoMu0Row" style="display:none">
           <label class="stats-ctrl-label">Null mean (μ₀)</label>
@@ -484,7 +488,7 @@
       <div class="stats-controls">
         <div class="stats-ctrl-group">
           <label class="stats-ctrl-label">Variable</label>
-          <select class="stats-select" id="statsVar_preprocess"></select>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_preprocess"><span class="stats-chip-empty">No numeric variables yet</span></div>
         </div>
         <div class="stats-ctrl-group">
           <label class="stats-ctrl-label">Operation</label>
@@ -521,6 +525,100 @@
       </div>
       <div class="stats-output" id="statsResult_preprocess">
         <div class="stats-empty-hint">Select a variable and operation, then click Apply.</div>
+      </div>
+    </div>
+
+    <!-- ── REGRESSION PANE ───────────────────────────────────────────── -->
+    <div class="stats-pane" id="statsPane_regression">
+      <div class="stats-controls">
+        <div class="stats-ctrl-group">
+          <label class="stats-ctrl-label">Type</label>
+          <select class="stats-select" id="statsRegrType">
+            <option value="linear">Linear (OLS)</option>
+            <option value="logistic">Logistic (binary)</option>
+          </select>
+        </div>
+        <div class="stats-ctrl-group stats-ctrl-group-grow">
+          <label class="stats-ctrl-label">Features X <span class="stats-ctrl-hint">(click to select)</span></label>
+          <div class="stats-chip-group" id="regrXChips"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group stats-ctrl-group-grow">
+          <label class="stats-ctrl-label">Target Y <span class="stats-ctrl-hint">(one variable)</span></label>
+          <div class="stats-chip-group stats-chip-group-radio" id="regrYChips"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group" id="regrThreshRow" style="display:none">
+          <label class="stats-ctrl-label">Decision threshold</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsRegrThresh" value="0.5" min="0.01" max="0.99" step="0.01"/>
+        </div>
+        <button class="stats-run-btn" id="statsRunRegr">Run ▶</button>
+      </div>
+      <div class="stats-output" id="statsResult_regression">
+        <div class="stats-empty-hint">Select features (X), a target (Y), and click Run.</div>
+      </div>
+    </div>
+
+    <!-- ── ML MODELS PANE ────────────────────────────────────────────── -->
+    <div class="stats-pane" id="statsPane_ml">
+      <div class="stats-controls">
+        <div class="stats-ctrl-group">
+          <label class="stats-ctrl-label">Model</label>
+          <select class="stats-select" id="statsMLModel">
+            <optgroup label="── Supervised ──">
+              <option value="decision_tree">Decision Tree</option>
+              <option value="random_forest" selected>Random Forest</option>
+              <option value="gradient_boosting">Gradient Boosting</option>
+              <option value="knn">K-Nearest Neighbors</option>
+              <option value="svm">Support Vector Machine</option>
+            </optgroup>
+            <optgroup label="── Unsupervised ──">
+              <option value="kmeans">K-Means Clustering</option>
+              <option value="pca">PCA</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="stats-ctrl-group" id="mlTaskRow">
+          <label class="stats-ctrl-label">Task</label>
+          <select class="stats-select" id="statsMLTask">
+            <option value="classification">Classification</option>
+            <option value="regression">Regression</option>
+          </select>
+        </div>
+        <div class="stats-ctrl-group" id="mlNEstimRow">
+          <label class="stats-ctrl-label">n_estimators</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsMLNEstim" value="100" min="10" max="500"/>
+        </div>
+        <div class="stats-ctrl-group" id="mlMaxDepthRow">
+          <label class="stats-ctrl-label">max_depth <span class="stats-ctrl-hint">(blank = unlimited)</span></label>
+          <input type="number" class="stats-input stats-input-sm" id="statsMLMaxDepth" placeholder="None" min="1" max="30"/>
+        </div>
+        <div class="stats-ctrl-group" id="mlKNeighRow" style="display:none">
+          <label class="stats-ctrl-label">n_neighbors</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsMLKNeigh" value="5" min="1" max="50"/>
+        </div>
+        <div class="stats-ctrl-group" id="mlNClustersRow" style="display:none">
+          <label class="stats-ctrl-label">k clusters</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsMLNClusters" value="3" min="2" max="20"/>
+        </div>
+        <div class="stats-ctrl-group" id="mlNCompRow" style="display:none">
+          <label class="stats-ctrl-label">n_components</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsMLNComp" value="2" min="1" max="10"/>
+        </div>
+        <div class="stats-ctrl-group" id="mlCVRow">
+          <label class="stats-ctrl-label">Cross-validation folds</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsMLCV" value="5" min="2" max="20"/>
+        </div>
+        <div class="stats-ctrl-group stats-ctrl-group-grow">
+          <label class="stats-ctrl-label">Features X <span class="stats-ctrl-hint">(click to select)</span></label>
+          <div class="stats-chip-group" id="mlXChips"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group stats-ctrl-group-grow" id="mlYRow">
+          <label class="stats-ctrl-label">Target Y <span class="stats-ctrl-hint">(one variable)</span></label>
+          <div class="stats-chip-group stats-chip-group-radio" id="mlYChips"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <button class="stats-run-btn" id="statsRunML">Train ▶</button>
+      </div>
+      <div class="stats-output" id="statsResult_ml">
+        <div class="stats-empty-hint">Select a model, features (X), target (Y), and click Train.</div>
       </div>
     </div>
 

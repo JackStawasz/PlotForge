@@ -3,11 +3,15 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
+
+@app.route('/')
+def index():
+    return send_from_directory('.', 'index.html')
 
 _here = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_here, "templates.json"), encoding="utf-8") as _f:
@@ -1103,6 +1107,39 @@ def stats_preprocess():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/stats/qqplot", methods=["POST"])
+def stats_qqplot():
+    from scipy import stats as spstats
+    body = request.get_json(silent=True) or {}
+    raw  = body.get("data", [])
+    arr  = np.array([x for x in raw if x is not None], dtype=float)
+    arr  = arr[np.isfinite(arr)]
+    if len(arr) < 4:
+        return jsonify({"error": "Need at least 4 finite values for a Q-Q plot."}), 400
+
+    # probplot returns (osm, osr), (slope, intercept, r)
+    (theoretical, sample), (slope, intercept, _) = spstats.probplot(arr, dist="norm")
+    theoretical = theoretical.tolist()
+    sample      = sample.tolist()
+
+    # Reference line endpoints
+    x0, x1 = float(theoretical[0]), float(theoretical[-1])
+    line_y  = [slope * x0 + intercept, slope * x1 + intercept]
+
+    # Shapiro-Wilk test for normality
+    sw_stat, sw_p = spstats.shapiro(arr[:5000])  # shapiro limit is ~5000
+
+    return jsonify({
+        "theoretical": theoretical,
+        "sample":      sample,
+        "line_x":      [x0, x1],
+        "line_y":      line_y,
+        "sw_stat":     float(sw_stat),
+        "sw_p":        float(sw_p),
+        "n":           int(len(arr)),
+    })
+
+
 @app.route("/api/stats/boxplot", methods=["POST"])
 def stats_boxplot():
     body = request.get_json(silent=True) or {}
@@ -1123,6 +1160,291 @@ def stats_boxplot():
             "outliers": arr[(arr < lo) | (arr > hi)].tolist(), "n": int(len(arr)),
         }
     return jsonify({"boxplots": result})
+
+
+@app.route("/api/stats/ml", methods=["POST"])
+def stats_ml():
+    """Train and evaluate ML models: Decision Tree, Random Forest, Gradient Boosting,
+    KNN, SVM (supervised) and K-Means, PCA (unsupervised)."""
+    try:
+        from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+        from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
+        from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+        from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+        from sklearn.svm import SVC, SVR
+        from sklearn.cluster import KMeans
+        from sklearn.decomposition import PCA as skPCA
+        from sklearn.model_selection import cross_val_score, StratifiedKFold, KFold
+        from sklearn.metrics import (roc_curve, auc, precision_recall_curve,
+                                     r2_score, mean_squared_error, accuracy_score,
+                                     confusion_matrix, silhouette_score)
+        from sklearn.preprocessing import StandardScaler
+    except ImportError:
+        return jsonify({"error": "scikit-learn is required. Run: pip install scikit-learn"}), 400
+
+    body         = request.get_json(silent=True) or {}
+    model_type   = body.get("model", "random_forest")
+    task         = body.get("task", "classification")
+    X_raw        = body.get("X", [])
+    y_raw        = body.get("y", [])
+    n_estimators = int(body.get("n_estimators", 100))
+    max_depth    = body.get("max_depth")
+    if max_depth is not None: max_depth = int(max_depth)
+    n_neighbors  = int(body.get("n_neighbors", 5))
+    n_clusters   = int(body.get("n_clusters", 3))
+    n_components = int(body.get("n_components", 2))
+    cv_folds     = int(body.get("cv_folds", 5))
+
+    if not X_raw:
+        return jsonify({"error": "No feature data provided."}), 400
+
+    try:
+        X = np.column_stack([np.array(col, dtype=float) for col in X_raw])
+        if X.ndim == 1: X = X.reshape(-1, 1)
+    except Exception as e:
+        return jsonify({"error": f"X data error: {e}"}), 400
+
+    n, p = X.shape
+
+    # ── K-Means ──────────────────────────────────────────────────────────────
+    if model_type == "kmeans":
+        k = min(n_clusters, n - 1)
+        km = KMeans(n_clusters=k, random_state=42, n_init=10)
+        labels = km.fit_predict(X)
+        inertia = float(km.inertia_)
+        sil = float(silhouette_score(X, labels)) if k > 1 and n > k + 1 else None
+        max_k = min(10, n - 1)
+        elbow = [float(KMeans(n_clusters=ki, random_state=42, n_init=10).fit(X).inertia_)
+                 for ki in range(2, max_k + 1)]
+        scaler2d = StandardScaler()
+        Xs = scaler2d.fit_transform(X)
+        pca2 = skPCA(n_components=min(2, p))
+        X2 = pca2.fit_transform(Xs).tolist()
+        return jsonify({
+            "model": "kmeans", "n_clusters": k, "n": n, "p": p,
+            "labels": labels.tolist(), "inertia": inertia, "silhouette": sil,
+            "elbow_ks": list(range(2, max_k + 1)), "elbow_inertias": elbow,
+            "scatter_2d": X2, "used_pca_for_viz": p > 2,
+            "var_explained": pca2.explained_variance_ratio_.tolist() if p > 2 else None,
+        })
+
+    # ── PCA ──────────────────────────────────────────────────────────────────
+    if model_type == "pca":
+        scaler = StandardScaler()
+        Xs = scaler.fit_transform(X)
+        max_comp = min(p, n, 15)
+        pca_full = skPCA(n_components=max_comp).fit(Xs)
+        ev  = pca_full.explained_variance_ratio_.tolist()
+        cumev = np.cumsum(pca_full.explained_variance_ratio_).tolist()
+        nc  = min(n_components, max_comp)
+        pca = skPCA(n_components=nc)
+        scores   = pca.fit_transform(Xs).tolist()
+        loadings = pca.components_.tolist()
+        return jsonify({
+            "model": "pca", "n": n, "p": p, "n_components": nc,
+            "explained_variance_ratio": ev, "cumulative_variance": cumev,
+            "scores": scores, "loadings": loadings,
+        })
+
+    # ── Supervised ───────────────────────────────────────────────────────────
+    if not y_raw:
+        return jsonify({"error": "Target variable y required for supervised models."}), 400
+    try:
+        y = np.array(y_raw, dtype=float)
+    except Exception as e:
+        return jsonify({"error": f"y data error: {e}"}), 400
+    if len(y) != n:
+        return jsonify({"error": "X and y must have the same length."}), 400
+    if n < 8:
+        return jsonify({"error": "Need at least 8 observations."}), 400
+
+    is_clf = (task == "classification")
+    if is_clf:
+        y_int = y.astype(int)
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    use_scaled = model_type in ("svm", "knn")
+    Xfit = X_scaled if use_scaled else X
+
+    MODEL_MAP = {
+        "decision_tree": (DecisionTreeClassifier(max_depth=max_depth, random_state=42),
+                          DecisionTreeRegressor(max_depth=max_depth, random_state=42)),
+        "random_forest": (RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, random_state=42, n_jobs=-1),
+                          RandomForestRegressor(n_estimators=n_estimators, max_depth=max_depth, random_state=42, n_jobs=-1)),
+        "gradient_boosting": (GradientBoostingClassifier(n_estimators=n_estimators, max_depth=max_depth or 3, random_state=42),
+                              GradientBoostingRegressor(n_estimators=n_estimators, max_depth=max_depth or 3, random_state=42)),
+        "knn": (KNeighborsClassifier(n_neighbors=min(n_neighbors, n-1)),
+                KNeighborsRegressor(n_neighbors=min(n_neighbors, n-1))),
+        "svm": (SVC(probability=True, random_state=42), SVR()),
+    }
+    if model_type not in MODEL_MAP:
+        return jsonify({"error": f"Unknown model: {model_type}"}), 400
+
+    clf = MODEL_MAP[model_type][0 if is_clf else 1]
+
+    if is_clf:
+        clf.fit(Xfit, y_int)
+        y_pred = clf.predict(Xfit)
+        unique_y = np.unique(y_int)
+        acc = float(accuracy_score(y_int, y_pred))
+        cm  = confusion_matrix(y_int, y_pred).tolist()
+
+        # Cross-validation
+        safe_k  = min(cv_folds, min(np.bincount(y_int.astype(int))))
+        safe_k  = max(2, safe_k)
+        cv      = StratifiedKFold(n_splits=safe_k, shuffle=True, random_state=42)
+        cv_sc   = cross_val_score(clf, Xfit, y_int, cv=cv, scoring="accuracy").tolist()
+
+        # ROC / PR (binary only)
+        roc_data = None
+        if len(unique_y) == 2 and hasattr(clf, "predict_proba"):
+            proba = clf.predict_proba(Xfit)[:, 1]
+            fpr, tpr, _ = roc_curve(y_int, proba)
+            roc_auc = float(auc(fpr, tpr))
+            pr_v, rec_v, _ = precision_recall_curve(y_int, proba)
+            pr_auc = float(auc(rec_v, pr_v))
+            roc_data = {
+                "fpr": fpr.tolist(), "tpr": tpr.tolist(), "auc": roc_auc,
+                "precision": pr_v.tolist(), "recall": rec_v.tolist(), "pr_auc": pr_auc,
+            }
+
+        feat_imp = (clf.feature_importances_.tolist()
+                    if hasattr(clf, "feature_importances_") else None)
+        return jsonify({
+            "model": model_type, "task": "classification", "n": n, "p": p,
+            "accuracy": acc, "confusion_matrix": cm, "classes": unique_y.tolist(),
+            "cv_scores": cv_sc, "cv_mean": float(np.mean(cv_sc)), "cv_std": float(np.std(cv_sc)),
+            "roc": roc_data, "feature_importance": feat_imp,
+        })
+
+    else:
+        clf.fit(Xfit, y)
+        y_pred = clf.predict(Xfit)
+        r2   = float(r2_score(y, y_pred))
+        rmse = float(np.sqrt(mean_squared_error(y, y_pred)))
+        cv   = KFold(n_splits=min(cv_folds, n // 4), shuffle=True, random_state=42)
+        cv_sc = cross_val_score(clf, Xfit, y, cv=cv, scoring="r2").tolist()
+        feat_imp = (clf.feature_importances_.tolist()
+                    if hasattr(clf, "feature_importances_") else None)
+        return jsonify({
+            "model": model_type, "task": "regression", "n": n, "p": p,
+            "r2": r2, "rmse": rmse,
+            "residuals": (y - y_pred).tolist(),
+            "y_pred": y_pred.tolist(), "y_orig": y.tolist(),
+            "cv_scores": cv_sc, "cv_mean": float(np.mean(cv_sc)), "cv_std": float(np.std(cv_sc)),
+            "feature_importance": feat_imp,
+        })
+
+
+@app.route("/api/stats/regression", methods=["POST"])
+def stats_regression():
+    """Linear (OLS) or Logistic regression using numpy/scipy only."""
+    from scipy.special import expit
+    from scipy.optimize import minimize
+    from scipy.stats import t as t_dist
+
+    body  = request.get_json(silent=True) or {}
+    rtype = body.get("type", "linear")
+    X_raw = body.get("X", [])
+    y_raw = body.get("y", [])
+
+    if not X_raw or not y_raw:
+        return jsonify({"error": "X (list of columns) and y are required."}), 400
+
+    try:
+        X = np.column_stack([np.array(col, dtype=float) for col in X_raw])
+        y = np.array(y_raw, dtype=float)
+    except Exception as e:
+        return jsonify({"error": f"Data conversion failed: {e}"}), 400
+
+    if X.ndim == 1:
+        X = X.reshape(-1, 1)
+
+    n, p = X.shape
+    if n != len(y):
+        return jsonify({"error": "X columns and y must have the same length."}), 400
+    if n < 4:
+        return jsonify({"error": "Need at least 4 observations."}), 400
+
+    Xb = np.column_stack([np.ones(n), X])  # design matrix with intercept
+
+    if rtype == "linear":
+        coef, _, rank, _ = np.linalg.lstsq(Xb, y, rcond=None)
+        y_pred    = Xb @ coef
+        intercept = float(coef[0])
+        betas     = coef[1:].tolist()
+        ss_res    = float(np.sum((y - y_pred) ** 2))
+        ss_tot    = float(np.sum((y - y.mean()) ** 2))
+        r2        = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+        rmse      = float(np.sqrt(ss_res / n))
+
+        coef_se = [None] * p; t_stats = [None] * p; p_values = [None] * p
+        if n > p + 1 and rank == p + 1:
+            try:
+                sigma2 = ss_res / (n - p - 1)
+                cov    = sigma2 * np.linalg.inv(Xb.T @ Xb)
+                se_all = np.sqrt(np.diag(cov))
+                coef_se  = se_all[1:].tolist()
+                t_stats  = [float(b / s) if s > 0 else None for b, s in zip(betas, coef_se)]
+                p_values = [float(2 * t_dist.sf(abs(t), df=n-p-1)) if t is not None else None for t in t_stats]
+            except Exception:
+                pass
+
+        return jsonify({
+            "type": "linear",
+            "coef": betas, "intercept": intercept,
+            "r2": r2, "rmse": rmse,
+            "residuals": (y - y_pred).tolist(),
+            "y_pred": y_pred.tolist(), "y_orig": y.tolist(),
+            "coef_se": coef_se, "t_stats": t_stats, "p_values": p_values,
+            "n": n, "p": p,
+        })
+
+    elif rtype == "logistic":
+        threshold = float(body.get("threshold", 0.5))
+        unique_y  = np.unique(y)
+        if len(unique_y) != 2:
+            return jsonify({"error": f"Logistic regression requires exactly 2 unique target values (found {len(unique_y)})."}), 400
+
+        y_bin = (y == unique_y[1]).astype(float)
+
+        def _nll(w):
+            proba = np.clip(expit(Xb @ w), 1e-10, 1 - 1e-10)
+            return -float(np.sum(y_bin * np.log(proba) + (1 - y_bin) * np.log(1 - proba)))
+
+        def _grad(w):
+            return Xb.T @ (expit(Xb @ w) - y_bin)
+
+        result = minimize(_nll, np.zeros(p + 1), jac=_grad, method="L-BFGS-B",
+                          options={"maxiter": 1000, "ftol": 1e-9})
+        w         = result.x
+        intercept = float(w[0])
+        betas     = w[1:].tolist()
+        proba     = expit(Xb @ w).tolist()
+        y_pred_b  = (np.array(proba) >= threshold).astype(int)
+        acc       = float(np.mean(y_pred_b == y_bin.astype(int)))
+
+        tp = int(np.sum((y_pred_b == 1) & (y_bin == 1)))
+        fp = int(np.sum((y_pred_b == 1) & (y_bin == 0)))
+        fn = int(np.sum((y_pred_b == 0) & (y_bin == 1)))
+        tn = int(np.sum((y_pred_b == 0) & (y_bin == 0)))
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall    = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1        = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+        return jsonify({
+            "type": "logistic",
+            "coef": betas, "intercept": intercept,
+            "accuracy": acc, "precision": precision, "recall": recall, "f1": f1,
+            "y_proba": proba, "y_orig": y_bin.tolist(),
+            "confusion_matrix": [[tn, fp], [fn, tp]],
+            "classes": unique_y.tolist(), "threshold": threshold,
+            "n": n, "p": p,
+        })
+
+    else:
+        return jsonify({"error": f"Unknown regression type: {rtype}"}), 400
 
 
 if __name__ == "__main__":

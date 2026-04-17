@@ -14,6 +14,26 @@ let _lastPrepVar    = null;
 let _lastPrepOp     = null;
 let _lastSplitData  = null;
 
+// Per-tab chip selection state
+let _describeSelected   = null;
+let _histSingleSelected = null;
+let _histBoxSelected    = new Set();
+let _fitXSelected       = null;
+let _fitYSelected       = null;
+let _corrSelected       = new Set();
+let _hypo1Selected      = null;
+let _hypo2Selected      = null;
+let _hypoAnovaSelected  = new Set();
+let _prepSelected       = null;
+
+// Regression chip selection state
+let _regrXSelected = new Set(); // Set of variable id strings
+let _regrYSelected = null;      // single variable id string or null
+
+// ML chip selection state
+let _mlXSelected = new Set();
+let _mlYSelected = null;
+
 // ═══ VIEW SWITCHING ══════════════════════════════════════════════════════════
 
 function switchToView(view) {
@@ -26,7 +46,7 @@ function switchToView(view) {
 
 // ═══ INIT ════════════════════════════════════════════════════════════════════
 
-const _TABS = ['describe', 'histogram', 'fit', 'corr', 'hypo', 'preprocess', 'data'];
+const _TABS = ['describe', 'histogram', 'fit', 'corr', 'hypo', 'preprocess', 'regression', 'ml', 'data'];
 
 function initStats() {
   document.getElementById('hdrViewPlots')?.addEventListener('click', () => switchToView('plots'));
@@ -42,6 +62,10 @@ function initStats() {
   document.getElementById('statsRunCorr')?.addEventListener('click', runCorrelation);
   document.getElementById('statsRunHypo')?.addEventListener('click', runHypothesis);
   document.getElementById('statsRunPreprocess')?.addEventListener('click', runPreprocess);
+  document.getElementById('statsRunRegr')?.addEventListener('click', runRegression);
+
+  // Regression type → show/hide threshold row
+  document.getElementById('statsRegrType')?.addEventListener('change', _updateRegrControls);
 
   // Fit type → show/hide degree / formula rows
   document.getElementById('statsFitType')?.addEventListener('change', () => {
@@ -60,6 +84,16 @@ function initStats() {
 
   // Preprocess op → show/hide sub-controls
   document.getElementById('statsPrepOp')?.addEventListener('change', _updatePrepControls);
+
+  // Init regression chip state
+  _regrXSelected = new Set();
+  _regrYSelected = null;
+
+  // ML tab
+  document.getElementById('statsRunML')?.addEventListener('click', runML);
+  document.getElementById('statsMLModel')?.addEventListener('change', _updateMLControls);
+  _mlXSelected = new Set();
+  _mlYSelected = null;
 }
 
 function setStatsTab(tab) {
@@ -74,13 +108,14 @@ function setStatsTab(tab) {
 // ─── Dynamic control visibility ──────────────────────────────────────────────
 
 function _updateHistControls() {
-  const val   = document.getElementById('statsHistType')?.value || 'histogram';
+  const val  = document.getElementById('statsHistType')?.value || 'histogram';
   const isBox = val === 'boxplot';
-  const show  = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
-  show('statsHistSingleRow', !isBox);
+  const isSingle = !isBox; // all non-boxplot types use single-var selector
+  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+  show('statsHistSingleRow', isSingle);
   show('statsBoxMultiRow',    isBox);
   show('statsHistBinsRow',    val === 'histogram');
-  show('statsHistKdeRow',     val !== 'boxplot');
+  show('statsHistKdeRow',     val === 'histogram' || val === 'violin');
   show('statsHistMARow',      val === 'histogram');
 }
 
@@ -101,6 +136,28 @@ function _updateHypoControls() {
   refreshHypoSelectors(type);
 }
 
+function _updateRegrControls() {
+  const type = document.getElementById('statsRegrType')?.value || 'linear';
+  const el   = document.getElementById('regrThreshRow');
+  if (el) el.style.display = type === 'logistic' ? '' : 'none';
+}
+
+function _updateMLControls() {
+  const model = document.getElementById('statsMLModel')?.value || 'decision_tree';
+  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+  const supervised = !['kmeans', 'pca'].includes(model);
+  const treeBased  = ['decision_tree', 'random_forest', 'gradient_boosting'].includes(model);
+  const ensemble   = ['random_forest', 'gradient_boosting'].includes(model);
+  show('mlTaskRow',      supervised);
+  show('mlNEstimRow',    ensemble);
+  show('mlMaxDepthRow',  treeBased);
+  show('mlKNeighRow',    model === 'knn');
+  show('mlNClustersRow', model === 'kmeans');
+  show('mlNCompRow',     model === 'pca');
+  show('mlCVRow',        supervised);
+  show('mlYRow',         supervised);
+}
+
 function _updatePrepControls() {
   const op = document.getElementById('statsPrepOp')?.value || 'normalize';
   const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
@@ -111,117 +168,166 @@ function _updatePrepControls() {
 
 // ─── Variable selector refresh ────────────────────────────────────────────────
 
+// Generic chip builder for a single-select chip state
+function _buildSingleChips(containerId, vars, getSelected, setSelected, onRebuild) {
+  const validIds = new Set(vars.map(v => String(v.id)));
+  if (getSelected() && !validIds.has(getSelected())) setSelected(null);
+  _buildChips(containerId, vars, 'single', v => {
+    setSelected(String(v.id) === getSelected() ? null : String(v.id));
+    onRebuild();
+  }, id => String(id) === getSelected());
+}
+
+// Generic chip builder for a multi-select chip state
+function _buildMultiChips(containerId, vars, selectedSet, onRebuild) {
+  const validIds = new Set(vars.map(v => String(v.id)));
+  for (const id of selectedSet) { if (!validIds.has(id)) selectedSet.delete(id); }
+  _buildChips(containerId, vars, 'multi', v => {
+    const id = String(v.id);
+    if (selectedSet.has(id)) selectedSet.delete(id); else selectedSet.add(id);
+    onRebuild();
+  }, id => selectedSet.has(String(id)));
+}
+
 function refreshStatsVarSelectors() {
-  const listVars   = _getListVars();
-  const numVars    = listVars.filter(v => !v._categorical);
-  const catVars    = listVars.filter(v =>  v._categorical);
+  const listVars = _getListVars();
+  const numVars  = listVars.filter(v => !v._categorical);
 
-  // Helpers
-  const _fillSel = (id, vars, withCat) => {
-    const sel = document.getElementById(id); if (!sel) return;
-    const prev = sel.value;
-    sel.innerHTML = '<option value="">— select —</option>';
-    vars.forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v.id;
-      opt.textContent = v._categorical
-        ? `${v.name || `v${v.id}`}  [cat · ${v._labels.length} levels]`
-        : `${v.name || `v${v.id}`}  (n = ${v.listItems.length})`;
-      if (String(v.id) === String(prev)) opt.selected = true;
-      sel.appendChild(opt);
-    });
-  };
+  // ── Descriptive: all list vars ──
+  _buildSingleChips('chips_describe', listVars,
+    () => _describeSelected, v => { _describeSelected = v; },
+    () => refreshStatsVarSelectors());
 
-  const _fillMulti = (id, vars) => {
-    const sel = document.getElementById(id); if (!sel) return;
-    const prevVals = Array.from(sel.selectedOptions).map(o => o.value);
-    sel.innerHTML = '';
-    vars.forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v.id;
-      opt.textContent = `${v.name || `v${v.id}`}  (n = ${v.listItems.length})`;
-      if (prevVals.includes(String(v.id))) opt.selected = true;
-      sel.appendChild(opt);
-    });
-    if (!vars.length) {
-      const ph = document.createElement('option'); ph.disabled = true;
-      ph.textContent = 'No numeric variables yet'; sel.appendChild(ph);
-    }
-  };
+  // ── Histogram single: all list vars ──
+  _buildSingleChips('chips_histSingle', listVars,
+    () => _histSingleSelected, v => { _histSingleSelected = v; },
+    () => refreshStatsVarSelectors());
 
-  // Descriptive: all list vars
-  const describeSel = document.getElementById('statsVar_describe');
-  if (describeSel) {
-    const prev = describeSel.value;
-    describeSel.innerHTML = '<option value="">— select variable —</option>';
-    listVars.forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v.id;
-      opt.textContent = v._categorical
-        ? `${v.name || `v${v.id}`}  [categorical · ${v._labels.length} levels]`
-        : `${v.name || `v${v.id}`}  (n = ${v.listItems.length})`;
-      if (String(v.id) === String(prev)) opt.selected = true;
-      describeSel.appendChild(opt);
-    });
-  }
+  // ── Histogram box: numeric only ──
+  _buildMultiChips('chips_histBox', numVars, _histBoxSelected, () => refreshStatsVarSelectors());
 
-  // Histogram single: all list vars
-  _fillSel('statsVar_histX', listVars);
+  // ── Curve fit X/Y: numeric only ──
+  _buildSingleChips('chips_fitX', numVars,
+    () => _fitXSelected, v => { _fitXSelected = v; },
+    () => refreshStatsVarSelectors());
+  _buildSingleChips('chips_fitY', numVars,
+    () => _fitYSelected, v => { _fitYSelected = v; },
+    () => refreshStatsVarSelectors());
 
-  // Box plot multi: numeric only
-  _fillMulti('statsVar_boxMulti', numVars);
+  // ── Correlation: numeric only ──
+  _buildMultiChips('chips_corr', numVars, _corrSelected, () => refreshStatsVarSelectors());
 
-  // Fit X/Y: numeric only
-  ['statsVar_fitX', 'statsVar_fitY'].forEach(id => _fillSel(id, numVars));
-
-  // Correlation multi: numeric only
-  _fillMulti('statsVar_corrMulti', numVars);
-
-  // Hypothesis
+  // ── Hypothesis ──
   const hypoType = document.getElementById('statsHypoType')?.value || 'ttest_1samp';
   refreshHypoSelectors(hypoType);
 
-  // Preprocess: numeric only
-  _fillSel('statsVar_preprocess', numVars);
+  // ── Preprocess: numeric only ──
+  _buildSingleChips('chips_preprocess', numVars,
+    () => _prepSelected, v => { _prepSelected = v; },
+    () => refreshStatsVarSelectors());
+
+  // Regression: chip-style selectors (X = all vars, Y = numeric only)
+  _renderRegrChips(listVars, numVars);
+
+  // ML: chip-style selectors (X = all vars, Y = numeric only)
+  _renderMLChips(listVars, numVars);
 }
 
 function refreshHypoSelectors(type) {
   const isChi2  = type === 'chi2';
-  const isAnova = type === 'anova';
   const listVars = _getListVars();
   const numVars  = listVars.filter(v => !v._categorical);
   const catVars  = listVars.filter(v =>  v._categorical);
+  const hypo1Vars = isChi2 ? catVars : numVars;
 
-  const _fillSel = (id, vars) => {
-    const sel = document.getElementById(id); if (!sel) return;
-    const prev = sel.value;
-    sel.innerHTML = '<option value="">— select —</option>';
-    vars.forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v.id;
-      opt.textContent = v._categorical
-        ? `${v.name || `v${v.id}`}  [cat · ${v._labels.length} levels]`
-        : `${v.name || `v${v.id}`}  (n = ${v.listItems.length})`;
-      if (String(v.id) === String(prev)) opt.selected = true;
-      sel.appendChild(opt);
-    });
-  };
-  const _fillMulti = (id, vars) => {
-    const sel = document.getElementById(id); if (!sel) return;
-    const prevVals = Array.from(sel.selectedOptions).map(o => o.value);
-    sel.innerHTML = '';
-    vars.forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v.id;
-      opt.textContent = `${v.name || `v${v.id}`}  (n = ${v.listItems.length})`;
-      if (prevVals.includes(String(v.id))) opt.selected = true;
-      sel.appendChild(opt);
-    });
-  };
+  const rebuild = () => refreshHypoSelectors(document.getElementById('statsHypoType')?.value || type);
 
-  _fillSel('statsVar_hypo1', isChi2 ? catVars : numVars);
-  _fillSel('statsVar_hypo2', numVars);
-  _fillMulti('statsVar_hypoAnova', numVars);
+  // Prune stale selections
+  const validH1 = new Set(hypo1Vars.map(v => String(v.id)));
+  const validNum = new Set(numVars.map(v => String(v.id)));
+  if (_hypo1Selected && !validH1.has(_hypo1Selected)) _hypo1Selected = null;
+  if (_hypo2Selected && !validNum.has(_hypo2Selected)) _hypo2Selected = null;
+  for (const id of _hypoAnovaSelected) { if (!validNum.has(id)) _hypoAnovaSelected.delete(id); }
+
+  _buildChips('chips_hypo1', hypo1Vars, 'single', v => {
+    _hypo1Selected = String(v.id) === _hypo1Selected ? null : String(v.id);
+    rebuild();
+  }, id => String(id) === _hypo1Selected);
+
+  _buildChips('chips_hypo2', numVars, 'single', v => {
+    _hypo2Selected = String(v.id) === _hypo2Selected ? null : String(v.id);
+    rebuild();
+  }, id => String(id) === _hypo2Selected);
+
+  _buildMultiChips('chips_hypoAnova', numVars, _hypoAnovaSelected, rebuild);
+}
+
+// ─── Regression chip selectors ───────────────────────────────────────────────
+
+function _renderRegrChips(xVars, yVars) {
+  // xVars = all list vars (numeric + categorical), yVars = numeric only
+  const validXIds = new Set(xVars.map(v => String(v.id)));
+  const validYIds = new Set(yVars.map(v => String(v.id)));
+
+  // Prune stale selections
+  for (const id of _regrXSelected) { if (!validXIds.has(id)) _regrXSelected.delete(id); }
+  if (_regrYSelected && !validYIds.has(_regrYSelected)) _regrYSelected = null;
+
+  _buildChips('regrXChips', xVars, 'multi', v => {
+    const id = String(v.id);
+    if (_regrXSelected.has(id)) { _regrXSelected.delete(id); } else { _regrXSelected.add(id); }
+    _renderRegrChips(xVars, yVars);
+  }, id => _regrXSelected.has(String(id)));
+
+  _buildChips('regrYChips', yVars, 'single', v => {
+    _regrYSelected = String(v.id) === _regrYSelected ? null : String(v.id);
+    _renderRegrChips(xVars, yVars);
+  }, id => String(id) === _regrYSelected);
+}
+
+function _buildChips(containerId, vars, mode, onClick, isSelected) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = '';
+  if (!vars.length) {
+    el.innerHTML = '<span class="stats-chip-empty">No variables yet</span>';
+    return;
+  }
+  vars.forEach(v => {
+    const chip = document.createElement('button');
+    chip.className = 'stats-chip' + (isSelected(v.id) ? ' stats-chip-on' : '') + (v._categorical ? ' stats-chip-cat' : '');
+    const label = v.name || `v${v.id}`;
+    chip.innerHTML = v._categorical
+      ? `${label} <span class="stats-chip-cat-badge">cat</span>`
+      : label;
+    chip.title = v._categorical
+      ? `${label}  [categorical · ${(v._labels||[]).length} levels · will one-hot encode]`
+      : `${label}  (n = ${v.listItems.length})`;
+    chip.addEventListener('click', () => onClick(v));
+    el.appendChild(chip);
+  });
+}
+
+// ─── ML chip selectors ────────────────────────────────────────────────────────
+
+function _renderMLChips(xVars, yVars) {
+  // xVars = all list vars (numeric + categorical), yVars = numeric only
+  const validXIds = new Set(xVars.map(v => String(v.id)));
+  const validYIds = new Set(yVars.map(v => String(v.id)));
+
+  for (const id of _mlXSelected) { if (!validXIds.has(id)) _mlXSelected.delete(id); }
+  if (_mlYSelected && !validYIds.has(_mlYSelected)) _mlYSelected = null;
+
+  _buildChips('mlXChips', xVars, 'multi', v => {
+    const id = String(v.id);
+    if (_mlXSelected.has(id)) { _mlXSelected.delete(id); } else { _mlXSelected.add(id); }
+    _renderMLChips(xVars, yVars);
+  }, id => _mlXSelected.has(String(id)));
+
+  _buildChips('mlYChips', yVars, 'single', v => {
+    _mlYSelected = String(v.id) === _mlYSelected ? null : String(v.id);
+    _renderMLChips(xVars, yVars);
+  }, id => String(id) === _mlYSelected);
 }
 
 // ═══ HELPERS ═════════════════════════════════════════════════════════════════
@@ -231,11 +337,46 @@ function _getListVars() {
   return variables.filter(v => v.kind === 'list' && Array.isArray(v.listItems) && v.listItems.length > 0);
 }
 
+/**
+ * Expand a variable into one or more numeric columns.
+ * Numeric vars → [{data, name}].
+ * Categorical vars → one-hot dummy columns (reference category dropped).
+ */
+function _expandVar(v) {
+  if (!v._categorical) {
+    return [{ data: v.listItems.map(Number), name: v.name || `v${v.id}` }];
+  }
+  // Determine levels
+  const labels = (v._labels && v._labels.length) ? v._labels : [...new Set(v.listItems)];
+  if (labels.length < 2) {
+    // Degenerate — treat as single 0-col
+    return [{ data: v.listItems.map(() => 0), name: v.name || `v${v.id}` }];
+  }
+  // Drop first level (reference category); create dummy for each remaining level
+  return labels.slice(1).map(lbl => ({
+    data: v.listItems.map(val => (String(val) === String(lbl) ? 1 : 0)),
+    name: `${v.name || `v${v.id}`}[${lbl}]`,
+  }));
+}
+
 function _getVar(selId) {
   const sel = document.getElementById(selId);
   if (!sel || !sel.value) return null;
   if (typeof variables === 'undefined') return null;
   return variables.find(v => String(v.id) === String(sel.value)) || null;
+}
+
+// Lookup a variable by its chip state ID string
+function _chipVar(selectedId) {
+  if (!selectedId) return null;
+  if (typeof variables === 'undefined') return null;
+  return variables.find(v => String(v.id) === String(selectedId)) || null;
+}
+
+// Lookup multiple variables from a Set of IDs
+function _chipVars(selectedSet) {
+  if (typeof variables === 'undefined') return [];
+  return Array.from(selectedSet).map(id => variables.find(v => String(v.id) === id)).filter(Boolean);
 }
 
 function _statsLoading(el) {
@@ -285,7 +426,7 @@ function _axisStyle() {
 
 async function runDescribe() {
   const el = document.getElementById('statsResult_describe');
-  const v  = _getVar('statsVar_describe');
+  const v  = _chipVar(_describeSelected);
   if (!v) return _statsError(el, 'Select a variable first.');
 
   if (v._categorical && v._labels && v._labels.length) {
@@ -471,15 +612,27 @@ async function runHistogram() {
   const el      = document.getElementById('statsResult_hist');
   const type    = document.getElementById('statsHistType')?.value || 'histogram';
 
-  if (type === 'boxplot') {
-    return _runBoxplot(el);
-  }
+  if (type === 'boxplot') return _runBoxplot(el);
 
-  const v = _getVar('statsVar_histX');
+  const v = _chipVar(_histSingleSelected);
   if (!v) return _statsError(el, 'Select a variable first.');
 
-  if (v._categorical && v._labels && v._labels.length) {
+  if (v._categorical && v._labels && v._labels.length && type === 'histogram') {
     _renderCatFreqBar(el, v);
+    return;
+  }
+
+  if (type === 'qqplot') {
+    _statsLoading(el);
+    try {
+      const data = await _statsPost('qqplot', { data: v.listItems });
+      _renderQQPlot(el, data, v.name || `v${v.id}`);
+    } catch(e) { _statsError(el, e.message); }
+    return;
+  }
+
+  if (type === 'ecdf') {
+    _renderECDF(el, v);
     return;
   }
 
@@ -660,17 +813,111 @@ function _renderViolin(el, data, varName) {
   });
 }
 
-async function _runBoxplot(el) {
-  const sel = document.getElementById('statsVar_boxMulti');
-  if (!sel) return _statsError(el, 'No variable selector found.');
-  const selectedIds = Array.from(sel.selectedOptions).map(o => o.value);
-  if (!selectedIds.length) return _statsError(el, 'Select at least one variable (Ctrl/⌘+click for multiple).');
+function _renderQQPlot(el, data, varName) {
+  el.innerHTML = `
+    <div class="stats-res-header">Q-Q Plot — <span class="stats-varname">${varName}</span>
+      <span class="stats-fit-r2">Shapiro-Wilk p = ${_fmtP(data.sw_p)}</span>
+      <span class="stats-fit-rmse ${data.sw_p < 0.05 ? 'rmse-warn' : ''}">
+        ${data.sw_p < 0.05 ? 'Non-normal' : 'Approx. normal'}
+      </span>
+    </div>
+    <div class="stats-chart-wrap"><canvas id="statsCanvas_hist"></canvas></div>
+    <div class="stats-chart-meta">
+      Points close to the reference line indicate normality.
+      Systematic departures suggest skewness or heavy tails.
+    </div>`;
 
-  const allVars = typeof variables !== 'undefined' ? variables : [];
+  _destroyChart('hist');
+  const ctx = document.getElementById('statsCanvas_hist').getContext('2d');
+  _statsCharts['hist'] = new Chart(ctx, {
+    type: 'scatter',
+    data: {
+      datasets: [
+        {
+          label: 'Sample quantiles',
+          data: data.theoretical.map((x, i) => ({ x, y: data.sample[i] })),
+          backgroundColor: 'rgba(90,255,206,0.65)', borderColor: '#5affce', pointRadius: 3.5,
+        },
+        {
+          label: 'Reference line',
+          data: [{ x: data.line_x[0], y: data.line_y[0] }, { x: data.line_x[1], y: data.line_y[1] }],
+          type: 'line', borderColor: 'rgba(212,255,90,0.7)', borderWidth: 2,
+          borderDash: [6, 3], pointRadius: 0, fill: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, parsing: false,
+      scales: {
+        x: { ..._axisStyle(), title: { display: true, text: 'Theoretical quantiles (Normal)', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+        y: { ..._axisStyle(), title: { display: true, text: `Sample quantiles — ${varName}`, color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+      },
+      plugins: { legend: { labels: { color: '#c0c0e0', font: { family: 'IBM Plex Mono', size: 11 } } } },
+    },
+  });
+}
+
+function _renderECDF(el, v) {
+  const varName = v.name || `v${v.id}`;
+  const sorted  = [...v.listItems].filter(x => x !== null && isFinite(x)).sort((a, b) => a - b);
+  const n       = sorted.length;
+  if (!n) return _statsError(el, 'No finite values in variable.');
+
+  // Build step-function points: each x appears twice (before and after the step)
+  const pts = [];
+  sorted.forEach((x, i) => {
+    pts.push({ x, y: i / n });       // just before step
+    pts.push({ x, y: (i + 1) / n }); // after step
+  });
+
+  el.innerHTML = `
+    <div class="stats-res-header">ECDF — <span class="stats-varname">${varName}</span>
+      <span class="stats-fit-r2">n = ${n}</span>
+    </div>
+    <div class="stats-chart-wrap"><canvas id="statsCanvas_hist"></canvas></div>
+    <div class="stats-chart-meta">
+      Empirical Cumulative Distribution Function. Each step represents one observation.
+    </div>`;
+
+  _destroyChart('hist');
+  const ctx = document.getElementById('statsCanvas_hist').getContext('2d');
+  _statsCharts['hist'] = new Chart(ctx, {
+    type: 'scatter',
+    data: {
+      datasets: [
+        {
+          label: `ECDF — ${varName}`,
+          data: pts,
+          showLine: true,
+          borderColor: '#5affce', borderWidth: 2,
+          backgroundColor: 'rgba(90,255,206,0.08)',
+          pointRadius: 0, tension: 0, fill: true,
+          stepped: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, parsing: false,
+      scales: {
+        x: { ..._axisStyle(), title: { display: true, text: varName, color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+        y: {
+          ..._axisStyle(),
+          title: { display: true, text: 'Cumulative proportion', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } },
+          min: 0, max: 1,
+        },
+      },
+      plugins: { legend: { display: false } },
+    },
+  });
+}
+
+async function _runBoxplot(el) {
+  const selectedVars = _chipVars(_histBoxSelected);
+  if (!selectedVars.length) return _statsError(el, 'Select at least one variable.');
+
   const payload = {};
-  selectedIds.forEach(id => {
-    const v = allVars.find(v => String(v.id) === id);
-    if (v && !v._categorical) payload[v.name || `v${v.id}`] = v.listItems;
+  selectedVars.forEach(v => {
+    if (!v._categorical) payload[v.name || `v${v.id}`] = v.listItems;
   });
 
   _statsLoading(el);
@@ -787,8 +1034,8 @@ function _renderBoxplot(el, boxplots) {
 
 async function runCurveFit() {
   const el   = document.getElementById('statsResult_fit');
-  const xVar = _getVar('statsVar_fitX');
-  const yVar = _getVar('statsVar_fitY');
+  const xVar = _chipVar(_fitXSelected);
+  const yVar = _chipVar(_fitYSelected);
   if (!xVar || !yVar) return _statsError(el, 'Select both X and Y variables.');
 
   const fitType = document.getElementById('statsFitType').value;
@@ -915,18 +1162,12 @@ function _renderCurveFit(el, data, xName, yName, fitType, formula) {
 // ═══ CORRELATION ══════════════════════════════════════════════════════════════
 
 async function runCorrelation() {
-  const el      = document.getElementById('statsResult_corr');
-  const corrSel = document.getElementById('statsVar_corrMulti');
-  if (!corrSel) return;
-  const selectedIds = Array.from(corrSel.selectedOptions).map(o => o.value);
-  if (selectedIds.length < 2) return _statsError(el, 'Select at least 2 variables (Ctrl+click or Cmd+click).');
+  const el       = document.getElementById('statsResult_corr');
+  const selVars  = _chipVars(_corrSelected);
+  if (selVars.length < 2) return _statsError(el, 'Select at least 2 variables.');
 
-  const allVars = typeof variables !== 'undefined' ? variables : [];
   const payload = {};
-  selectedIds.forEach(id => {
-    const v = allVars.find(v => String(v.id) === id);
-    if (v) payload[v.name || `v${v.id}`] = v.listItems;
-  });
+  selVars.forEach(v => { payload[v.name || `v${v.id}`] = v.listItems; });
 
   _statsLoading(el);
   try {
@@ -980,33 +1221,28 @@ async function runHypothesis() {
     let payload = { type };
 
     if (type === 'ttest_1samp') {
-      const v = _getVar('statsVar_hypo1');
+      const v = _chipVar(_hypo1Selected);
       if (!v) return _statsError(el, 'Select a variable.');
       payload.data = v.listItems;
       payload.mu0  = parseFloat(document.getElementById('statsHypoMu0')?.value) || 0;
 
     } else if (type === 'ttest_2samp' || type === 'ttest_paired' || type === 'ks' || type === 'mannwhitney') {
-      const v1 = _getVar('statsVar_hypo1');
-      const v2 = _getVar('statsVar_hypo2');
+      const v1 = _chipVar(_hypo1Selected);
+      const v2 = _chipVar(_hypo2Selected);
       if (!v1 || !v2) return _statsError(el, 'Select two variables.');
       payload.data1 = v1.listItems;
       payload.data2 = v2.listItems;
 
     } else if (type === 'anova') {
-      const sel = document.getElementById('statsVar_hypoAnova');
-      const ids = Array.from(sel?.selectedOptions || []).map(o => o.value);
-      if (ids.length < 2) return _statsError(el, 'Select at least 2 groups (Ctrl+click).');
-      const allVars = typeof variables !== 'undefined' ? variables : [];
-      payload.groups = ids.map(id => {
-        const v = allVars.find(v => String(v.id) === id);
-        return v ? v.listItems : [];
-      });
+      const anovaVars = _chipVars(_hypoAnovaSelected);
+      if (anovaVars.length < 2) return _statsError(el, 'Select at least 2 groups.');
+      payload.groups = anovaVars.map(v => v.listItems);
 
     } else if (type === 'chi2') {
-      const v = _getVar('statsVar_hypo1');
+      const v = _chipVar(_hypo1Selected);
       if (!v) return _statsError(el, 'Select a categorical variable.');
       if (!v._categorical) return _statsError(el, 'Chi-squared requires a categorical variable.');
-      payload.observed = v.listItems; // frequency counts
+      payload.observed = v.listItems;
 
     } else {
       return _statsError(el, `Unknown test type: ${type}`);
@@ -1120,7 +1356,7 @@ function _hypoInterpretation(d, type) {
 
 async function runPreprocess() {
   const el = document.getElementById('statsResult_preprocess');
-  const v  = _getVar('statsVar_preprocess');
+  const v  = _chipVar(_prepSelected);
   if (!v) return _statsError(el, 'Select a numeric variable first.');
 
   const op       = document.getElementById('statsPrepOp')?.value || 'normalize';
@@ -1320,4 +1556,823 @@ function _downloadAllCsv() {
     rows.push(numVars.map(v => r < v.listItems.length ? (v.listItems[r] ?? '') : '').join(','));
   }
   _triggerDownload(header + '\n' + rows.join('\n'), 'plotforge_data.csv', 'text/csv');
+}
+
+// ═══ REGRESSION ═══════════════════════════════════════════════════════════════
+
+async function runRegression() {
+  const el   = document.getElementById('statsResult_regression');
+  const type = document.getElementById('statsRegrType')?.value || 'linear';
+
+  const selectedXIds = Array.from(_regrXSelected);
+  if (!selectedXIds.length) return _statsError(el, 'Select at least one feature variable (X).');
+  if (!_regrYSelected)      return _statsError(el, 'Select a target variable (Y).');
+
+  const allVars = typeof variables !== 'undefined' ? variables : [];
+  const xVars   = selectedXIds.map(id => allVars.find(v => String(v.id) === id)).filter(Boolean);
+  const yVar    = allVars.find(v => String(v.id) === _regrYSelected);
+  if (!yVar) return _statsError(el, 'Target variable not found — please reselect.');
+
+  if (xVars.some(v => v.id === yVar.id)) {
+    return _statsError(el, 'Y (target) cannot also be an X (feature).');
+  }
+
+  const threshold = parseFloat(document.getElementById('statsRegrThresh')?.value) || 0.5;
+
+  // Expand X variables (one-hot encode categoricals)
+  const xExpanded = xVars.flatMap(v => _expandVar(v));
+  const xNames    = xExpanded.map(c => c.name);
+
+  _statsLoading(el);
+  try {
+    const data = await _statsPost('regression', {
+      type,
+      X: xExpanded.map(c => c.data),
+      y: yVar.listItems,
+      threshold,
+    });
+    _renderRegression(el, data, xNames, yVar.name || `v${yVar.id}`);
+  } catch(e) { _statsError(el, e.message); }
+}
+
+function _renderRegression(el, data, xNames, yName) {
+  if (data.type === 'linear')   _renderLinearRegression(el, data, xNames, yName);
+  else                          _renderLogisticRegression(el, data, xNames, yName);
+}
+
+function _renderLinearRegression(el, data, xNames, yName) {
+  const eqParts = xNames.map((n, i) => `${_fmtNum(data.coef[i])}·${n}`);
+  const eqStr   = `${yName} = ${eqParts.join(' + ')} + ${_fmtNum(data.intercept)}`;
+  const adjR2   = 1 - (1 - data.r2) * (data.n - 1) / Math.max(1, data.n - data.p - 1);
+
+  const coefRows = xNames.map((n, i) => {
+    const b   = data.coef[i];
+    const se  = data.coef_se?.[i];
+    const t   = data.t_stats?.[i];
+    const p   = data.p_values?.[i];
+    const sig = (p != null && p < 0.001) ? '★★★' : (p != null && p < 0.01) ? '★★' : (p != null && p < 0.05) ? '★' : '';
+    return `<tr>
+      <td class="data-td" style="text-align:left;color:var(--acc2);font-weight:600">${n}</td>
+      <td class="data-td">${_fmtNum(b)}</td>
+      <td class="data-td">${se != null ? _fmtNum(se) : '—'}</td>
+      <td class="data-td">${t  != null ? _fmtNum(t)  : '—'}</td>
+      <td class="data-td">${p  != null ? _fmtP(p)    : '—'} <span style="color:var(--acc);font-size:.75em">${sig}</span></td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="stats-res-header">Linear Regression — <span class="stats-varname">${yName}</span>
+      <span class="stats-fit-r2">R² = ${data.r2.toFixed(5)}</span>
+      <span class="stats-fit-rmse">RMSE = ${_fmtNum(data.rmse)}</span>
+    </div>
+    <div class="regr-eq-wrap"><span class="regr-eq">${eqStr}</span></div>
+    <div class="stats-desc-layout" style="margin-top:12px">
+      <div class="stats-table-card" style="flex:2;min-width:0">
+        <div class="stats-section-lbl">Coefficients</div>
+        <div class="data-table-wrap" style="max-height:200px">
+          <table class="data-table">
+            <thead><tr>
+              <th class="data-th" style="text-align:left">Variable</th>
+              <th class="data-th">Coef</th>
+              <th class="data-th">Std Err</th>
+              <th class="data-th">t-stat</th>
+              <th class="data-th">p-value</th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td class="data-td" style="text-align:left;color:var(--muted)">Intercept</td>
+                <td class="data-td">${_fmtNum(data.intercept)}</td>
+                <td class="data-td">—</td><td class="data-td">—</td><td class="data-td">—</td>
+              </tr>
+              ${coefRows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="stats-table-card" style="min-width:180px">
+        <div class="stats-section-lbl">Model Summary</div>
+        <div class="stats-row stats-row-hi"><span class="stats-lbl">R²</span><span class="stats-val">${data.r2.toFixed(6)}</span></div>
+        <div class="stats-row"><span class="stats-lbl">Adj. R²</span><span class="stats-val">${adjR2.toFixed(6)}</span></div>
+        <div class="stats-row"><span class="stats-lbl">RMSE</span><span class="stats-val">${_fmtNum(data.rmse)}</span></div>
+        <div class="stats-row"><span class="stats-lbl">n</span><span class="stats-val">${data.n}</span></div>
+        <div class="stats-row"><span class="stats-lbl">Features (p)</span><span class="stats-val">${data.p}</span></div>
+        <div class="stats-divider"></div>
+        <div class="stats-section-lbl">Significance</div>
+        <div class="stats-row"><span class="stats-lbl" style="color:var(--acc)">★ p &lt; 0.05</span></div>
+        <div class="stats-row"><span class="stats-lbl" style="color:var(--acc)">★★ p &lt; 0.01</span></div>
+        <div class="stats-row"><span class="stats-lbl" style="color:var(--acc)">★★★ p &lt; 0.001</span></div>
+      </div>
+    </div>
+    <div class="stats-res-header" style="margin-top:20px">Actual vs Predicted</div>
+    <div class="stats-chart-wrap stats-chart-small"><canvas id="statsCanvas_regrFit"></canvas></div>
+    <div class="stats-res-header" style="margin-top:16px">Residuals</div>
+    <div class="stats-chart-wrap stats-chart-small"><canvas id="statsCanvas_regrResid"></canvas></div>`;
+
+  _destroyChart('regrFit'); _destroyChart('regrResid');
+
+  const fitCtx = document.getElementById('statsCanvas_regrFit')?.getContext('2d');
+  if (fitCtx) {
+    const mn = Math.min(...data.y_pred, ...data.y_orig);
+    const mx = Math.max(...data.y_pred, ...data.y_orig);
+    _statsCharts['regrFit'] = new Chart(fitCtx, {
+      type: 'scatter',
+      data: {
+        datasets: [
+          {
+            label: 'Actual vs Predicted',
+            data: data.y_orig.map((y, i) => ({ x: data.y_pred[i], y })),
+            backgroundColor: 'rgba(90,255,206,0.5)', borderColor: '#5affce', pointRadius: 3,
+          },
+          {
+            label: 'Perfect fit',
+            data: [{ x: mn, y: mn }, { x: mx, y: mx }],
+            type: 'line', borderColor: 'rgba(212,255,90,0.45)', borderDash: [5, 3],
+            borderWidth: 1.5, pointRadius: 0, fill: false,
+          },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, parsing: false,
+        scales: {
+          x: { ..._axisStyle(), title: { display: true, text: 'Predicted', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+          y: { ..._axisStyle(), title: { display: true, text: 'Actual',    color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+        },
+        plugins: { legend: { labels: { color: '#c0c0e0', font: { family: 'IBM Plex Mono', size: 11 } } } },
+      },
+    });
+  }
+
+  const residCtx = document.getElementById('statsCanvas_regrResid')?.getContext('2d');
+  if (residCtx) {
+    const mn = Math.min(...data.y_pred), mx = Math.max(...data.y_pred);
+    _statsCharts['regrResid'] = new Chart(residCtx, {
+      type: 'scatter',
+      data: {
+        datasets: [
+          {
+            label: 'Residuals',
+            data: data.y_pred.map((yp, i) => ({ x: yp, y: data.residuals[i] })),
+            backgroundColor: 'rgba(255,111,170,0.5)', borderColor: '#ff6faa', pointRadius: 3,
+          },
+          {
+            label: 'Zero',
+            data: [{ x: mn, y: 0 }, { x: mx, y: 0 }],
+            type: 'line', borderColor: 'rgba(255,255,255,0.2)', borderDash: [5, 5],
+            borderWidth: 1, pointRadius: 0, fill: false,
+          },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, parsing: false,
+        scales: {
+          x: { ..._axisStyle(), title: { display: true, text: 'Predicted', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+          y: { ..._axisStyle(), title: { display: true, text: 'Residual',  color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+        },
+        plugins: { legend: { display: false } },
+      },
+    });
+  }
+}
+
+function _renderLogisticRegression(el, data, xNames, yName) {
+  const coefRows = xNames.map((n, i) => `<tr>
+    <td class="data-td" style="text-align:left;color:var(--acc2);font-weight:600">${n}</td>
+    <td class="data-td">${_fmtNum(data.coef[i])}</td>
+    <td class="data-td">${_fmtNum(Math.exp(data.coef[i]))}</td>
+  </tr>`).join('');
+
+  const [[tn, fp], [fn, tp]] = data.confusion_matrix;
+  const cls0 = _fmtNum(data.classes[0]);
+  const cls1 = _fmtNum(data.classes[1]);
+
+  el.innerHTML = `
+    <div class="stats-res-header">Logistic Regression — <span class="stats-varname">${yName}</span>
+      <span class="stats-fit-r2">Accuracy = ${(data.accuracy * 100).toFixed(2)}%</span>
+      <span class="stats-fit-rmse">F1 = ${_fmtNum(data.f1)}</span>
+    </div>
+    <div class="stats-desc-layout" style="margin-top:12px">
+      <div class="stats-table-card" style="flex:2;min-width:0">
+        <div class="stats-section-lbl">Coefficients</div>
+        <div class="data-table-wrap" style="max-height:200px">
+          <table class="data-table">
+            <thead><tr>
+              <th class="data-th" style="text-align:left">Variable</th>
+              <th class="data-th">Coef (log-odds)</th>
+              <th class="data-th">Odds Ratio</th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td class="data-td" style="text-align:left;color:var(--muted)">Intercept</td>
+                <td class="data-td">${_fmtNum(data.intercept)}</td>
+                <td class="data-td">${_fmtNum(Math.exp(data.intercept))}</td>
+              </tr>
+              ${coefRows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="stats-table-card" style="min-width:180px">
+        <div class="stats-section-lbl">Performance</div>
+        <div class="stats-row stats-row-hi"><span class="stats-lbl">Accuracy</span><span class="stats-val">${(data.accuracy * 100).toFixed(2)}%</span></div>
+        <div class="stats-row"><span class="stats-lbl">Precision</span><span class="stats-val">${_fmtNum(data.precision)}</span></div>
+        <div class="stats-row"><span class="stats-lbl">Recall</span><span class="stats-val">${_fmtNum(data.recall)}</span></div>
+        <div class="stats-row stats-row-hi"><span class="stats-lbl">F1 Score</span><span class="stats-val">${_fmtNum(data.f1)}</span></div>
+        <div class="stats-divider"></div>
+        <div class="stats-row"><span class="stats-lbl">n</span><span class="stats-val">${data.n}</span></div>
+        <div class="stats-row"><span class="stats-lbl">Threshold</span><span class="stats-val">${data.threshold}</span></div>
+      </div>
+    </div>
+    <div class="stats-res-header" style="margin-top:16px">Confusion Matrix
+      <span style="font-size:.68rem;color:var(--muted);font-weight:400">&nbsp;·&nbsp;threshold = ${data.threshold}</span>
+    </div>
+    <div class="regr-confmat-wrap">
+      <table class="regr-confmat">
+        <thead>
+          <tr><th></th><th class="regr-confmat-hdr">Pred: ${cls0}</th><th class="regr-confmat-hdr">Pred: ${cls1}</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th class="regr-confmat-row-hdr">Actual: ${cls0}</th>
+            <td class="regr-confmat-cell regr-confmat-tn">${tn}<span class="regr-confmat-lbl">TN</span></td>
+            <td class="regr-confmat-cell regr-confmat-fp">${fp}<span class="regr-confmat-lbl">FP</span></td>
+          </tr>
+          <tr>
+            <th class="regr-confmat-row-hdr">Actual: ${cls1}</th>
+            <td class="regr-confmat-cell regr-confmat-fn">${fn}<span class="regr-confmat-lbl">FN</span></td>
+            <td class="regr-confmat-cell regr-confmat-tp">${tp}<span class="regr-confmat-lbl">TP</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stats-res-header" style="margin-top:16px">Predicted Probability Distribution</div>
+    <div class="stats-chart-wrap stats-chart-small"><canvas id="statsCanvas_logit"></canvas></div>`;
+
+  _destroyChart('logit');
+  const ctx = document.getElementById('statsCanvas_logit')?.getContext('2d');
+  if (ctx) {
+    const mkHist = (arr, bins = 20) => {
+      if (!arr.length) return { centers: [], counts: [] };
+      const step = 1 / bins;
+      const counts = Array(bins).fill(0);
+      arr.forEach(x => { const b = Math.min(Math.floor(x / step), bins - 1); counts[b]++; });
+      return { centers: Array.from({ length: bins }, (_, i) => (i + 0.5) * step), counts };
+    };
+    const neg = data.y_proba.filter((_, i) => data.y_orig[i] === 0);
+    const pos = data.y_proba.filter((_, i) => data.y_orig[i] === 1);
+    const negH = mkHist(neg), posH = mkHist(pos);
+    _statsCharts['logit'] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: negH.centers.map(c => c.toFixed(2)),
+        datasets: [
+          { label: `Class ${cls0}`, data: negH.counts, backgroundColor: 'rgba(255,111,170,0.45)', borderColor: '#ff6faa', borderWidth: 1 },
+          { label: `Class ${cls1}`, data: posH.counts, backgroundColor: 'rgba(90,255,206,0.45)', borderColor: '#5affce', borderWidth: 1 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { ..._axisStyle(), title: { display: true, text: 'Predicted probability', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+          y: { ..._axisStyle(), title: { display: true, text: 'Count', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+        },
+        plugins: { legend: { labels: { color: '#c0c0e0', font: { family: 'IBM Plex Mono', size: 11 } } } },
+      },
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ML MODELS TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function runML() {
+  const model = document.getElementById('statsMLModel')?.value;
+  if (!model) return;
+
+  const allVars    = _getListVars();
+  const numVars    = allVars.filter(v => !v._categorical);
+  const supervised = !['kmeans', 'pca'].includes(model);
+
+  const xIds = Array.from(_mlXSelected);
+  if (!xIds.length) { alert('Select at least one feature (X).'); return; }
+
+  // Look up selected X vars from ALL vars (numeric + categorical)
+  const xVars = xIds.map(id => allVars.find(v => String(v.id) === id)).filter(Boolean);
+  if (!xVars.length) return;
+
+  // Expand / one-hot encode X
+  const xExpanded = xVars.flatMap(v => _expandVar(v));
+  const xNames    = xExpanded.map(c => c.name);
+
+  let yVar  = null;
+  let yName = null;
+  if (supervised) {
+    if (!_mlYSelected) { alert('Select a target variable (Y).'); return; }
+    yVar  = numVars.find(v => String(v.id) === _mlYSelected);
+    if (!yVar) return;
+    yName = yVar.name || `v${yVar.id}`;
+  }
+
+  const out = document.getElementById('statsResult_ml');
+  const prog = _startMLProgress(model, xExpanded[0]?.data?.length || 100,
+    xExpanded.length, parseInt(document.getElementById('statsMLNEstim')?.value) || 100,
+    parseInt(document.getElementById('statsMLCV')?.value) || 5);
+
+  const payload = {
+    model,
+    task:         document.getElementById('statsMLTask')?.value || 'classification',
+    n_estimators: parseInt(document.getElementById('statsMLNEstim')?.value)    || 100,
+    max_depth:    parseInt(document.getElementById('statsMLMaxDepth')?.value)  || null,
+    n_neighbors:  parseInt(document.getElementById('statsMLKNeigh')?.value)    || 5,
+    n_clusters:   parseInt(document.getElementById('statsMLNClusters')?.value) || 3,
+    n_components: parseInt(document.getElementById('statsMLNComp')?.value)     || 2,
+    cv_folds:     parseInt(document.getElementById('statsMLCV')?.value)        || 5,
+    X:       xExpanded.map(c => c.data),
+    y:       yVar ? yVar.listItems : null,
+    x_names: xNames,
+    y_name:  yName,
+  };
+
+  try {
+    const data = await _statsPost('ml', payload);
+    prog.cancel();
+    _finishMLProgress(out);
+    await new Promise(r => setTimeout(r, 150)); // brief flash of 100%
+    if (out) { out.innerHTML = ''; _renderMLResult(out, data, payload); }
+  } catch (e) {
+    prog.cancel();
+    _statsError(out, e.message);
+  }
+}
+
+// ── ML progress bar helpers ───────────────────────────────────────────────────
+
+function _startMLProgress(model, n, p, nEstimators, cvFolds) {
+  // Rough ms-per-obs estimates calibrated for sklearn default settings
+  const msPerObs = { random_forest: 0.6, gradient_boosting: 1.2, decision_tree: 0.08,
+                     knn: 0.04, svm: 1.8, kmeans: 0.25, pca: 0.06 };
+  const rate = msPerObs[model] || 0.5;
+  // For ensemble models, cost scales with n_estimators and CV folds
+  const ensembleMult = ['random_forest','gradient_boosting'].includes(model) ? (nEstimators / 100) * cvFolds : cvFolds;
+  const estMs = Math.min(Math.max(rate * n * ensembleMult, 400), 120000);
+
+  const out = document.getElementById('statsResult_ml');
+  if (out) out.innerHTML = `
+    <div class="ml-progress-wrap">
+      <div class="ml-progress-label">Training <span class="ml-progress-model">${_mlModelLabel(model)}</span>…</div>
+      <div class="ml-progress-bar-track"><div class="ml-progress-bar" id="mlProgressBar"></div></div>
+      <div class="ml-progress-detail">
+        <span class="ml-progress-pct" id="mlProgressPct">0%</span>
+        <span class="ml-progress-eta" id="mlProgressEta">Estimating…</span>
+      </div>
+    </div>`;
+
+  const startTime = Date.now();
+  let rafId = null;
+
+  function tick() {
+    const elapsed = Date.now() - startTime;
+    // Asymptotic fill: reaches 90% at ~estMs, never hits 100% until done
+    const pct = 90 * (1 - Math.exp(-3 * elapsed / estMs));
+    const bar  = document.getElementById('mlProgressBar');
+    const pctEl = document.getElementById('mlProgressPct');
+    const etaEl = document.getElementById('mlProgressEta');
+    if (bar)   bar.style.width = pct.toFixed(1) + '%';
+    if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+    if (etaEl) {
+      const remaining = Math.max(0, estMs - elapsed);
+      etaEl.textContent = elapsed < 600 ? 'Estimating…'
+        : remaining < 1000 ? 'Almost done…'
+        : `~${(remaining / 1000).toFixed(1)}s remaining`;
+    }
+    if (pct < 89.5) rafId = requestAnimationFrame(tick);
+  }
+  rafId = requestAnimationFrame(tick);
+  return { cancel: () => { if (rafId) cancelAnimationFrame(rafId); rafId = null; } };
+}
+
+function _finishMLProgress(out) {
+  const bar   = document.getElementById('mlProgressBar');
+  const pctEl = document.getElementById('mlProgressPct');
+  const etaEl = document.getElementById('mlProgressEta');
+  if (bar)   { bar.style.transition = 'width 0.15s ease-out'; bar.style.width = '100%'; }
+  if (pctEl) pctEl.textContent = '100%';
+  if (etaEl) etaEl.textContent = 'Done';
+}
+
+function _renderMLResult(el, data, payload) {
+  const xNames = payload.x_names || [];
+  const yName  = payload.y_name  || '';
+  if (data.model === 'kmeans')  { _renderKMeans(el, data, xNames); return; }
+  if (data.model === 'pca')     { _renderPCA(el, data, xNames); return; }
+  if (payload.task === 'classification') { _renderMLClassification(el, data, xNames, yName); }
+  else                                   { _renderMLRegression(el, data, xNames, yName); }
+}
+
+// ── Classification results ────────────────────────────────────────────────────
+
+function _renderMLClassification(el, data, xNames, yName) {
+  const modelLabel = _mlModelLabel(data.model || '');
+  const cls0 = data.classes ? String(data.classes[0]) : '0';
+  const cls1 = data.classes ? String(data.classes[1]) : '1';
+  const cm = data.confusion_matrix || [[0,0],[0,0]];
+  const [[tn, fp], [fn, tp]] = cm;
+  const fi = data.feature_importance || [];
+  const cv = data.cv_scores || [];
+  const roc = data.roc || null;
+  // Compute precision / recall / F1 from confusion matrix
+  const precision = tp + fp > 0 ? tp / (tp + fp) : 0;
+  const recall    = tp + fn > 0 ? tp / (tp + fn) : 0;
+  const f1        = precision + recall > 0 ? 2 * precision * recall / (precision + recall) : 0;
+
+  const fiRows = fi.map((imp, i) => `<tr>
+    <td class="data-td" style="text-align:left;color:var(--acc2)">${xNames[i] || `f${i}`}</td>
+    <td class="data-td">${_fmtNum(imp)}</td>
+    <td class="data-td" style="padding:0 4px"><div class="ml-fi-bar" style="width:${Math.round(imp * 100)}%"></div></td>
+  </tr>`).join('');
+
+  el.innerHTML = `
+    <div class="stats-res-header">${modelLabel} — <span class="stats-varname">${yName}</span>
+      <span class="stats-fit-r2">Accuracy = ${(data.accuracy * 100).toFixed(2)}%</span>
+    </div>
+    <div class="stats-desc-layout" style="margin-top:12px">
+      <div class="stats-table-card">
+        <div class="stats-section-lbl">Performance</div>
+        <div class="stats-row stats-row-hi"><span class="stats-lbl">Accuracy</span><span class="stats-val">${(data.accuracy * 100).toFixed(2)}%</span></div>
+        <div class="stats-row"><span class="stats-lbl">Precision</span><span class="stats-val">${_fmtNum(precision)}</span></div>
+        <div class="stats-row"><span class="stats-lbl">Recall</span><span class="stats-val">${_fmtNum(recall)}</span></div>
+        <div class="stats-row stats-row-hi"><span class="stats-lbl">F1 Score</span><span class="stats-val">${_fmtNum(f1)}</span></div>
+        <div class="stats-divider"></div>
+        ${cv.length ? `<div class="stats-row"><span class="stats-lbl">CV Mean</span><span class="stats-val">${_fmtNum(cv.reduce((a,b)=>a+b)/cv.length)}</span></div>
+        <div class="stats-section-lbl" style="margin-top:8px">CV Fold Scores</div>
+        <div class="ml-cv-chips">${cv.map((s,i)=>`<span class="ml-cv-chip">F${i+1}: ${_fmtNum(s)}</span>`).join('')}</div>` : ''}
+      </div>
+      ${fi.length ? `<div class="stats-table-card" style="flex:2;min-width:0">
+        <div class="stats-section-lbl">Feature Importance</div>
+        <div class="data-table-wrap" style="max-height:200px">
+          <table class="data-table">
+            <thead><tr><th class="data-th" style="text-align:left">Feature</th><th class="data-th">Importance</th><th class="data-th" style="min-width:80px"></th></tr></thead>
+            <tbody>${fiRows}</tbody>
+          </table>
+        </div>
+      </div>` : ''}
+    </div>
+    <div class="stats-res-header" style="margin-top:16px">Confusion Matrix</div>
+    <div class="regr-confmat-wrap">
+      <table class="regr-confmat">
+        <thead><tr><th></th><th class="regr-confmat-hdr">Pred: ${cls0}</th><th class="regr-confmat-hdr">Pred: ${cls1}</th></tr></thead>
+        <tbody>
+          <tr><th class="regr-confmat-row-hdr">Actual: ${cls0}</th>
+            <td class="regr-confmat-cell regr-confmat-tn">${tn}<span class="regr-confmat-lbl">TN</span></td>
+            <td class="regr-confmat-cell regr-confmat-fp">${fp}<span class="regr-confmat-lbl">FP</span></td>
+          </tr>
+          <tr><th class="regr-confmat-row-hdr">Actual: ${cls1}</th>
+            <td class="regr-confmat-cell regr-confmat-fn">${fn}<span class="regr-confmat-lbl">FN</span></td>
+            <td class="regr-confmat-cell regr-confmat-tp">${tp}<span class="regr-confmat-lbl">TP</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    ${roc ? `
+    <div class="stats-desc-layout" style="margin-top:16px">
+      <div style="flex:1;min-width:0">
+        <div class="stats-res-header">ROC Curve <span class="stats-fit-r2">AUC = ${_fmtNum(roc.auc)}</span></div>
+        <div class="stats-chart-wrap stats-chart-small"><canvas id="statsCanvas_mlRoc"></canvas></div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="stats-res-header">Precision-Recall Curve <span class="stats-fit-r2">AP = ${_fmtNum(roc.pr_auc)}</span></div>
+        <div class="stats-chart-wrap stats-chart-small"><canvas id="statsCanvas_mlPr"></canvas></div>
+      </div>
+    </div>` : ''}`;
+
+  if (roc) {
+    _destroyChart('mlRoc');
+    const ctx = document.getElementById('statsCanvas_mlRoc')?.getContext('2d');
+    if (ctx) {
+      _statsCharts['mlRoc'] = new Chart(ctx, {
+        type: 'scatter',
+        data: { datasets: [
+          { label: 'ROC', data: roc.fpr.map((x,i) => ({ x, y: roc.tpr[i] })), showLine: true, borderColor: '#5affce', borderWidth: 2, pointRadius: 0, fill: false },
+          { label: 'Random', data: [{ x:0, y:0 }, { x:1, y:1 }], showLine: true, borderColor: 'rgba(255,255,255,0.2)', borderDash: [5,5], borderWidth: 1, pointRadius: 0, fill: false },
+        ]},
+        options: {
+          responsive: true, maintainAspectRatio: false, parsing: false,
+          scales: {
+            x: { ..._axisStyle(), min: 0, max: 1, title: { display: true, text: 'FPR', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+            y: { ..._axisStyle(), min: 0, max: 1, title: { display: true, text: 'TPR', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+          },
+          plugins: { legend: { display: false } },
+        },
+      });
+    }
+    _destroyChart('mlPr');
+    const ctx2 = document.getElementById('statsCanvas_mlPr')?.getContext('2d');
+    if (ctx2 && roc.precision) {
+      _statsCharts['mlPr'] = new Chart(ctx2, {
+        type: 'scatter',
+        data: { datasets: [
+          { label: 'PR', data: roc.recall.map((x,i) => ({ x, y: roc.precision[i] })), showLine: true, borderColor: '#ff6faa', borderWidth: 2, pointRadius: 0, fill: false },
+        ]},
+        options: {
+          responsive: true, maintainAspectRatio: false, parsing: false,
+          scales: {
+            x: { ..._axisStyle(), min: 0, max: 1, title: { display: true, text: 'Recall', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+            y: { ..._axisStyle(), min: 0, max: 1, title: { display: true, text: 'Precision', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+          },
+          plugins: { legend: { display: false } },
+        },
+      });
+    }
+  }
+}
+
+// ── Regression results ────────────────────────────────────────────────────────
+
+function _renderMLRegression(el, data, xNames, yName) {
+  const modelLabel = _mlModelLabel(data.model || '');
+  const fi = data.feature_importance || [];
+  const cv = data.cv_scores || [];
+  const resid = data.residuals || [];
+
+  const fiRows = fi.map((imp, i) => `<tr>
+    <td class="data-td" style="text-align:left;color:var(--acc2)">${xNames[i] || `f${i}`}</td>
+    <td class="data-td">${_fmtNum(imp)}</td>
+    <td class="data-td" style="padding:0 4px"><div class="ml-fi-bar" style="width:${Math.round(imp * 100)}%"></div></td>
+  </tr>`).join('');
+
+  el.innerHTML = `
+    <div class="stats-res-header">${modelLabel} — <span class="stats-varname">${yName}</span>
+      <span class="stats-fit-r2">R\u00b2 = ${_fmtNum(data.r2)}</span>
+      <span class="stats-fit-rmse">RMSE = ${_fmtNum(data.rmse)}</span>
+    </div>
+    <div class="stats-desc-layout" style="margin-top:12px">
+      <div class="stats-table-card">
+        <div class="stats-section-lbl">Performance</div>
+        <div class="stats-row stats-row-hi"><span class="stats-lbl">R\u00b2</span><span class="stats-val">${_fmtNum(data.r2)}</span></div>
+        <div class="stats-row stats-row-hi"><span class="stats-lbl">RMSE</span><span class="stats-val">${_fmtNum(data.rmse)}</span></div>
+        <div class="stats-divider"></div>
+        ${cv.length ? `<div class="stats-row"><span class="stats-lbl">CV Mean R\u00b2</span><span class="stats-val">${_fmtNum(cv.reduce((a,b)=>a+b)/cv.length)}</span></div>
+        <div class="stats-section-lbl" style="margin-top:8px">CV Fold R\u00b2</div>
+        <div class="ml-cv-chips">${cv.map((s,i)=>`<span class="ml-cv-chip">F${i+1}: ${_fmtNum(s)}</span>`).join('')}</div>` : ''}
+      </div>
+      ${fi.length ? `<div class="stats-table-card" style="flex:2;min-width:0">
+        <div class="stats-section-lbl">Feature Importance</div>
+        <div class="data-table-wrap" style="max-height:200px">
+          <table class="data-table">
+            <thead><tr><th class="data-th" style="text-align:left">Feature</th><th class="data-th">Importance</th><th class="data-th" style="min-width:80px"></th></tr></thead>
+            <tbody>${fiRows}</tbody>
+          </table>
+        </div>
+      </div>` : ''}
+    </div>
+    ${(data.y_pred && data.y_orig) ? `
+    <div class="stats-desc-layout" style="margin-top:16px">
+      <div style="flex:1;min-width:0">
+        <div class="stats-res-header">Actual vs Predicted</div>
+        <div class="stats-chart-wrap stats-chart-small"><canvas id="statsCanvas_mlAvP"></canvas></div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="stats-res-header">Residuals</div>
+        <div class="stats-chart-wrap stats-chart-small"><canvas id="statsCanvas_mlRes"></canvas></div>
+      </div>
+    </div>` : ''}`;
+
+  if (data.y_pred && data.y_orig) {
+    _destroyChart('mlAvP');
+    const ctx = document.getElementById('statsCanvas_mlAvP')?.getContext('2d');
+    if (ctx) {
+      const mn = Math.min(...data.y_orig, ...data.y_pred);
+      const mx = Math.max(...data.y_orig, ...data.y_pred);
+      _statsCharts['mlAvP'] = new Chart(ctx, {
+        type: 'scatter',
+        data: { datasets: [
+          { label: 'Points', data: data.y_orig.map((y,i) => ({ x: y, y: data.y_pred[i] })), backgroundColor: 'rgba(90,255,206,0.5)', pointRadius: 3 },
+          { label: 'Perfect', data: [{ x: mn, y: mn }, { x: mx, y: mx }], type: 'line', borderColor: 'rgba(255,255,255,0.25)', borderDash: [5,5], borderWidth: 1, pointRadius: 0, fill: false },
+        ]},
+        options: {
+          responsive: true, maintainAspectRatio: false, parsing: false,
+          scales: {
+            x: { ..._axisStyle(), title: { display: true, text: 'Actual',    color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+            y: { ..._axisStyle(), title: { display: true, text: 'Predicted', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+          },
+          plugins: { legend: { display: false } },
+        },
+      });
+    }
+    _destroyChart('mlRes');
+    const ctx2 = document.getElementById('statsCanvas_mlRes')?.getContext('2d');
+    if (ctx2 && resid.length) {
+      _statsCharts['mlRes'] = new Chart(ctx2, {
+        type: 'scatter',
+        data: { datasets: [
+          { label: 'Residual', data: data.y_pred.map((p,i) => ({ x: p, y: resid[i] })), backgroundColor: 'rgba(255,111,170,0.5)', pointRadius: 3 },
+          { label: 'Zero', data: [{ x: Math.min(...data.y_pred), y: 0 }, { x: Math.max(...data.y_pred), y: 0 }], type: 'line', borderColor: 'rgba(255,255,255,0.2)', borderDash: [5,5], borderWidth: 1, pointRadius: 0, fill: false },
+        ]},
+        options: {
+          responsive: true, maintainAspectRatio: false, parsing: false,
+          scales: {
+            x: { ..._axisStyle(), title: { display: true, text: 'Predicted', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+            y: { ..._axisStyle(), title: { display: true, text: 'Residual',  color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+          },
+          plugins: { legend: { display: false } },
+        },
+      });
+    }
+  }
+}
+
+// ── K-Means results ───────────────────────────────────────────────────────────
+
+function _renderKMeans(el, data, xNames) {
+  // Backend field names: n_clusters, elbow_ks, elbow_inertias, scatter_2d, labels
+  const scatter2d = data.scatter_2d || [];
+  const hasScatter = scatter2d.length > 0;
+  const clusterLabels = data.labels || [];
+  const nClusters = data.n_clusters || data.k || 3;
+
+  // Compute cluster sizes from labels array
+  const clusterSizes = Array.from({ length: nClusters }, (_, c) => clusterLabels.filter(l => l === c).length);
+
+  el.innerHTML = `
+    <div class="stats-res-header">K-Means Clustering
+      <span class="stats-fit-r2">k = ${nClusters}</span>
+      <span class="stats-fit-rmse">Silhouette = ${_fmtNum(data.silhouette)}</span>
+    </div>
+    <div class="stats-desc-layout" style="margin-top:12px">
+      <div class="stats-table-card">
+        <div class="stats-section-lbl">Cluster Sizes</div>
+        ${clusterSizes.map((sz, i) => `<div class="stats-row"><span class="stats-lbl">Cluster ${i}</span><span class="stats-val">${sz}</span></div>`).join('')}
+        <div class="stats-divider"></div>
+        <div class="stats-row"><span class="stats-lbl">Silhouette Score</span><span class="stats-val">${_fmtNum(data.silhouette)}</span></div>
+      </div>
+    </div>
+    <div class="stats-desc-layout" style="margin-top:16px">
+      <div style="flex:1;min-width:0">
+        <div class="stats-res-header">Elbow Curve (Inertia)</div>
+        <div class="stats-chart-wrap stats-chart-small"><canvas id="statsCanvas_kmElbow"></canvas></div>
+      </div>
+      ${hasScatter ? `<div style="flex:1;min-width:0">
+        <div class="stats-res-header">Cluster Scatter (PCA 2D)</div>
+        <div class="stats-chart-wrap stats-chart-small"><canvas id="statsCanvas_kmScatter"></canvas></div>
+      </div>` : ''}
+    </div>`;
+
+  _destroyChart('kmElbow');
+  const ctx = document.getElementById('statsCanvas_kmElbow')?.getContext('2d');
+  if (ctx && data.elbow_ks) {
+    _statsCharts['kmElbow'] = new Chart(ctx, {
+      type: 'line',
+      data: { labels: data.elbow_ks, datasets: [{ label: 'Inertia', data: data.elbow_inertias, borderColor: '#5affce', backgroundColor: 'rgba(90,255,206,0.15)', borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#5affce', fill: true }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { ..._axisStyle(), title: { display: true, text: 'k', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+          y: { ..._axisStyle(), title: { display: true, text: 'Inertia', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+        },
+        plugins: { legend: { display: false } },
+      },
+    });
+  }
+
+  if (hasScatter) {
+    _destroyChart('kmScatter');
+    const ctx2 = document.getElementById('statsCanvas_kmScatter')?.getContext('2d');
+    if (ctx2) {
+      const clusterColors = ['#5affce','#ff6faa','#ffd166','#a78bfa','#38bdf8','#fb923c','#4ade80','#e879f9','#f87171','#34d399'];
+      const datasets = Array.from({ length: nClusters }, (_, c) => ({
+        label: `Cluster ${c}`,
+        data: scatter2d.map((pt, i) => clusterLabels[i] === c ? { x: pt[0], y: pt[1] } : null).filter(Boolean),
+        backgroundColor: clusterColors[c % clusterColors.length] + '99',
+        borderColor:     clusterColors[c % clusterColors.length],
+        pointRadius: 4,
+      }));
+      _statsCharts['kmScatter'] = new Chart(ctx2, {
+        type: 'scatter',
+        data: { datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false, parsing: false,
+          scales: {
+            x: { ..._axisStyle(), title: { display: true, text: 'PC1', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+            y: { ..._axisStyle(), title: { display: true, text: 'PC2', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+          },
+          plugins: { legend: { labels: { color: '#c0c0e0', font: { family: 'IBM Plex Mono', size: 11 } } } },
+        },
+      });
+    }
+  }
+}
+
+// ── PCA results ───────────────────────────────────────────────────────────────
+
+function _renderPCA(el, data, xNames) {
+  // Backend: explained_variance_ratio is full (all components); cumulative_variance also full
+  // scores is 2D array [n_obs × n_components]; loadings is [n_components × n_features]
+  const cumVar = data.explained_variance_ratio || [];
+  const cumSum = cumVar.reduce((acc, v, i) => { acc.push((acc[i-1] || 0) + v); return acc; }, []);
+  const nComp  = Math.min(cumVar.length, data.n_components || cumVar.length);
+
+  const loadings = data.loadings || [];
+  const loadingRows = (xNames || []).map((name, fi) =>
+    `<tr><td class="data-td" style="text-align:left;color:var(--acc2)">${name}</td>` +
+    loadings.map(compRow => `<td class="data-td">${_fmtNum(compRow[fi])}</td>`).join('') +
+    '</tr>'
+  ).join('');
+
+  // Extract PC1/PC2 from 2D scores array
+  const scores = data.scores || [];
+  const scoresX = scores.length >= 2 ? scores.map(row => row[0]) : null;
+  const scoresY = scores.length >= 2 && (scores[0]?.length || 0) >= 2 ? scores.map(row => row[1]) : null;
+
+  el.innerHTML = `
+    <div class="stats-res-header">Principal Component Analysis
+      <span class="stats-fit-r2">${nComp} components</span>
+      <span class="stats-fit-rmse">Total var = ${_fmtNum((cumSum[nComp-1] || 0) * 100)}%</span>
+    </div>
+    <div class="stats-desc-layout" style="margin-top:12px">
+      <div style="flex:1;min-width:0">
+        <div class="stats-res-header">Scree Plot</div>
+        <div class="stats-chart-wrap stats-chart-small"><canvas id="statsCanvas_pcaScree"></canvas></div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="stats-res-header">Cumulative Variance</div>
+        <div class="stats-chart-wrap stats-chart-small"><canvas id="statsCanvas_pcaCum"></canvas></div>
+      </div>
+    </div>
+    <div class="stats-res-header" style="margin-top:16px">Component Loadings</div>
+    <div class="data-table-wrap" style="max-height:220px;margin-top:8px">
+      <table class="data-table">
+        <thead><tr>
+          <th class="data-th" style="text-align:left">Feature</th>
+          ${loadings.map((_, i) => `<th class="data-th">PC${i+1}</th>`).join('')}
+        </tr></thead>
+        <tbody>${loadingRows}</tbody>
+      </table>
+    </div>
+    ${(scoresX && scoresY) ? `
+    <div class="stats-res-header" style="margin-top:16px">Score Plot (PC1 vs PC2)</div>
+    <div class="stats-chart-wrap stats-chart-small"><canvas id="statsCanvas_pcaScore"></canvas></div>` : ''}`;
+
+  const pcLabels = Array.from({ length: nComp }, (_, i) => `PC${i+1}`);
+
+  _destroyChart('pcaScree');
+  const ctxS = document.getElementById('statsCanvas_pcaScree')?.getContext('2d');
+  if (ctxS) {
+    _statsCharts['pcaScree'] = new Chart(ctxS, {
+      type: 'bar',
+      data: { labels: pcLabels, datasets: [{ label: 'Variance %', data: cumVar.map(v => v * 100), backgroundColor: 'rgba(90,255,206,0.5)', borderColor: '#5affce', borderWidth: 1 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { ..._axisStyle() },
+          y: { ..._axisStyle(), title: { display: true, text: 'Variance %', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+        },
+        plugins: { legend: { display: false } },
+      },
+    });
+  }
+
+  _destroyChart('pcaCum');
+  const ctxC = document.getElementById('statsCanvas_pcaCum')?.getContext('2d');
+  if (ctxC) {
+    _statsCharts['pcaCum'] = new Chart(ctxC, {
+      type: 'line',
+      data: { labels: pcLabels, datasets: [{ label: 'Cumulative %', data: cumSum.map(v => v * 100), borderColor: '#ff6faa', backgroundColor: 'rgba(255,111,170,0.15)', borderWidth: 2, pointRadius: 3, fill: true }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { ..._axisStyle() },
+          y: { ..._axisStyle(), min: 0, max: 100, title: { display: true, text: 'Cumulative %', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+        },
+        plugins: { legend: { display: false } },
+      },
+    });
+  }
+
+  if (scoresX && scoresY) {
+    _destroyChart('pcaScore');
+    const ctxSc = document.getElementById('statsCanvas_pcaScore')?.getContext('2d');
+    if (ctxSc) {
+      _statsCharts['pcaScore'] = new Chart(ctxSc, {
+        type: 'scatter',
+        data: { datasets: [{ label: 'Scores', data: scoresX.map((x, i) => ({ x, y: scoresY[i] })), backgroundColor: 'rgba(167,139,250,0.5)', borderColor: '#a78bfa', pointRadius: 3 }] },
+        options: {
+          responsive: true, maintainAspectRatio: false, parsing: false,
+          scales: {
+            x: { ..._axisStyle(), title: { display: true, text: 'PC1', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+            y: { ..._axisStyle(), title: { display: true, text: 'PC2', color: '#9090c0', font: { family: 'IBM Plex Mono', size: 11 } } },
+          },
+          plugins: { legend: { display: false } },
+        },
+      });
+    }
+  }
+}
+
+function _mlModelLabel(model) {
+  const labels = {
+    decision_tree: 'Decision Tree', random_forest: 'Random Forest',
+    gradient_boosting: 'Gradient Boosting', knn: 'K-Nearest Neighbors',
+    svm: 'Support Vector Machine', kmeans: 'K-Means', pca: 'PCA',
+  };
+  return labels[model] || model;
 }
