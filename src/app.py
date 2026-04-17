@@ -475,6 +475,133 @@ def plot_matplotlib():
         import traceback; traceback.print_exc()
         return jsonify({"error":str(e)}),500
 
+@app.route("/api/plot/pdf", methods=["POST"])
+def plot_matplotlib_pdf():
+    from flask import send_file
+    body=request.get_json(silent=True) or {}
+    view=body.get("view",{}); labels=body.get("labels",{})
+    curves_in=body.get("curves",[])
+    text_annotations=body.get("text_annotations",[])
+    try:
+        curves_data=[]
+        for ci in curves_in:
+            tkey=ci.get("template")
+            if not tkey and "x" in ci and "y" in ci:
+                x=np.array(ci["x"],dtype=float); y=np.array(ci["y"],dtype=float)
+                curves_data.append({
+                    "x":x,"y":y,"is_discrete":False,
+                    "line_color":ci.get("line_color","#5affce"),
+                    "line_width":ci.get("line_width",2.0),
+                    "line_style":ci.get("line_style","solid"),
+                    "line_connection":ci.get("line_connection","linear"),
+                    "marker":ci.get("marker","none"),
+                    "marker_size":ci.get("marker_size",4),
+                    "fill_under":ci.get("fill_under",False),
+                    "fill_alpha":ci.get("fill_alpha",.15),
+                    "label":ci.get("label",""),
+                })
+                continue
+            if not tkey or tkey not in TEMPLATES: continue
+            x,y=generate_xy(tkey,ci.get("params",{}),view)
+            x,y=_apply_mask(x,y,ci)
+            is_d=tkey in ("binomial","poisson")
+            curves_data.append({
+                "x":x,"y":np.where(np.isnan(y),np.nan,y),"is_discrete":is_d,
+                "line_color":ci.get("line_color","#5affce"),
+                "line_width":ci.get("line_width",2.0),
+                "line_style":ci.get("line_style","solid"),
+                "line_connection":ci.get("line_connection","linear"),
+                "marker":ci.get("marker","none"),
+                "marker_size":ci.get("marker_size",4),
+                "fill_under":ci.get("fill_under",False),
+                "fill_alpha":ci.get("fill_alpha",.15),
+                "label":ci.get("label",""),
+            })
+        bg_color=view.get("bg_color",BG)
+        fig,ax=plt.subplots(figsize=(view.get("fig_width",9),view.get("fig_height",4.2)),facecolor=bg_color)
+        # Reuse render logic via a temporary PNG call to build the figure, then re-save as PDF
+        # Build a fresh figure for PDF (same logic as render_matplotlib_multi but save as PDF)
+        plt.close(fig)
+        # Use render_matplotlib_multi internals: build figure then savefig as PDF
+        surface_color=view.get("surface_color",SURFACE)
+        fig,ax=plt.subplots(figsize=(view.get("fig_width",9),view.get("fig_height",4.2)),facecolor=bg_color)
+        ax.set_facecolor(surface_color)
+        show_legend=view.get("show_legend",True)
+        for cd in curves_data:
+            x=np.array(cd["x"]); y=np.array(cd["y"]); is_d=cd.get("is_discrete",False)
+            lc=cd.get("line_color","#5affce"); lw=cd.get("line_width",2.0)
+            ls=cd.get("line_style","solid"); lconn=cd.get("line_connection","linear")
+            mk=cd.get("marker","none"); ms=cd.get("marker_size",4)
+            fill=cd.get("fill_under",False); falp=cd.get("fill_alpha",.15); lbl=cd.get("label","")
+            try: rgb=_hex_to_rgb01(lc)
+            except: rgb=(0.35,1.0,0.81)
+            mpl_mk=None if mk=="none" else mk
+            mpl_ls="None" if ls=="none" else ls
+            stroke_only={'+','x','1','2','3','4','|','_'}
+            mfc='none' if mpl_mk in stroke_only else rgb
+            mec=rgb if mpl_mk in stroke_only else 'none'
+            mew=max(1.0,lw*0.6) if mpl_mk in stroke_only else 0
+            px,py=x,y
+            if lconn in ("cubic","bezier") and not is_d and len(x)>=4:
+                from scipy.interpolate import make_interp_spline
+                try:
+                    finite=np.isfinite(x)&np.isfinite(y); xf,yf=x[finite],y[finite]
+                    if len(xf)>=4:
+                        si=np.argsort(xf); xf,yf=xf[si],yf[si]
+                        _,ui=np.unique(xf,return_index=True); xf,yf=xf[ui],yf[ui]
+                        if len(xf)>=4:
+                            spl=make_interp_spline(xf,yf,k=3 if lconn=="cubic" else min(3,len(xf)-1))
+                            px=np.linspace(xf[0],xf[-1],max(500,len(xf)*4)); py=spl(px)
+                except Exception: pass
+            if is_d: ax.bar(x,y,color=rgb+(0.75,),width=0.6,zorder=3,label=lbl)
+            elif lconn=="step":
+                ax.step(px,py,where='pre',color=rgb,linewidth=lw,linestyle=mpl_ls,marker=mpl_mk,markersize=ms,markerfacecolor=mfc,markeredgecolor=mec,markeredgewidth=mew,zorder=3,label=lbl)
+                if fill: ax.fill_between(px,py,alpha=falp,color=rgb,step='pre',zorder=2)
+            else:
+                ax.plot(px,py,color=rgb,linewidth=lw,linestyle=mpl_ls,marker=mpl_mk,markersize=ms,markerfacecolor=mfc,markeredgecolor=mec,markeredgewidth=mew,zorder=3,label=lbl)
+                if fill: ax.fill_between(px,py,alpha=falp,color=rgb,zorder=2)
+        if view.get("x_min") is not None or view.get("x_max") is not None:
+            all_x=np.concatenate([cd["x"] for cd in curves_data]) if curves_data else np.array([0,1])
+            ax.set_xlim(view.get("x_min",float(all_x.min())),view.get("x_max",float(all_x.max())))
+        if view.get("y_min") is not None or view.get("y_max") is not None:
+            all_y=np.concatenate([cd["y"] for cd in curves_data]) if curves_data else np.array([0,1])
+            valid_y=all_y[~np.isnan(all_y)] if len(all_y) else all_y
+            ax.set_ylim(view.get("y_min",float(valid_y.min()) if len(valid_y) else 0),view.get("y_max",float(valid_y.max()) if len(valid_y) else 1))
+        ax.grid(view.get("show_grid",True),color=GRID_C,linewidth=0.7,alpha=view.get("grid_alpha",.5),zorder=1)
+        if view.get("x_log",False): ax.set_xscale('log')
+        if view.get("y_log",False): ax.set_yscale('log')
+        if view.get("show_axis_lines",True):
+            aa=view.get("axis_alpha",0.6); ac=(0.7,0.7,0.86,aa)
+            ax.axhline(0,color=ac,linewidth=0.9,zorder=2); ax.axvline(0,color=ac,linewidth=0.9,zorder=2)
+        for sp in ax.spines.values(): sp.set_edgecolor(SPINE_C); sp.set_linewidth(0.8)
+        ax.tick_params(colors=TEXT_C,labelsize=8,length=4,width=0.6)
+        for t in ax.get_xticklabels()+ax.get_yticklabels(): t.set_color(TEXT_C); t.set_fontfamily("monospace")
+        ax.set_title(labels.get("title",""),color=TEXT_C,fontsize=view.get("title_size",13),fontfamily="monospace",pad=10,loc="left",fontweight="bold")
+        ax.set_xlabel(labels.get("xlabel",""),color=TEXT_C,fontsize=view.get("label_size",10),fontfamily="monospace",labelpad=6)
+        ax.set_ylabel(labels.get("ylabel",""),color=TEXT_C,fontsize=view.get("label_size",10),fontfamily="monospace",labelpad=6)
+        if show_legend and any(cd.get("label","") for cd in curves_data):
+            lx=view.get("legend_x_frac",0.98); ly=view.get("legend_y_frac",0.02)
+            leg=ax.legend(facecolor="#0c0c1a",edgecolor=SPINE_C,labelcolor=TEXT_C,
+                fontsize=max(6,view.get("legend_size",9)),
+                prop={"family":"monospace","size":max(6,view.get("legend_size",9))},
+                framealpha=0.85,bbox_to_anchor=(lx,1.0-ly),bbox_transform=ax.transAxes,
+                loc="upper right" if lx>0.5 else "upper left")
+            leg.get_frame().set_linewidth(0.6)
+        if text_annotations:
+            for ann in text_annotations:
+                ax.text(ann.get("x_frac",0.5),1.0-ann.get("y_frac",0.5),ann.get("text",""),
+                    transform=ax.transAxes,color=ann.get("color","#eeeeff"),
+                    fontsize=ann.get("size",13),fontfamily="monospace",
+                    fontweight="bold" if ann.get("bold",False) else "normal",
+                    ha="center",va="center",zorder=30)
+        fig.tight_layout(pad=1.4)
+        buf=io.BytesIO(); fig.savefig(buf,format="pdf",facecolor=bg_color,bbox_inches="tight")
+        plt.close(fig); buf.seek(0)
+        return send_file(buf,mimetype="application/pdf",as_attachment=True,download_name="plot.pdf")
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error":str(e)}),500
+
 @app.route("/api/evaluate", methods=["POST"])
 def evaluate_variables():
     """Evaluate a batch of variable definitions using SymPy.

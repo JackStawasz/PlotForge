@@ -338,6 +338,43 @@ async function convertToMpl(pid){
   }
 }
 
+async function savePlotPdf(pid){
+  const p = gp(pid); if(!p) return;
+  const curvesPayload = p.curves
+    .filter(c => c.jsData && c.jsData.x && c.jsData.x.length)
+    .map(c => ({
+      x:            c.jsData.x,
+      y:            c.jsData.y,
+      is_discrete:  c.jsData.discrete || false,
+      line_color:   c.line_color,
+      line_width:   c.line_width,
+      line_style:   c.line_style,
+      line_connection: c.line_connection || 'linear',
+      marker:       c.marker,
+      marker_size:  c.marker_size,
+      fill_under:   c.fill_under,
+      fill_alpha:   c.fill_alpha,
+      label:        c.name || (c.template ? (TEMPLATES[c.template]?.equation || c.template) : 'List curve'),
+    }));
+  if(!curvesPayload.length){ setConn('err','No curve data to export'); return; }
+  try{
+    const r = await fetch(`${API}/plot/pdf`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({curves:curvesPayload, view:{...p.view, bg_color:p.view.bg_color||'#12121c', surface_color:p.view.surface_color||'#12121c'}, labels:p.labels, text_annotations:p.textAnnotations||[]}),
+    });
+    if(!r.ok) throw new Error(await r.text());
+    const blob = await r.blob();
+    const url  = URL.createObjectURL(blob);
+    const title = (p.labels?.title || '').trim();
+    const filename = title ? `${title.replace(/[^a-z0-9_\-]/gi,'_')}.pdf` : 'plot.pdf';
+    const a = Object.assign(document.createElement('a'), {href:url, download:filename});
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setConn('ok','PDF saved');
+  }catch(e){ setConn('err','PDF error: '+e.message); }
+}
+
 function revertToJS(pid){
   const p = gp(pid); if(!p) return;
   p.mplMode = false; p.mplImage = null;

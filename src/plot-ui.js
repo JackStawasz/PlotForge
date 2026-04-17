@@ -114,6 +114,7 @@ function buildTopbarInner(p, i){
     </div>
     <div class="cactions-right">
       <span class="ctop-coords" id="ctop_coords_${p.id}"></span>
+      <button class="cbtn pdf-btn" data-pid="${p.id}" data-action="savepdf">⤓ PDF</button>
       <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" ${dupDelDisabled}>⧉</button>
       <button class="cbtn fs-btn" data-pid="${p.id}" data-action="fullscreen">⛶</button>
       <button class="cbtn del-btn" data-pid="${p.id}" data-action="del" ${dupDelDisabled}>🗑</button>
@@ -991,8 +992,9 @@ function handleAction(action, pid, triggerEl){
     // Allow zero plots — don't auto-create a new one
     renderDOM(); snapshotForUndo(); return;
   }
-  if(action==='mpl')    { convertToMpl(pid); return; }
-  if(action==='revert') { revertToJS(pid);   return; }
+  if(action==='mpl')     { convertToMpl(pid);  return; }
+  if(action==='revert')  { revertToJS(pid);    return; }
+  if(action==='savepdf') { savePlotPdf(pid);   return; }
 }
 
 let _fullscreenPid = null;
