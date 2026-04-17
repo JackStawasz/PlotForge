@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="layout.css"/>
 <link rel="stylesheet" href="components.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@sgratzl/chartjs-chart-boxplot@4/build/index.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mathquill@0.10.1/build/mathquill.min.js"></script>
 </head>
@@ -19,6 +20,11 @@
   <header>
     <div class="logo"><em>Plot</em>Forge</div>
     <div class="hright">
+      <!-- View switcher -->
+      <div class="view-switcher">
+        <button class="hdr-view-btn hdr-view-active" id="hdrViewPlots">Plots</button>
+        <button class="hdr-view-btn" id="hdrViewStats">Stats</button>
+      </div>
       <div class="undo-redo-group">
         <button class="undo-redo-btn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
         <button class="undo-redo-btn" id="redoBtn" title="Redo (Ctrl+Y)" disabled>&#8631;</button>
@@ -310,6 +316,321 @@
     </div><!-- #cfgContent -->
   </aside>
 
+  <!-- ══ STATS VIEW ════════════════════════════════════════════════════ -->
+  <div id="statsView">
+
+    <!-- Tab bar -->
+    <div class="stats-tabs">
+      <button class="stats-tab stats-tab-active" id="statsTab_describe">Descriptive</button>
+      <button class="stats-tab" id="statsTab_histogram">Histogram</button>
+      <button class="stats-tab" id="statsTab_fit">Curve Fit</button>
+      <button class="stats-tab" id="statsTab_corr">Correlation</button>
+      <button class="stats-tab" id="statsTab_hypo">Hypothesis</button>
+      <button class="stats-tab" id="statsTab_preprocess">Preprocess</button>
+      <button class="stats-tab" id="statsTab_regression">Regression</button>
+      <button class="stats-tab" id="statsTab_ml">ML Models</button>
+      <button class="stats-tab" id="statsTab_data">Data</button>
+    </div>
+
+    <!-- ── DESCRIPTIVE PANE ─────────────────────────────────────────── -->
+    <div class="stats-pane stats-pane-active" id="statsPane_describe">
+      <div class="stats-controls">
+        <div class="stats-ctrl-group">
+          <label class="stats-ctrl-label">Variable</label>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_describe"><span class="stats-chip-empty">No variables yet</span></div>
+        </div>
+        <button class="stats-run-btn" id="statsRunDescribe">Analyze ▶</button>
+      </div>
+      <div class="stats-output" id="statsResult_describe">
+        <div class="stats-empty-hint">Import list variables from the Files tab, then select one above and click Analyze.</div>
+      </div>
+    </div>
+
+    <!-- ── HISTOGRAM PANE ───────────────────────────────────────────── -->
+    <div class="stats-pane" id="statsPane_histogram">
+      <div class="stats-controls">
+        <div class="stats-ctrl-group">
+          <label class="stats-ctrl-label">Chart type</label>
+          <select class="stats-select" id="statsHistType">
+            <option value="histogram">Histogram</option>
+            <option value="boxplot">Box Plot</option>
+            <option value="violin">Violin</option>
+            <option value="qqplot">Q-Q Plot</option>
+            <option value="ecdf">ECDF</option>
+          </select>
+        </div>
+        <div class="stats-ctrl-group" id="statsHistSingleRow">
+          <label class="stats-ctrl-label">Variable</label>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_histSingle"><span class="stats-chip-empty">No variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group" id="statsBoxMultiRow" style="display:none">
+          <label class="stats-ctrl-label">Variables</label>
+          <div class="stats-chip-group" id="chips_histBox"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group" id="statsHistBinsRow">
+          <label class="stats-ctrl-label">Bins</label>
+          <input class="stats-input stats-input-sm" id="statsHistBins" placeholder="auto"/>
+        </div>
+        <div id="statsHistKdeRow">
+          <label class="stats-check-label">
+            <input type="checkbox" id="statsHistKde" checked/>
+            KDE overlay
+          </label>
+        </div>
+        <div id="statsHistMARow">
+          <label class="stats-check-label">
+            <input type="checkbox" id="statsHistMA"/>
+            Moving avg
+          </label>
+          <input type="number" class="stats-input stats-input-sm" id="statsHistMAWindow" value="5" min="2" max="100" style="width:52px" title="Window size"/>
+        </div>
+        <button class="stats-run-btn" id="statsRunHist">Plot ▶</button>
+      </div>
+      <div class="stats-output" id="statsResult_hist">
+        <div class="stats-empty-hint">Select a variable and click Plot.</div>
+      </div>
+    </div>
+
+    <!-- ── CURVE FIT PANE ───────────────────────────────────────────── -->
+    <div class="stats-pane" id="statsPane_fit">
+      <div class="stats-controls">
+        <div class="stats-ctrl-group">
+          <label class="stats-ctrl-label">X variable</label>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_fitX"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group">
+          <label class="stats-ctrl-label">Y variable</label>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_fitY"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group">
+          <label class="stats-ctrl-label">Fit type</label>
+          <select class="stats-select" id="statsFitType">
+            <option value="gaussian">Gaussian</option>
+            <option value="polynomial">Polynomial</option>
+            <option value="exponential">Exponential</option>
+            <option value="power">Power Law</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div class="stats-ctrl-group" id="statsFitDegreeRow" style="display:none">
+          <label class="stats-ctrl-label">Degree</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsFitDegree" value="2" min="1" max="10"/>
+        </div>
+        <div class="stats-ctrl-group" id="statsFitFormulaRow" style="display:none">
+          <label class="stats-ctrl-label">Formula <span class="stats-ctrl-hint">f(x, params…)</span></label>
+          <input type="text" class="stats-input" id="statsFitFormula" placeholder="a*exp(-b*x) + c" style="min-width:180px"/>
+        </div>
+        <label class="stats-check-label">
+          <input type="checkbox" id="statsFitCI"/>
+          95% CI band
+        </label>
+        <button class="stats-run-btn" id="statsRunFit">Fit ▶</button>
+      </div>
+      <div class="stats-output" id="statsResult_fit">
+        <div class="stats-empty-hint">Select X and Y variables and click Fit.</div>
+      </div>
+    </div>
+
+    <!-- ── CORRELATION PANE ─────────────────────────────────────────── -->
+    <div class="stats-pane" id="statsPane_corr">
+      <div class="stats-controls">
+        <div class="stats-ctrl-group stats-ctrl-group-grow">
+          <label class="stats-ctrl-label">Variables</label>
+          <div class="stats-chip-group" id="chips_corr"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <button class="stats-run-btn" id="statsRunCorr">Compute ▶</button>
+      </div>
+      <div class="stats-output" id="statsResult_corr">
+        <div class="stats-empty-hint">Select 2 or more variables and click Compute.</div>
+      </div>
+    </div>
+
+    <!-- ── HYPOTHESIS PANE ────────────────────────────────────────────── -->
+    <div class="stats-pane" id="statsPane_hypo">
+      <div class="stats-controls">
+        <div class="stats-ctrl-group">
+          <label class="stats-ctrl-label">Test type</label>
+          <select class="stats-select" id="statsHypoType">
+            <option value="ttest_1samp">One-Sample t-Test</option>
+            <option value="ttest_2samp">Two-Sample t-Test</option>
+            <option value="ttest_paired">Paired t-Test</option>
+            <option value="anova">One-Way ANOVA</option>
+            <option value="chi2">Chi-Squared</option>
+            <option value="ks">Kolmogorov-Smirnov</option>
+            <option value="mannwhitney">Mann-Whitney U</option>
+          </select>
+        </div>
+        <div class="stats-ctrl-group" id="hypoVar1Row">
+          <label class="stats-ctrl-label" id="hypoVar1Label">Variable</label>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_hypo1"><span class="stats-chip-empty">No variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group" id="hypoVar2Row" style="display:none">
+          <label class="stats-ctrl-label">Variable 2</label>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_hypo2"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group" id="hypoAnovaRow" style="display:none">
+          <label class="stats-ctrl-label">Groups</label>
+          <div class="stats-chip-group" id="chips_hypoAnova"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group" id="hypoMu0Row" style="display:none">
+          <label class="stats-ctrl-label">Null mean (μ₀)</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsHypoMu0" value="0" step="any"/>
+        </div>
+        <button class="stats-run-btn" id="statsRunHypo">Test ▶</button>
+      </div>
+      <div class="stats-output" id="statsResult_hypo">
+        <div class="stats-empty-hint">Select a test type and variables, then click Test.</div>
+      </div>
+    </div>
+
+    <!-- ── PREPROCESS PANE ─────────────────────────────────────────────── -->
+    <div class="stats-pane" id="statsPane_preprocess">
+      <div class="stats-controls">
+        <div class="stats-ctrl-group">
+          <label class="stats-ctrl-label">Variable</label>
+          <div class="stats-chip-group stats-chip-group-radio" id="chips_preprocess"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group">
+          <label class="stats-ctrl-label">Operation</label>
+          <select class="stats-select" id="statsPrepOp">
+            <option value="normalize">Normalize [0, 1]</option>
+            <option value="standardize">Standardize (z-score)</option>
+            <option value="remove_outliers">Remove Outliers</option>
+            <option value="fill_missing">Fill Missing Values</option>
+            <option value="train_test_split">Train / Test Split</option>
+          </select>
+        </div>
+        <div class="stats-ctrl-group" id="prepOutlierRow" style="display:none">
+          <label class="stats-ctrl-label">Method</label>
+          <select class="stats-select" id="statsPrepOutlierMethod">
+            <option value="iqr">IQR (1.5×)</option>
+            <option value="zscore">Z-score (3σ)</option>
+          </select>
+        </div>
+        <div class="stats-ctrl-group" id="prepFillRow" style="display:none">
+          <label class="stats-ctrl-label">Fill with</label>
+          <select class="stats-select" id="statsPrepFillStrategy">
+            <option value="mean">Mean</option>
+            <option value="median">Median</option>
+            <option value="zero">Zero</option>
+            <option value="min">Min</option>
+            <option value="max">Max</option>
+          </select>
+        </div>
+        <div class="stats-ctrl-group" id="prepSplitRow" style="display:none">
+          <label class="stats-ctrl-label">Test size (%)</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsPrepTestSize" value="20" min="5" max="50"/>
+        </div>
+        <button class="stats-run-btn" id="statsRunPreprocess">Apply ▶</button>
+      </div>
+      <div class="stats-output" id="statsResult_preprocess">
+        <div class="stats-empty-hint">Select a variable and operation, then click Apply.</div>
+      </div>
+    </div>
+
+    <!-- ── REGRESSION PANE ───────────────────────────────────────────── -->
+    <div class="stats-pane" id="statsPane_regression">
+      <div class="stats-controls">
+        <div class="stats-ctrl-group">
+          <label class="stats-ctrl-label">Type</label>
+          <select class="stats-select" id="statsRegrType">
+            <option value="linear">Linear (OLS)</option>
+            <option value="logistic">Logistic (binary)</option>
+          </select>
+        </div>
+        <div class="stats-ctrl-group stats-ctrl-group-grow">
+          <label class="stats-ctrl-label">Features X <span class="stats-ctrl-hint">(click to select)</span></label>
+          <div class="stats-chip-group" id="regrXChips"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group stats-ctrl-group-grow">
+          <label class="stats-ctrl-label">Target Y <span class="stats-ctrl-hint">(one variable)</span></label>
+          <div class="stats-chip-group stats-chip-group-radio" id="regrYChips"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group" id="regrThreshRow" style="display:none">
+          <label class="stats-ctrl-label">Decision threshold</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsRegrThresh" value="0.5" min="0.01" max="0.99" step="0.01"/>
+        </div>
+        <button class="stats-run-btn" id="statsRunRegr">Run ▶</button>
+      </div>
+      <div class="stats-output" id="statsResult_regression">
+        <div class="stats-empty-hint">Select features (X), a target (Y), and click Run.</div>
+      </div>
+    </div>
+
+    <!-- ── ML MODELS PANE ────────────────────────────────────────────── -->
+    <div class="stats-pane" id="statsPane_ml">
+      <div class="stats-controls">
+        <div class="stats-ctrl-group">
+          <label class="stats-ctrl-label">Model</label>
+          <select class="stats-select" id="statsMLModel">
+            <optgroup label="── Supervised ──">
+              <option value="decision_tree">Decision Tree</option>
+              <option value="random_forest" selected>Random Forest</option>
+              <option value="gradient_boosting">Gradient Boosting</option>
+              <option value="knn">K-Nearest Neighbors</option>
+              <option value="svm">Support Vector Machine</option>
+            </optgroup>
+            <optgroup label="── Unsupervised ──">
+              <option value="kmeans">K-Means Clustering</option>
+              <option value="pca">PCA</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="stats-ctrl-group" id="mlTaskRow">
+          <label class="stats-ctrl-label">Task</label>
+          <select class="stats-select" id="statsMLTask">
+            <option value="classification">Classification</option>
+            <option value="regression">Regression</option>
+          </select>
+        </div>
+        <div class="stats-ctrl-group" id="mlNEstimRow">
+          <label class="stats-ctrl-label">n_estimators</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsMLNEstim" value="100" min="10" max="500"/>
+        </div>
+        <div class="stats-ctrl-group" id="mlMaxDepthRow">
+          <label class="stats-ctrl-label">max_depth <span class="stats-ctrl-hint">(blank = unlimited)</span></label>
+          <input type="number" class="stats-input stats-input-sm" id="statsMLMaxDepth" placeholder="None" min="1" max="30"/>
+        </div>
+        <div class="stats-ctrl-group" id="mlKNeighRow" style="display:none">
+          <label class="stats-ctrl-label">n_neighbors</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsMLKNeigh" value="5" min="1" max="50"/>
+        </div>
+        <div class="stats-ctrl-group" id="mlNClustersRow" style="display:none">
+          <label class="stats-ctrl-label">k clusters</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsMLNClusters" value="3" min="2" max="20"/>
+        </div>
+        <div class="stats-ctrl-group" id="mlNCompRow" style="display:none">
+          <label class="stats-ctrl-label">n_components</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsMLNComp" value="2" min="1" max="10"/>
+        </div>
+        <div class="stats-ctrl-group" id="mlCVRow">
+          <label class="stats-ctrl-label">Cross-validation folds</label>
+          <input type="number" class="stats-input stats-input-sm" id="statsMLCV" value="5" min="2" max="20"/>
+        </div>
+        <div class="stats-ctrl-group stats-ctrl-group-grow">
+          <label class="stats-ctrl-label">Features X <span class="stats-ctrl-hint">(click to select)</span></label>
+          <div class="stats-chip-group" id="mlXChips"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <div class="stats-ctrl-group stats-ctrl-group-grow" id="mlYRow">
+          <label class="stats-ctrl-label">Target Y <span class="stats-ctrl-hint">(one variable)</span></label>
+          <div class="stats-chip-group stats-chip-group-radio" id="mlYChips"><span class="stats-chip-empty">No numeric variables yet</span></div>
+        </div>
+        <button class="stats-run-btn" id="statsRunML">Train ▶</button>
+      </div>
+      <div class="stats-output" id="statsResult_ml">
+        <div class="stats-empty-hint">Select a model, features (X), target (Y), and click Train.</div>
+      </div>
+    </div>
+
+    <!-- ── DATA PANE ─────────────────────────────────────────────────── -->
+    <div class="stats-pane" id="statsPane_data">
+      <div id="statsResult_data" class="stats-data-output">
+        <div class="stats-empty-hint">Import a CSV or .pkl file from the Files tab to browse data here.</div>
+      </div>
+    </div>
+
+  </div><!-- #statsView -->
+
 </div><!-- .shell -->
 
 <script src="math.js"></script>
@@ -320,6 +641,7 @@
 <script src="variables-ui.js"></script>
 <script src="plot-render.js"></script>
 <script src="plot-ui.js"></script>
+<script src="stats.js"></script>
 <script>boot();</script>
 </body>
 </html>

@@ -328,27 +328,45 @@ function parseCsvVars(text){
   };
 
   const headers = splitRow(lines[0]).map(h=>h.replace(/^"|"$/g,'').trim());
-  const columns = headers.map(()=>[]);
+  const numCols = headers.map(()=>[]);  // parsed floats (null when non-numeric)
+  const rawCols = headers.map(()=>[]);  // raw trimmed strings
 
   for(let r = 1; r < lines.length; r++){
     const cells = splitRow(lines[r]);
     for(let c = 0; c < headers.length; c++){
-      const v = parseFloat(cells[c]);
-      columns[c].push(isNaN(v) ? null : v);
+      const raw = (cells[c] || '').replace(/^"|"$/g,'').trim();
+      rawCols[c].push(raw);
+      const num = raw !== '' ? Number(raw) : NaN;   // strict: "21 Savage" → NaN, not 21
+      numCols[c].push(isNaN(num) ? null : num);
     }
   }
+
+  const _naLike = s => s==='' || s.toLowerCase()==='null' || s.toLowerCase()==='na' || s.toLowerCase()==='nan';
 
   const result = {};
   for(let c = 0; c < headers.length; c++){
     const name = headers[c]; if(!name) continue;
-    const items = columns[c].filter(v=>v !== null);
-    if(!items.length) continue;
-    result[name] = items.length === 1
-      ? {kind:'constant', value:items[0]}
-      : {kind:'list', items};
+    const numItems = numCols[c].filter(v => v !== null);
+    const nonEmpty = rawCols[c].filter(s => !_naLike(s));
+    const numRatio = nonEmpty.length > 0 ? numItems.length / nonEmpty.length : 0;
+
+    if (numRatio >= 0.9) {
+      // Numeric column — ≥90% of non-empty values parsed as pure numbers
+      if (!numItems.length) continue;
+      result[name] = numItems.length === 1
+        ? {kind:'constant', value:numItems[0]}
+        : {kind:'list', items:numItems};
+    } else {
+      // Categorical column — store frequency counts
+      if (!nonEmpty.length) continue;
+      const counts = {};
+      for (const s of nonEmpty) counts[s] = (counts[s]||0) + 1;
+      const labels = Object.keys(counts).sort((a,b) => counts[b]-counts[a]);
+      result[name] = {kind:'list', items:labels.map(l=>counts[l]), _labels:labels, _categorical:true};
+    }
   }
 
-  if(!Object.keys(result).length) return {error: 'No numeric columns found in CSV'};
+  if(!Object.keys(result).length) return {error: 'No numeric or categorical columns found in CSV'};
   return {variables: result};
 }
 

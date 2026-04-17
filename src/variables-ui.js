@@ -17,7 +17,10 @@ function addVariable(kind='constant', opts={}){
     fromTemplate: opts.fromTemplate || false,
     templateKey:  opts.templateKey  || null,
     paramKey:     opts.paramKey     || null,
-    pickleSource: opts.pickleSource || null,
+    pickleSource:  opts.pickleSource  || null,
+    _isNumeric:    opts._isNumeric    || false,
+    _categorical:  opts._categorical  || false,
+    _labels:       opts._labels       ? [...opts._labels] : [],
   };
   variables.push(v);
   renderVariables();
@@ -379,14 +382,19 @@ function renderVariables(){
             spaceBehavesLikeTab: true,
             handlers:{
               edit(){
-                const raw = nameMf.latex().replace(/[\\{}\s]/g,'').replace(/left|right/g,'').trim();
+                const raw = nameMf.latex()
+                  .replace(/\\text\{([^}]*)\}/g, '$1')
+                  .replace(/[\\{}\s]/g,'')
+                  .replace(/left|right/g,'')
+                  .trim();
                 if(raw) v.name = raw;
                 reEvalAllConstants();
                 updateLatexDropdown(nameMf, nameMqWrap, nameMqWrap);
               }
             }
           });
-          nameMf.latex(v.name || '');
+          const _nameForDisplay = (v.name && v.name.length > 1) ? `\\text{${v.name}}` : (v.name || '');
+          nameMf.latex(_nameForDisplay);
           wrapMathFieldWithAC(nameMqWrap, nameMf);
         }catch(e){}
       });
@@ -661,10 +669,6 @@ function buildEquationBody(item, v){
 
 // ═══ LIST BODY ═══════════════════════════════════════════════════════════
 function buildListBody(item, v, lenInp){
-  const cellsWrap = document.createElement('div');
-  cellsWrap.className = 'var-list-cells';
-
-  // Validate on input (transient), commit on change (Enter/blur)
   lenInp.addEventListener('input', ()=>{
     const num = parseFloat(lenInp.value);
     if(lenInp.value === '' || isNaN(num)){
@@ -690,20 +694,189 @@ function buildListBody(item, v, lenInp){
     while(v.listItems.length < n) v.listItems.push(0);
     v.listItems = v.listItems.slice(0, n);
     if(v._warning) v._warning.clearInvalid();
-    rebuildListCells(v, cellsWrap);
-    rebuildEditIndex(v, editRow);
+    const sumEl = document.getElementById(`vlistsummary_${v.id}`);
+    if(sumEl) sumEl.textContent = `${v.listItems.length} values`;
   });
   lenInp.addEventListener('click', e=>e.stopPropagation());
 
-  item.appendChild(cellsWrap);
-  rebuildListCells(v, cellsWrap);
+  // Compact summary + "View / Edit" popup button
+  const summaryRow = document.createElement('div');
+  summaryRow.className = 'var-list-summary';
 
-  // "Edit index" row — shown only for long lists (> 8 items)
-  const editRow = document.createElement('div');
-  editRow.className = 'var-list-editrow';
-  editRow.id = `veditrow_${v.id}`;
-  item.appendChild(editRow);
-  rebuildEditIndex(v, editRow);
+  const summaryText = document.createElement('span');
+  summaryText.className = 'var-list-summary-text';
+  summaryText.id = `vlistsummary_${v.id}`;
+  if(v._categorical){
+    summaryText.textContent = `${v._labels.length} levels`;
+  } else {
+    summaryText.textContent = `${v.listItems.length} values`;
+    if(v.listItems.length > 0){
+      const preview = v.listItems.slice(0, 3).map(x => {
+        if(x === null || !isFinite(x)) return '—';
+        return parseFloat(x.toPrecision(4)).toString();
+      }).join(', ');
+      summaryText.title = `[${preview}${v.listItems.length > 3 ? ', …' : ''}]`;
+    }
+  }
+
+  const viewBtn = document.createElement('button');
+  viewBtn.className = 'var-list-view-btn';
+  viewBtn.textContent = 'View / Edit →';
+  viewBtn.addEventListener('click', e=>{ e.stopPropagation(); _openListPopup(v); });
+
+  summaryRow.appendChild(summaryText);
+  summaryRow.appendChild(viewBtn);
+  item.appendChild(summaryRow);
+}
+
+// ═══ LIST POPUP MODAL ═════════════════════════════════════════════════════
+let _listPopupVar  = null;
+let _listPopupPage = 0;
+const _LIST_POP_PG = 50;
+
+function _openListPopup(v){
+  _listPopupVar  = v;
+  _listPopupPage = 0;
+
+  let overlay = document.getElementById('listPopupOverlay');
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id        = 'listPopupOverlay';
+    overlay.className = 'list-popup-overlay';
+    overlay.addEventListener('mousedown', e=>{ if(e.target === overlay) _closeListPopup(); });
+    document.body.appendChild(overlay);
+  }
+
+  overlay.innerHTML = `
+    <div class="list-popup" id="listPopupMain">
+      <div class="list-popup-header">
+        <div class="list-popup-title">
+          <span class="list-popup-varname">${v.name || `v${v.id}`}</span>
+          <span class="list-popup-meta" id="listPopupMeta"></span>
+        </div>
+        <button class="list-popup-close" id="listPopupClose">&#10005;</button>
+      </div>
+      <div class="list-popup-body" id="listPopupBody"></div>
+      <div class="list-popup-footer" id="listPopupFooter"></div>
+    </div>`;
+
+  overlay.style.display = 'flex';
+  document.getElementById('listPopupClose')?.addEventListener('click', _closeListPopup);
+  _renderListPopupPage();
+}
+
+function _closeListPopup(){
+  const overlay = document.getElementById('listPopupOverlay');
+  if(overlay) overlay.style.display = 'none';
+  // Sync sidebar summary text and length inputs after any edits
+  if(typeof variables !== 'undefined'){
+    variables.forEach(v=>{
+      if(v.kind !== 'list') return;
+      const lenInp = document.getElementById(`vlen_${v.id}`);
+      if(lenInp) lenInp.value = v.listLength;
+      const sumEl = document.getElementById(`vlistsummary_${v.id}`);
+      if(sumEl) sumEl.textContent = v._categorical
+        ? `${v._labels.length} levels`
+        : `${v.listItems.length} values`;
+    });
+  }
+  if(typeof refreshStatsVarSelectors === 'function') refreshStatsVarSelectors();
+  _listPopupVar = null;
+}
+
+function _renderListPopupPage(){
+  const v      = _listPopupVar;
+  const body   = document.getElementById('listPopupBody');
+  const footer = document.getElementById('listPopupFooter');
+  const meta   = document.getElementById('listPopupMeta');
+  if(!v || !body || !footer) return;
+
+  const n = v._categorical ? v._labels.length : v.listItems.length;
+  if(meta) meta.textContent = v._categorical ? `${n} levels` : `${n} values`;
+
+  if(v._categorical && v._labels.length){
+    const rows = v._labels.slice(0, 500).map((lbl, i) =>
+      `<tr><td class="lp-td lp-idx">${i}</td>
+            <td class="lp-td" style="text-align:left;color:var(--text)">${lbl}</td>
+            <td class="lp-td">${v.listItems[i] ?? '—'}</td></tr>`
+    ).join('');
+    body.innerHTML = `
+      <table class="lp-table">
+        <thead><tr>
+          <th class="lp-th lp-th-idx">#</th>
+          <th class="lp-th" style="text-align:left">Label</th>
+          <th class="lp-th">Count</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    footer.innerHTML = `
+      <span class="lp-info">${n} categories · read-only</span>
+      <button class="lp-btn lp-done-btn" id="lp_done">Close</button>`;
+    document.getElementById('lp_done')?.addEventListener('click', _closeListPopup);
+    return;
+  }
+
+  const totalPages = Math.ceil(v.listItems.length / _LIST_POP_PG) || 1;
+  _listPopupPage   = Math.max(0, Math.min(_listPopupPage, totalPages - 1));
+  const start = _listPopupPage * _LIST_POP_PG;
+  const end   = Math.min(start + _LIST_POP_PG, v.listItems.length);
+
+  const rows = [];
+  for(let i = start; i < end; i++){
+    rows.push(`<tr>
+      <td class="lp-td lp-idx">${i}</td>
+      <td class="lp-td"><input type="number" class="lp-inp" data-idx="${i}" value="${v.listItems[i]}" step="any"/></td>
+    </tr>`);
+  }
+
+  body.innerHTML = `
+    <table class="lp-table">
+      <thead><tr>
+        <th class="lp-th lp-th-idx">#</th>
+        <th class="lp-th">Value</th>
+      </tr></thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>`;
+
+  body.querySelectorAll('.lp-inp').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const idx = parseInt(inp.dataset.idx);
+      const num = parseFloat(inp.value);
+      if(!isNaN(num) && idx >= 0 && idx < v.listItems.length) v.listItems[idx] = num;
+    });
+  });
+
+  footer.innerHTML = `
+    <div class="lp-pagination">
+      ${totalPages > 1 ? `
+        <button class="lp-btn" id="lp_prev" ${_listPopupPage === 0 ? 'disabled' : ''}>&#8592; Prev</button>
+        <span class="lp-info">Rows ${start}–${end - 1} of ${v.listItems.length - 1}</span>
+        <button class="lp-btn" id="lp_next" ${_listPopupPage >= totalPages - 1 ? 'disabled' : ''}>Next &#8594;</button>
+      ` : `<span class="lp-info">${v.listItems.length} values</span>`}
+    </div>
+    <div class="lp-actions">
+      <button class="lp-btn lp-add-btn" id="lp_addRow">+ Add row</button>
+      <button class="lp-btn lp-del-btn" id="lp_delRow" ${v.listItems.length <= 1 ? 'disabled' : ''}>&#8722; Last row</button>
+      <button class="lp-btn lp-done-btn" id="lp_done">Done</button>
+    </div>`;
+
+  document.getElementById('lp_prev')?.addEventListener('click', ()=>{ _listPopupPage--; _renderListPopupPage(); });
+  document.getElementById('lp_next')?.addEventListener('click', ()=>{ _listPopupPage++; _renderListPopupPage(); });
+  document.getElementById('lp_addRow')?.addEventListener('click', ()=>{
+    v.listItems.push(0);
+    v.listLength = v.listItems.length;
+    _listPopupPage = Math.floor((v.listItems.length - 1) / _LIST_POP_PG);
+    _renderListPopupPage();
+  });
+  document.getElementById('lp_delRow')?.addEventListener('click', ()=>{
+    if(v.listItems.length > 1){
+      v.listItems.pop();
+      v.listLength = v.listItems.length;
+      _listPopupPage = Math.min(_listPopupPage, Math.ceil(v.listItems.length / _LIST_POP_PG) - 1);
+      _renderListPopupPage();
+    }
+  });
+  document.getElementById('lp_done')?.addEventListener('click', _closeListPopup);
 }
 
 // Rebuild the edit-by-index footer for lists longer than the display threshold.
@@ -891,19 +1064,26 @@ function importPickleVars(data, sourceName){
         });
       }
     } else if(info.kind === 'list'){
-      const existing = variables.find(v=>v.name===rawKey && v.pickleSource===sourceName);
-      const items    = (info.items || []).map(Number);
+      const existing  = variables.find(v=>v.name===rawKey && v.pickleSource===sourceName);
+      const items     = (info.items || []).map(Number);
+      const isCat     = !!info._categorical;
+      const labels    = info._labels ? [...info._labels] : [];
       if(existing){
-        existing.listItems  = items;
-        existing.listLength = items.length;
+        existing.listItems    = items;
+        existing.listLength   = items.length;
+        existing._categorical = isCat;
+        existing._labels      = labels;
         renderVariables();
       } else {
         addVariable('list', {
           name: rawKey, listItems: items, listLength: items.length,
           pickleSource: sourceName, silent: true,
+          _categorical: isCat, _labels: labels,
         });
       }
     }
   }
   setSbTab('vars');
+  if (typeof refreshStatsVarSelectors === 'function') refreshStatsVarSelectors();
+  if (typeof renderDataTable === 'function' && typeof _statsTab !== 'undefined' && _statsTab === 'data') renderDataTable();
 }
