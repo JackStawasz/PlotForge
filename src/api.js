@@ -1,4 +1,4 @@
-const API = 'http://localhost:5000/api';
+const API = 'http://localhost:5001/api';
 
 // ═══ DISPLAY CONSTANTS ═══════════════════════════════════════════════════
 const CAT_META = {
@@ -196,6 +196,7 @@ async function boot(){
   initLeftSidebar();
   initResizableSidebars();
   wireTemplateModal();
+  initStats();
   const connected = await tryConnect();
   plots = [];
   const p = mkPlot(); plots.push(p);

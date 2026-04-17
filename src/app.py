@@ -694,6 +694,437 @@ def evaluate_variables():
     return jsonify({'results': results})
 
 
+# ── Statistical Analysis Endpoints ───────────────────────────────────────────
+
+@app.route("/api/stats/describe", methods=["POST"])
+def stats_describe():
+    from scipy import stats as sp_stats
+    body = request.get_json(silent=True) or {}
+    raw  = body.get("data", [])
+    arr  = np.array([x for x in raw if x is not None], dtype=float)
+    arr  = arr[np.isfinite(arr)]
+    if len(arr) < 2:
+        return jsonify({"error": "Need at least 2 finite data points"}), 400
+    desc = sp_stats.describe(arr)
+    q1, q3 = np.percentile(arr, [25, 75])
+    return jsonify({
+        "n":        int(desc.nobs),
+        "min":      float(np.min(arr)),
+        "max":      float(np.max(arr)),
+        "mean":     float(desc.mean),
+        "median":   float(np.median(arr)),
+        "std":      float(np.std(arr, ddof=1)),
+        "variance": float(desc.variance),
+        "skewness": float(desc.skewness),
+        "kurtosis": float(desc.kurtosis),
+        "q1":       float(q1),
+        "q3":       float(q3),
+        "iqr":      float(q3 - q1),
+        "sem":      float(sp_stats.sem(arr)),
+    })
+
+
+@app.route("/api/stats/histogram", methods=["POST"])
+def stats_histogram():
+    from scipy.stats import gaussian_kde
+    body = request.get_json(silent=True) or {}
+    raw  = body.get("data", [])
+    arr  = np.array([x for x in raw if x is not None], dtype=float)
+    arr  = arr[np.isfinite(arr)]
+    if len(arr) < 2:
+        return jsonify({"error": "Need at least 2 finite data points"}), 400
+    bins = body.get("bins", "auto")
+    kde  = body.get("kde", True)
+    if isinstance(bins, str):
+        edges = np.histogram_bin_edges(arr, bins=bins)
+    else:
+        edges = np.histogram_bin_edges(arr, bins=max(1, int(bins)))
+    counts, edges = np.histogram(arr, bins=edges)
+    centers  = ((edges[:-1] + edges[1:]) / 2).tolist()
+    bin_width = float(edges[1] - edges[0]) if len(edges) > 1 else 1.0
+    result = {
+        "counts":    counts.tolist(),
+        "edges":     edges.tolist(),
+        "centers":   centers,
+        "bin_width": bin_width,
+    }
+    if kde and len(arr) >= 3:
+        try:
+            kde_fn = gaussian_kde(arr)
+            x_kde  = np.linspace(arr.min(), arr.max(), 300)
+            y_kde  = kde_fn(x_kde) * len(arr) * bin_width
+            result["kde_x"] = x_kde.tolist()
+            result["kde_y"] = y_kde.tolist()
+        except Exception as e:
+            result["kde_error"] = str(e)
+    return jsonify(result)
+
+
+@app.route("/api/stats/fit", methods=["POST"])
+def stats_fit():
+    from scipy.optimize import curve_fit
+    body     = request.get_json(silent=True) or {}
+    x_raw    = body.get("x", [])
+    y_raw    = body.get("y", [])
+    fit_type = body.get("type", "gaussian")
+    degree   = max(1, min(int(body.get("degree", 2)), 10))
+    want_ci  = bool(body.get("ci", False))
+
+    n = min(len(x_raw), len(y_raw))
+    x = np.array(x_raw[:n], dtype=float)
+    y = np.array(y_raw[:n], dtype=float)
+    mask = np.isfinite(x) & np.isfinite(y)
+    x, y = x[mask], y[mask]
+    if len(x) < 3:
+        return jsonify({"error": "Need at least 3 finite paired points"}), 400
+
+    pcov_fit  = None
+    _fit_func = None  # callable(x_dense, *popt) for CI Monte Carlo
+    popt      = None
+
+    try:
+        if fit_type == "gaussian":
+            A0  = float(y.max() - y.min()) or 1.0
+            w   = np.clip(y - y.min(), 0, None)
+            mu0 = float(np.average(x, weights=w)) if w.sum() > 0 else float(np.mean(x))
+            s0  = float(np.sqrt(np.average((x - mu0)**2, weights=w))) if w.sum() > 0 else float(np.std(x))
+            s0  = max(s0, 1e-8)
+            c0  = float(y.min())
+
+            def _gauss(xd, A, mu, sigma, c):
+                return A * np.exp(-((xd - mu)**2) / (2 * sigma**2)) + c
+
+            popt, pcov_fit = curve_fit(_gauss, x, y, p0=[A0, mu0, s0, c0], maxfev=20000)
+            y_fit   = _gauss(x, *popt)
+            x_dense = np.linspace(x.min(), x.max(), 400)
+            y_dense = _gauss(x_dense, *popt)
+            params  = {"A": popt[0], "μ": popt[1], "σ": popt[2], "c": popt[3]}
+            _fit_func = _gauss
+
+        elif fit_type == "polynomial":
+            try:
+                coeffs, pcov_fit = np.polyfit(x, y, degree, cov=True)
+            except Exception:
+                coeffs = np.polyfit(x, y, degree)
+                pcov_fit = None
+            popt    = coeffs
+            y_fit   = np.polyval(coeffs, x)
+            x_dense = np.linspace(x.min(), x.max(), 400)
+            y_dense = np.polyval(coeffs, x_dense)
+            params  = {f"a{i}": float(coeffs[degree - i]) for i in range(degree + 1)}
+
+        elif fit_type == "exponential":
+            c0 = float(y.min()) - 1e-6 * abs(float(y.min()) or 1)
+            ys = np.clip(y - c0, 1e-10, None)
+            try:
+                b0, la0 = np.polyfit(x, np.log(ys), 1)
+                a0 = float(np.exp(la0))
+            except Exception:
+                a0, b0 = 1.0, 0.1
+
+            def _exp(xd, a, b, c):
+                return a * np.exp(b * xd) + c
+
+            popt, pcov_fit = curve_fit(_exp, x, y, p0=[a0, b0, c0], maxfev=20000)
+            y_fit   = _exp(x, *popt)
+            x_dense = np.linspace(x.min(), x.max(), 400)
+            y_dense = _exp(x_dense, *popt)
+            params  = {"a": popt[0], "b": popt[1], "c": popt[2]}
+            _fit_func = _exp
+
+        elif fit_type == "power":
+            xp = x[x > 0]; yp = y[x > 0]
+            if len(xp) < 3:
+                return jsonify({"error": "Power law requires positive x values"}), 400
+
+            def _power(xd, a, b, c):
+                return a * np.abs(xd) ** b + c
+
+            try:
+                b0, la0 = np.polyfit(np.log(xp), np.log(np.abs(yp) + 1e-10), 1)
+                a0 = float(np.exp(la0))
+            except Exception:
+                a0, b0 = 1.0, 1.0
+            popt, pcov_fit = curve_fit(_power, x, y, p0=[a0, b0, 0.0], maxfev=20000)
+            y_fit   = _power(x, *popt)
+            x_dense = np.linspace(max(x.min(), 1e-6), x.max(), 400)
+            y_dense = _power(x_dense, *popt)
+            params  = {"a": popt[0], "b": popt[1], "c": popt[2]}
+            _fit_func = _power
+
+        elif fit_type == "custom":
+            from sympy import symbols, sympify, lambdify
+            formula = body.get("formula", "").strip()
+            if not formula:
+                return jsonify({"error": "Provide a formula, e.g. a*x**2 + b*x + c"}), 400
+            for bad in ["import", "exec", "eval", "open", "__"]:
+                if bad in formula:
+                    return jsonify({"error": f"Unsafe token in formula: '{bad}'"}), 400
+            x_sym = symbols('x')
+            expr = sympify(formula)
+            free = expr.free_symbols
+            param_syms = sorted([s for s in free if str(s) != 'x'], key=str)
+            if not param_syms:
+                return jsonify({"error": "Formula must have free parameters besides x"}), 400
+            func_sym = lambdify([x_sym] + param_syms, expr, modules=['numpy'])
+
+            def _custom(xd, *p): return np.asarray(func_sym(xd, *p), dtype=float)
+
+            p0 = [1.0] * len(param_syms)
+            popt, pcov_fit = curve_fit(_custom, x, y, p0=p0, maxfev=50000)
+            y_fit   = _custom(x, *popt)
+            x_dense = np.linspace(x.min(), x.max(), 400)
+            y_dense = _custom(x_dense, *popt)
+            params  = {str(s): float(v) for s, v in zip(param_syms, popt)}
+            _fit_func = _custom
+
+        else:
+            return jsonify({"error": f"Unknown fit type '{fit_type}'"}), 400
+
+        ss_res = float(np.sum((y - y_fit) ** 2))
+        ss_tot = float(np.sum((y - np.mean(y)) ** 2))
+        r2     = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+        rmse   = float(np.sqrt(np.mean((y - y_fit) ** 2)))
+
+        # 95% CI band via Monte Carlo parameter sampling
+        ci_band = None
+        if want_ci and popt is not None and pcov_fit is not None:
+            try:
+                rng_ci  = np.random.default_rng(0)
+                samples = rng_ci.multivariate_normal(np.asarray(popt, dtype=float),
+                                                     np.asarray(pcov_fit, dtype=float), 500)
+                if fit_type == "polynomial":
+                    y_bands = np.array([np.polyval(s, x_dense) for s in samples])
+                else:
+                    y_bands = np.array([_fit_func(x_dense, *s) for s in samples])
+                ci_band = {
+                    "lo": np.percentile(y_bands, 2.5,  axis=0).tolist(),
+                    "hi": np.percentile(y_bands, 97.5, axis=0).tolist(),
+                }
+            except Exception:
+                pass
+
+        return jsonify({
+            "params":    {k: float(v) for k, v in params.items()},
+            "r2":        r2,
+            "rmse":      rmse,
+            "residuals": (y - y_fit).tolist(),
+            "x_fit":     x_dense.tolist(),
+            "y_fit":     y_dense.tolist(),
+            "x_orig":    x.tolist(),
+            "y_orig":    y.tolist(),
+            "ci_band":   ci_band,
+        })
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/stats/correlation", methods=["POST"])
+def stats_correlation():
+    body  = request.get_json(silent=True) or {}
+    data  = body.get("data", {})
+    names = list(data.keys())
+    if len(names) < 2:
+        return jsonify({"error": "Need at least 2 variables"}), 400
+    min_len = min(len(v) for v in data.values())
+    if min_len < 2:
+        return jsonify({"error": "Need at least 2 data points per variable"}), 400
+    matrix = []
+    for n1 in names:
+        row = []
+        for n2 in names:
+            a1 = np.array(data[n1][:min_len], dtype=float)
+            a2 = np.array(data[n2][:min_len], dtype=float)
+            ok = np.isfinite(a1) & np.isfinite(a2)
+            if ok.sum() < 2:
+                row.append(None)
+            else:
+                row.append(float(np.corrcoef(a1[ok], a2[ok])[0, 1]))
+        matrix.append(row)
+    return jsonify({"names": names, "matrix": matrix})
+
+
+@app.route("/api/stats/test", methods=["POST"])
+def stats_test():
+    from scipy import stats as sp_stats
+    body = request.get_json(silent=True) or {}
+    test_type = body.get("type", "ttest_1samp")
+    try:
+        def _arr(key):
+            return np.array([x for x in body.get(key, []) if x is not None], dtype=float)
+
+        if test_type == "ttest_1samp":
+            arr = _arr("data"); arr = arr[np.isfinite(arr)]
+            if len(arr) < 2: return jsonify({"error": "Need ≥2 data points"}), 400
+            mu0 = float(body.get("mu0", 0))
+            stat, pval = sp_stats.ttest_1samp(arr, mu0)
+            ci = sp_stats.t.interval(0.95, df=len(arr)-1, loc=float(np.mean(arr)), scale=sp_stats.sem(arr))
+            return jsonify({"test": "One-Sample t-Test", "statistic": float(stat), "p_value": float(pval),
+                "df": int(len(arr)-1), "mean": float(np.mean(arr)), "mu0": mu0,
+                "ci_95": [float(ci[0]), float(ci[1])], "n": int(len(arr)),
+                "reject_05": bool(pval < 0.05), "reject_01": bool(pval < 0.01)})
+
+        elif test_type == "ttest_2samp":
+            a = _arr("data1"); a = a[np.isfinite(a)]
+            b = _arr("data2"); b = b[np.isfinite(b)]
+            if len(a) < 2 or len(b) < 2: return jsonify({"error": "Need ≥2 points per group"}), 400
+            ev = bool(body.get("equal_var", False))
+            stat, pval = sp_stats.ttest_ind(a, b, equal_var=ev)
+            return jsonify({"test": "Two-Sample t-Test" + ("" if ev else " (Welch)"),
+                "statistic": float(stat), "p_value": float(pval),
+                "mean1": float(np.mean(a)), "mean2": float(np.mean(b)),
+                "n1": int(len(a)), "n2": int(len(b)),
+                "reject_05": bool(pval < 0.05), "reject_01": bool(pval < 0.01)})
+
+        elif test_type == "ttest_paired":
+            a = _arr("data1"); b = _arr("data2")
+            n = min(len(a), len(b)); a, b = a[:n], b[:n]
+            mask = np.isfinite(a) & np.isfinite(b); a, b = a[mask], b[mask]
+            if len(a) < 2: return jsonify({"error": "Need ≥2 paired points"}), 400
+            stat, pval = sp_stats.ttest_rel(a, b)
+            return jsonify({"test": "Paired t-Test", "statistic": float(stat), "p_value": float(pval),
+                "n_pairs": int(len(a)), "mean_diff": float(np.mean(a - b)),
+                "reject_05": bool(pval < 0.05), "reject_01": bool(pval < 0.01)})
+
+        elif test_type == "chi2":
+            obs = np.array(body.get("observed", []), dtype=float)
+            if len(obs) < 2: return jsonify({"error": "Need ≥2 observed frequencies"}), 400
+            exp_raw = body.get("expected")
+            if exp_raw:
+                stat, pval = sp_stats.chisquare(obs, f_exp=np.array(exp_raw, dtype=float))
+            else:
+                stat, pval = sp_stats.chisquare(obs)
+            return jsonify({"test": "Chi-Squared Goodness of Fit", "statistic": float(stat),
+                "p_value": float(pval), "df": int(len(obs) - 1),
+                "reject_05": bool(pval < 0.05), "reject_01": bool(pval < 0.01)})
+
+        elif test_type == "anova":
+            groups_raw = body.get("groups", [])
+            groups = []
+            for g_raw in groups_raw:
+                g = np.array([x for x in g_raw if x is not None], dtype=float)
+                g = g[np.isfinite(g)]
+                if len(g) >= 2: groups.append(g)
+            if len(groups) < 2: return jsonify({"error": "Need ≥2 groups with ≥2 points each"}), 400
+            stat, pval = sp_stats.f_oneway(*groups)
+            return jsonify({"test": "One-Way ANOVA", "statistic": float(stat), "p_value": float(pval),
+                "n_groups": int(len(groups)),
+                "group_means": [float(np.mean(g)) for g in groups],
+                "group_ns": [int(len(g)) for g in groups],
+                "reject_05": bool(pval < 0.05), "reject_01": bool(pval < 0.01)})
+
+        elif test_type == "ks":
+            a = _arr("data1"); a = a[np.isfinite(a)]
+            b = _arr("data2"); b = b[np.isfinite(b)]
+            if len(a) < 2 or len(b) < 2: return jsonify({"error": "Need ≥2 points per group"}), 400
+            stat, pval = sp_stats.ks_2samp(a, b)
+            return jsonify({"test": "Kolmogorov-Smirnov Test", "statistic": float(stat),
+                "p_value": float(pval), "n1": int(len(a)), "n2": int(len(b)),
+                "reject_05": bool(pval < 0.05), "reject_01": bool(pval < 0.01)})
+
+        elif test_type == "mannwhitney":
+            a = _arr("data1"); a = a[np.isfinite(a)]
+            b = _arr("data2"); b = b[np.isfinite(b)]
+            if len(a) < 2 or len(b) < 2: return jsonify({"error": "Need ≥2 points per group"}), 400
+            stat, pval = sp_stats.mannwhitneyu(a, b, alternative='two-sided')
+            return jsonify({"test": "Mann-Whitney U Test", "statistic": float(stat),
+                "p_value": float(pval), "n1": int(len(a)), "n2": int(len(b)),
+                "reject_05": bool(pval < 0.05), "reject_01": bool(pval < 0.01)})
+
+        else:
+            return jsonify({"error": f"Unknown test '{test_type}'"}), 400
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/stats/preprocess", methods=["POST"])
+def stats_preprocess():
+    body = request.get_json(silent=True) or {}
+    op   = body.get("op", "normalize")
+    raw  = body.get("data", [])
+    try:
+        if op in ("normalize", "standardize", "remove_outliers", "train_test_split"):
+            arr = np.array([x for x in raw if x is not None], dtype=float)
+            arr = arr[np.isfinite(arr)]
+        else:
+            arr = np.array([x if x is not None else np.nan for x in raw], dtype=float)
+
+        if op == "normalize":
+            mn, mx = float(arr.min()), float(arr.max()); rng = mx - mn
+            out = ((arr - mn) / rng).tolist() if rng > 0 else [0.0] * len(arr)
+            return jsonify({"result": out, "info": {"min": mn, "max": mx, "range": rng, "n": int(len(arr))}})
+
+        elif op == "standardize":
+            mu, sig = float(np.mean(arr)), float(np.std(arr, ddof=1))
+            out = ((arr - mu) / sig).tolist() if sig > 0 else [0.0] * len(arr)
+            return jsonify({"result": out, "info": {"mean": mu, "std": sig, "n": int(len(arr))}})
+
+        elif op == "remove_outliers":
+            method = body.get("method", "iqr")
+            if method == "iqr":
+                q1, q3 = np.percentile(arr, [25, 75]); iqr = q3 - q1
+                lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+            else:
+                mu, sig = float(np.mean(arr)), float(np.std(arr, ddof=1))
+                thr = float(body.get("z_threshold", 3.0))
+                lo, hi = mu - thr * sig, mu + thr * sig
+            mask = (arr >= lo) & (arr <= hi)
+            return jsonify({"result": arr[mask].tolist(),
+                "info": {"removed": int((~mask).sum()), "kept": int(mask.sum()),
+                         "lo": float(lo), "hi": float(hi), "method": method}})
+
+        elif op == "fill_missing":
+            n_nan = int(np.isnan(arr).sum())
+            finite = arr[np.isfinite(arr)]
+            if not len(finite): return jsonify({"error": "No finite values"}), 400
+            strategy = body.get("strategy", "mean")
+            fv = {"mean": float(np.mean(finite)), "median": float(np.median(finite)),
+                  "zero": 0.0, "min": float(finite.min()), "max": float(finite.max())}.get(strategy, float(np.mean(finite)))
+            out = np.where(np.isnan(arr), fv, arr).tolist()
+            return jsonify({"result": out,
+                "info": {"fill_value": fv, "n_filled": n_nan, "strategy": strategy, "n_total": int(len(arr))}})
+
+        elif op == "train_test_split":
+            test_size = float(body.get("test_size", 0.2))
+            seed = int(body.get("seed", 42))
+            rng2 = np.random.default_rng(seed)
+            n = len(arr); n_test = max(1, int(n * test_size))
+            idx = rng2.permutation(n)
+            return jsonify({"train": arr[idx[n_test:]].tolist(), "test": arr[idx[:n_test]].tolist(),
+                "train_idx": idx[n_test:].tolist(), "test_idx": idx[:n_test].tolist(),
+                "n_train": int(n - n_test), "n_test": int(n_test)})
+
+        else:
+            return jsonify({"error": f"Unknown op '{op}'"}), 400
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/stats/boxplot", methods=["POST"])
+def stats_boxplot():
+    body = request.get_json(silent=True) or {}
+    datasets = body.get("datasets", {})
+    result = {}
+    for name, raw in datasets.items():
+        arr = np.array([x for x in raw if x is not None], dtype=float)
+        arr = arr[np.isfinite(arr)]
+        if len(arr) < 2: continue
+        q1, q3 = np.percentile(arr, [25, 75]); iqr = q3 - q1
+        lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+        wlo = float(arr[arr >= lo].min()) if (arr >= lo).any() else float(q1)
+        whi = float(arr[arr <= hi].max()) if (arr <= hi).any() else float(q3)
+        result[name] = {
+            "min": float(arr.min()), "max": float(arr.max()),
+            "q1": float(q1), "median": float(np.median(arr)), "q3": float(q3),
+            "mean": float(np.mean(arr)), "whisker_lo": wlo, "whisker_hi": whi,
+            "outliers": arr[(arr < lo) | (arr > hi)].tolist(), "n": int(len(arr)),
+        }
+    return jsonify({"boxplots": result})
+
+
 if __name__ == "__main__":
-    print("PlotForge backend  →  http://localhost:5000")
-    app.run(debug=True, port=5000)
+    print("PlotForge backend  →  http://localhost:5001")
+    app.run(debug=True, port=5001)

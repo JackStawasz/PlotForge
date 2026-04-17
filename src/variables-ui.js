@@ -17,7 +17,10 @@ function addVariable(kind='constant', opts={}){
     fromTemplate: opts.fromTemplate || false,
     templateKey:  opts.templateKey  || null,
     paramKey:     opts.paramKey     || null,
-    pickleSource: opts.pickleSource || null,
+    pickleSource:  opts.pickleSource  || null,
+    _isNumeric:    opts._isNumeric    || false,
+    _categorical:  opts._categorical  || false,
+    _labels:       opts._labels       ? [...opts._labels] : [],
   };
   variables.push(v);
   renderVariables();
@@ -891,19 +894,26 @@ function importPickleVars(data, sourceName){
         });
       }
     } else if(info.kind === 'list'){
-      const existing = variables.find(v=>v.name===rawKey && v.pickleSource===sourceName);
-      const items    = (info.items || []).map(Number);
+      const existing  = variables.find(v=>v.name===rawKey && v.pickleSource===sourceName);
+      const items     = (info.items || []).map(Number);
+      const isCat     = !!info._categorical;
+      const labels    = info._labels ? [...info._labels] : [];
       if(existing){
-        existing.listItems  = items;
-        existing.listLength = items.length;
+        existing.listItems    = items;
+        existing.listLength   = items.length;
+        existing._categorical = isCat;
+        existing._labels      = labels;
         renderVariables();
       } else {
         addVariable('list', {
           name: rawKey, listItems: items, listLength: items.length,
           pickleSource: sourceName, silent: true,
+          _categorical: isCat, _labels: labels,
         });
       }
     }
   }
   setSbTab('vars');
+  if (typeof refreshStatsVarSelectors === 'function') refreshStatsVarSelectors();
+  if (typeof renderDataTable === 'function' && typeof _statsTab !== 'undefined' && _statsTab === 'data') renderDataTable();
 }
