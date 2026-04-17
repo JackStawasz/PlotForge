@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "plotforge",
+      "runtimeExecutable": "venv/bin/python",
+      "runtimeArgs": ["src/app.py"],
+      "port": 5001
+    }
+  ]
+}
