@@ -17,5 +17,3 @@ If it's the first startup, python dependencies from ```requirements.txt``` will 
 If ```requirements.txt``` is updated (to match ```app.py``` imports) then the new dependencies will be installed upon restarting the server. If there is still a missing import due to a failed installation, delete ```venv/.req_hash``` to try again.
 
 Updating ```app.py``` does not require a server reboot: the server package ```flask``` handles this automatically.
-
-Test
