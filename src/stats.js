@@ -8,6 +8,12 @@ let _statsTab = 'describe';
 const _statsCharts = {};
 let _currentView = 'plots';
 
+// Preprocess last-result cache (for save/update/download actions)
+let _lastPrepResult = null;
+let _lastPrepVar    = null;
+let _lastPrepOp     = null;
+let _lastSplitData  = null;
+
 // ═══ VIEW SWITCHING ══════════════════════════════════════════════════════════
 
 function switchToView(view) {
@@ -451,10 +457,12 @@ function renderDataTable() {
       <button class="data-page-btn" id="dataPrevBtn" ${_dataPage === 0 ? 'disabled' : ''}>← Prev</button>
       <span class="data-page-info">Rows ${start + 1}–${end} of ${maxRows} &nbsp;·&nbsp; page ${_dataPage + 1} / ${totalPages}</span>
       <button class="data-page-btn" id="dataNextBtn" ${_dataPage >= totalPages - 1 ? 'disabled' : ''}>Next →</button>
+      <button class="data-page-btn" id="dataDownloadCsvBtn" style="margin-left:auto">⬇ Download CSV</button>
     </div>`;
 
   document.getElementById('dataPrevBtn')?.addEventListener('click', () => { _dataPage--; renderDataTable(); });
   document.getElementById('dataNextBtn')?.addEventListener('click', () => { _dataPage++; renderDataTable(); });
+  document.getElementById('dataDownloadCsvBtn')?.addEventListener('click', _downloadAllCsv);
 }
 
 // ═══ HISTOGRAM / BOX PLOT / VIOLIN ════════════════════════════════════════════
@@ -1130,9 +1138,17 @@ async function runPreprocess() {
 }
 
 function _renderPreprocessResult(el, data, op, v) {
-  const varName = v.name || `v${v.id}`;
+  // Store state for save/update/download actions
+  _lastPrepVar  = v;
+  _lastPrepOp   = op;
+
+  const varName  = v.name || `v${v.id}`;
+  const opSuffix = { normalize: '_norm', standardize: '_std', remove_outliers: '_clean', fill_missing: '_filled' }[op] || '_processed';
 
   if (op === 'train_test_split') {
+    _lastSplitData  = { train: data.train, test: data.test };
+    _lastPrepResult = null;
+
     el.innerHTML = `
       <div class="stats-res-header">Train / Test Split — <span class="stats-varname">${varName}</span></div>
       <div class="stats-desc-layout" style="margin-top:12px">
@@ -1150,18 +1166,41 @@ function _renderPreprocessResult(el, data, op, v) {
           ${_miniStats(data.test)}
         </div>
       </div>
-      <div class="prep-preview-note">Results shown above. To save as new variables, copy the indices below.</div>
-      <div class="prep-index-row">
-        <div class="prep-index-label">Train indices (${data.n_train})</div>
-        <div class="prep-index-val">${data.train_idx.slice(0,20).join(', ')}${data.train_idx.length > 20 ? '…' : ''}</div>
-      </div>`;
+      <div class="prep-action-row">
+        <button class="prep-action-btn prep-save-btn" id="prepSaveSplitBtn">+ Save as ${varName}_train &amp; ${varName}_test</button>
+        <button class="prep-action-btn prep-dl-btn" id="prepDlSplitBtn">⬇ Download CSV</button>
+      </div>
+      <div id="prepActionMsg" class="prep-action-msg"></div>`;
+
+    document.getElementById('prepSaveSplitBtn')?.addEventListener('click', () => {
+      const base = _lastPrepVar.name || `v${_lastPrepVar.id}`;
+      addVariable('list', { name: base + '_train', listItems: [..._lastSplitData.train], _isNumeric: true });
+      addVariable('list', { name: base + '_test',  listItems: [..._lastSplitData.test],  _isNumeric: true });
+      if (typeof refreshStatsVarSelectors === 'function') refreshStatsVarSelectors();
+      _setPrepMsg(`Saved "${base}_train" (${_lastSplitData.train.length}) and "${base}_test" (${_lastSplitData.test.length}).`);
+    });
+
+    document.getElementById('prepDlSplitBtn')?.addEventListener('click', () => {
+      const base = _lastPrepVar.name || `v${_lastPrepVar.id}`;
+      const rows = [];
+      const maxLen = Math.max(_lastSplitData.train.length, _lastSplitData.test.length);
+      rows.push(`${base}_train,${base}_test`);
+      for (let i = 0; i < maxLen; i++) {
+        const t  = i < _lastSplitData.train.length ? _lastSplitData.train[i] : '';
+        const te = i < _lastSplitData.test.length  ? _lastSplitData.test[i]  : '';
+        rows.push(`${t},${te}`);
+      }
+      _triggerDownload(rows.join('\n'), `${base}_split.csv`, 'text/csv');
+    });
     return;
   }
 
-  // For operations that return a result array, show before/after comparison
-  const orig    = v.listItems;
-  const result  = data.result || [];
-  const info    = data.info   || {};
+  // Regular transform — save result array
+  const orig   = v.listItems;
+  const result = data.result || [];
+  const info   = data.info   || {};
+  _lastPrepResult = result;
+  _lastSplitData  = null;
 
   let infoRows = '';
   if (op === 'normalize') {
@@ -1182,6 +1221,8 @@ function _renderPreprocessResult(el, data, op, v) {
       <div class="stats-row stats-row-hi"><span class="stats-lbl">Values filled</span><span class="stats-val">${info.n_filled}</span></div>`;
   }
 
+  const newName = varName + opSuffix;
+
   el.innerHTML = `
     <div class="stats-res-header">Preprocessing — <span class="stats-varname">${varName}</span>
       <span class="stats-type-badge" style="background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.3)">${op}</span>
@@ -1192,16 +1233,49 @@ function _renderPreprocessResult(el, data, op, v) {
         ${infoRows}
       </div>
       <div class="stats-table-card">
-        <div class="stats-section-lbl">Before</div>
+        <div class="stats-section-lbl">Before (${orig.length})</div>
         ${_miniStats(orig)}
       </div>
       <div class="stats-table-card">
-        <div class="stats-section-lbl">After</div>
+        <div class="stats-section-lbl">After (${result.length})</div>
         ${_miniStats(result)}
       </div>
     </div>
-    <div class="prep-preview-note">Preview of first 10 transformed values:</div>
-    <div class="prep-preview-vals">${result.slice(0, 10).map(x => `<span>${_fmtNum(x)}</span>`).join('')}${result.length > 10 ? `<span style="color:var(--muted)">… +${result.length - 10} more</span>` : ''}</div>`;
+    <div class="prep-preview-note">Preview — first 10 values:</div>
+    <div class="prep-preview-vals">${result.slice(0, 10).map(x => `<span>${_fmtNum(x)}</span>`).join('')}${result.length > 10 ? `<span style="color:var(--muted)">… +${result.length - 10} more</span>` : ''}</div>
+    <div class="prep-action-row">
+      <button class="prep-action-btn prep-save-btn" id="prepSaveNewBtn">+ Save as "${newName}"</button>
+      <button class="prep-action-btn prep-update-btn" id="prepUpdateBtn">↻ Update "${varName}"</button>
+      <button class="prep-action-btn prep-dl-btn" id="prepDlBtn">⬇ Download CSV</button>
+    </div>
+    <div id="prepActionMsg" class="prep-action-msg"></div>`;
+
+  document.getElementById('prepSaveNewBtn')?.addEventListener('click', () => {
+    const nm = (_lastPrepVar.name || `v${_lastPrepVar.id}`) + opSuffix;
+    addVariable('list', { name: nm, listItems: [..._lastPrepResult], _isNumeric: true });
+    if (typeof refreshStatsVarSelectors === 'function') refreshStatsVarSelectors();
+    _setPrepMsg(`Saved as new variable "${nm}" (${_lastPrepResult.length} values).`);
+    document.getElementById('prepSaveNewBtn').disabled = true;
+  });
+
+  document.getElementById('prepUpdateBtn')?.addEventListener('click', () => {
+    const target = typeof variables !== 'undefined'
+      ? variables.find(vv => vv.id === _lastPrepVar.id) : null;
+    if (!target) return;
+    if (typeof snapshotForUndo === 'function') snapshotForUndo();
+    target.listItems = [..._lastPrepResult];
+    target.listLength = _lastPrepResult.length;
+    if (typeof renderVariables === 'function') renderVariables();
+    if (typeof refreshStatsVarSelectors === 'function') refreshStatsVarSelectors();
+    _setPrepMsg(`Variable "${target.name || `v${target.id}`}" updated in place (${_lastPrepResult.length} values).`);
+    document.getElementById('prepUpdateBtn').disabled = true;
+  });
+
+  document.getElementById('prepDlBtn')?.addEventListener('click', () => {
+    const nm = (_lastPrepVar.name || `v${_lastPrepVar.id}`) + opSuffix;
+    const csv = nm + '\n' + _lastPrepResult.join('\n');
+    _triggerDownload(csv, nm + '.csv', 'text/csv');
+  });
 }
 
 function _miniStats(arr) {
@@ -1216,4 +1290,34 @@ function _miniStats(arr) {
     <div class="stats-row stats-row-hi"><span class="stats-lbl">Mean</span><span class="stats-val">${_fmtNum(mean)}</span></div>
     <div class="stats-row"><span class="stats-lbl">Std Dev</span><span class="stats-val">${_fmtNum(std)}</span></div>
     <div class="stats-row"><span class="stats-lbl">Min / Max</span><span class="stats-val">${_fmtNum(mn)} / ${_fmtNum(mx)}</span></div>`;
+}
+
+// ═══ SHARED UTILITIES ════════════════════════════════════════════════════════
+
+function _setPrepMsg(msg) {
+  const el = document.getElementById('prepActionMsg');
+  if (el) { el.textContent = msg; el.style.display = ''; }
+}
+
+function _triggerDownload(content, filename, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function _downloadAllCsv() {
+  const allVars = _getListVars();
+  const numVars = allVars.filter(v => !v._categorical);
+  if (!numVars.length) return;
+  const maxRows = Math.max(...numVars.map(v => v.listItems.length));
+  const header  = numVars.map(v => (v.name || `v${v.id}`).replace(/,/g, '_')).join(',');
+  const rows = [];
+  for (let r = 0; r < maxRows; r++) {
+    rows.push(numVars.map(v => r < v.listItems.length ? (v.listItems[r] ?? '') : '').join(','));
+  }
+  _triggerDownload(header + '\n' + rows.join('\n'), 'plotforge_data.csv', 'text/csv');
 }
