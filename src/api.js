@@ -18,11 +18,15 @@ const CURVE_COLORS = [
 // ═══ SHARED STATE ════════════════════════════════════════════════════════
 let TEMPLATES      = {};
 let plots          = [];
+let tabs           = [];
+let activeTabId    = null;
 let activePid      = null;
 let selTpl         = null;
 let activeCurveIdx = 0;
 let pid_ctr        = 0;
 let curve_ctr      = 0;
+let tab_ctr        = 0;
+let plot_num_ctr   = 0;
 
 const chartFirstRender = {};
 const chartInstances   = {};
@@ -53,6 +57,10 @@ function snapshotForUndo(){
       _isNumeric: v._isNumeric || false,
     })),
     varIdCtr,
+    tabs: tabs.map(t=>({ id:t.id, name:t.name })),
+    activeTabId,
+    tab_ctr,
+    plot_num_ctr,
   });
   if(undoStack.length && undoStack[undoStack.length-1]===snap) return;
   undoStack.push(snap);
@@ -84,7 +92,22 @@ function restoreSnapshot(snap){
 
   plots.length = 0;
   for(const rp of restoredPlots) plots.push(rp);
-  if(!plots.find(p=>p.id===activePid)) activePid = plots[0]?.id ?? null;
+
+  // Restore tabs state (older snapshots without tabs fall back to a single default tab)
+  if(Array.isArray(state.tabs) && state.tabs.length){
+    tabs.length = 0;
+    for(const t of state.tabs) tabs.push({ id:t.id, name:t.name });
+    activeTabId = state.activeTabId ?? tabs[0].id;
+    if(typeof state.tab_ctr === 'number')      tab_ctr      = state.tab_ctr;
+    if(typeof state.plot_num_ctr === 'number') plot_num_ctr = state.plot_num_ctr;
+  } else if(!tabs.length){
+    const t = mkTab('Tab 1');
+    tabs.push(t);
+    activeTabId = t.id;
+    for(const p of plots){ if(p.tabId == null) p.tabId = t.id; }
+  }
+
+  if(!plots.find(p=>p.id===activePid)) activePid = (plots.find(p=>p.tabId===activeTabId)?.id) ?? null;
   const ap = plots.find(p=>p.id===activePid);
   if(ap && activeCurveIdx >= ap.curves.length) activeCurveIdx = 0;
   renderDOM();
@@ -117,6 +140,13 @@ function updateUndoRedoBtns(){
 // ═══ STATE FACTORIES ═════════════════════════════════════════════════════
 function mkPid(){ return ++pid_ctr; }
 function mkCid(){ return ++curve_ctr; }
+function mkTabId(){ return ++tab_ctr; }
+
+function mkTab(name){
+  const id = mkTabId();
+  const clean = (name||'').trim();
+  return { id, name: clean || `Tab ${id}` };
+}
 
 function defView(){
   // Pull themed defaults (bg, grid, axes, labels) from the active plot theme.
@@ -164,9 +194,11 @@ function defCurve(existingCurves = []){
   };
 }
 
-function mkPlot(){
+function mkPlot(tabId){
   return {
     id: mkPid(),
+    tabId: tabId ?? activeTabId,
+    plotNumber: ++plot_num_ctr,
     curves: [ defCurve([]) ],
     view: defView(),
     labels: { title:'', xlabel:'', ylabel:'' },
@@ -200,7 +232,11 @@ async function boot(){
   _showReconnectPopup(false);
   const connected = await tryConnect();
   plots = [];
-  const p = mkPlot(); plots.push(p);
+  tabs = [];
+  const firstTab = mkTab('Tab 1');
+  tabs.push(firstTab);
+  activeTabId = firstTab.id;
+  const p = mkPlot(firstTab.id); plots.push(p);
   activePid = p.id; activeCurveIdx = 0;
   renderDOM();
   wireAllCfgInputs();

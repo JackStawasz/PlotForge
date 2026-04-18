@@ -37,7 +37,7 @@ function updateCardContent(pid){
 function updateTopbar(pid){
   const p = gp(pid); if(!p) return;
   const topEl = document.getElementById(`ctop_${pid}`); if(!topEl) return;
-  topEl.innerHTML = buildTopbarInner(p, plots.findIndex(q=>q.id===pid));
+  topEl.innerHTML = buildTopbarInner(p);
 }
 
 function updateSpinner(pid){
@@ -48,13 +48,15 @@ function updateSpinner(pid){
 }
 
 function renderDOM(){
+  renderTabBar();
   for(const p of plots) destroyChart(p.id);
   const list = document.getElementById('plotList'); list.innerHTML = '';
-  plots.forEach((p,i) => list.appendChild(buildCard(p,i)));
+  const visible = plots.filter(p => p.tabId === activeTabId);
+  visible.forEach(p => list.appendChild(buildCard(p)));
   const ghost = document.createElement('div'); ghost.className = 'add-card';
   ghost.innerHTML = `<div class="add-plus">+</div><span>Add new plot</span>`;
   ghost.addEventListener('click', ()=>{
-    const np = mkPlot(); plots.push(np); activePid=np.id; activeCurveIdx=0;
+    const np = mkPlot(activeTabId); plots.push(np); activePid=np.id; activeCurveIdx=0;
     renderDOM(); refreshCfg(); refreshSidebar(); snapshotForUndo();
   });
   list.appendChild(ghost);
@@ -66,18 +68,62 @@ function renderDOM(){
   });
   refreshCfg(); refreshSidebar();
   setTimeout(()=>{
-    for(const p of plots){
+    for(const p of visible){
       drawChart(p); wireInteraction(p); wireAxisLabelInputs(p); wireOverlayLegend(p); renderTextAnnotations(p.id); renderShapeAnnotations(p.id);
     }
   }, 0);
 }
 
-function buildCard(p, i){
+// ═══ PLOT TABS ═══════════════════════════════════════════════════════════
+function renderTabBar(){
+  const bar = document.getElementById('plotTabs'); if(!bar) return;
+  bar.innerHTML = '';
+  for(const t of tabs){
+    const el = document.createElement('button');
+    el.className = 'plot-tab' + (t.id===activeTabId ? ' plot-tab-active' : '');
+    el.dataset.tid = t.id;
+    el.textContent = t.name;
+    el.title = t.name;
+    el.addEventListener('click', ()=>switchTab(t.id));
+    bar.appendChild(el);
+  }
+  const add = document.createElement('button');
+  add.className = 'plot-tab-add';
+  add.textContent = '+ add tab';
+  add.addEventListener('click', addTab);
+  bar.appendChild(add);
+}
+
+function switchTab(tabId){
+  if(tabId === activeTabId) return;
+  activeTabId = tabId;
+  const firstInTab = plots.find(p => p.tabId === tabId);
+  activePid = firstInTab ? firstInTab.id : null;
+  activeCurveIdx = 0;
+  renderDOM();
+  refreshCfg(); refreshSidebar();
+}
+
+function addTab(){
+  const suggested = `Tab ${tabs.length + 1}`;
+  const name = window.prompt('Name the new tab:', suggested);
+  if(name === null) return; // user canceled
+  const t = mkTab(name);
+  tabs.push(t);
+  activeTabId = t.id;
+  activePid = null;
+  activeCurveIdx = 0;
+  renderDOM();
+  refreshCfg(); refreshSidebar();
+  snapshotForUndo();
+}
+
+function buildCard(p){
   const card = document.createElement('div');
   card.className = 'plot-card' + (p.id===activePid ? ' active' : '');
   card.dataset.pid = p.id;
   card.innerHTML = `
-    <div class="ctop" id="ctop_${p.id}">${buildTopbarInner(p,i)}</div>
+    <div class="ctop" id="ctop_${p.id}">${buildTopbarInner(p)}</div>
     <div class="cbody" id="cbody_${p.id}">
       <div id="cinner_${p.id}">${buildInnerHTML(p)}</div>
       <div class="spin-overlay${p.loading?' show':''}" id="spin_${p.id}">
@@ -94,7 +140,7 @@ function buildCard(p, i){
   return card;
 }
 
-function buildTopbarInner(p, i){
+function buildTopbarInner(p){
   const cc = p.curves.filter(c=>c.template).length, canMpl = true;
   const inFs = !!document.querySelector('.plot-card.plot-fs');
   const mplBtn = p.mplMode
@@ -104,7 +150,7 @@ function buildTopbarInner(p, i){
   const dupDelDisabled = inFs ? 'disabled style="opacity:.3;pointer-events:none;cursor:not-allowed"' : '';
   return `
     <div class="ctitle-left">
-      <span class="ctitle-text">Plot ${i+1}</span>
+      <span class="ctitle-text">Plot ${p.plotNumber}</span>
       <button class="cbtn addcurve-btn" data-pid="${p.id}" data-action="addcurve">⊕ add curve</button>
     </div>
     <div class="cactions-center">
@@ -949,6 +995,8 @@ function duplicatePlot(pid){
   const clone = JSON.parse(JSON.stringify(src));
   // Assign fresh ids
   clone.id = mkPid();
+  clone.plotNumber = ++plot_num_ctr;
+  clone.tabId = src.tabId;
   clone.curves = clone.curves.map(c=>({ ...c, id:mkCid(), jsData:null }));
   // Reset ephemeral state
   clone.loading = false; clone.converting = false;
@@ -986,9 +1034,14 @@ function handleAction(action, pid, triggerEl){
   }
   if(action==='fullscreen') { toggleFullscreen(pid); return; }
   if(action==='del'){
+    const removed = gp(pid);
     destroyChart(pid);
     plots = plots.filter(p=>p.id!==pid);
-    if(activePid===pid){ activePid=plots[0]?.id||null; activeCurveIdx=0; }
+    if(activePid===pid){
+      const tabId = removed?.tabId ?? activeTabId;
+      activePid = plots.find(p=>p.tabId===tabId)?.id ?? null;
+      activeCurveIdx=0;
+    }
     // Allow zero plots — don't auto-create a new one
     renderDOM(); snapshotForUndo(); return;
   }
