@@ -47,6 +47,8 @@ function updateSpinner(pid){
   if(sh) sh.classList.toggle('show', !!p.converting);
 }
 
+let _plotDragListenersWired = false;
+
 function renderDOM(){
   renderTabBar();
   for(const p of plots) destroyChart(p.id);
@@ -66,6 +68,23 @@ function renderDOM(){
     // Click on the background (not a card or ghost) → deselect active plot
     if(!onCard && !onGhost){ activePid=null; syncActiveHighlight(); refreshCfg(); refreshSidebar(); }
   });
+  // Wire drag listeners once (they live on document so survive innerHTML clears)
+  if(!_plotDragListenersWired){
+    _plotDragListenersWired = true;
+    list.addEventListener('pointerdown', e=>{
+      if(_plotDrag.active) return;
+      const handle = e.target.closest('.plot-drag-handle');
+      if(!handle) return;
+      const card = handle.closest('.plot-card');
+      if(!card) return;
+      const pid = parseInt(card.dataset.pid);
+      e.preventDefault();
+      _plotDragStart(e, pid);
+    });
+    document.addEventListener('pointermove', e=>{ if(_plotDrag.active) _plotDragMove(e); });
+    document.addEventListener('pointerup',   e=>{ if(_plotDrag.active) _plotDragEnd(e); });
+    document.addEventListener('pointercancel', e=>{ if(_plotDrag.active) _plotDragEnd(e); });
+  }
   refreshCfg(); refreshSidebar();
   setTimeout(()=>{
     for(const p of visible){
@@ -118,6 +137,203 @@ function addTab(){
   snapshotForUndo();
 }
 
+// ═══ PLOT DRAG ════════════════════════════════════════════════════════════
+const _plotDrag = {
+  active: false, pid: null,
+  clone: null, placeholder: null,
+  offsetX: 0, offsetY: 0,
+  scrollRaf: null, scrollSpeed: 0,
+  dropTabId: null, didMove: false,
+};
+
+function _plotAutoScrollLoop(list){
+  if(!_plotDrag.active){ _plotDrag.scrollRaf = null; return; }
+  if(_plotDrag.scrollSpeed !== 0) list.scrollTop += _plotDrag.scrollSpeed;
+  _plotDrag.scrollRaf = requestAnimationFrame(()=>_plotAutoScrollLoop(list));
+}
+
+function _plotDragStart(e, pid){
+  const card = document.querySelector(`.plot-card[data-pid="${pid}"]`);
+  if(!card) return;
+  const rect = card.getBoundingClientRect();
+
+  // Floating clone that follows the pointer
+  const clone = card.cloneNode(true);
+  clone.style.cssText = [
+    'position:fixed',
+    `left:${rect.left}px`, `top:${rect.top}px`,
+    `width:${rect.width}px`, `height:${rect.height}px`,
+    'pointer-events:none', 'z-index:9000', 'opacity:.85',
+    'transform:rotate(.4deg) scale(1.01)',
+    'box-shadow:0 8px 32px rgba(0,0,0,.55)',
+    'transition:box-shadow .1s',
+  ].join(';');
+  document.body.appendChild(clone);
+
+  // Dashed placeholder in the card's original position
+  const ph = document.createElement('div');
+  ph.className = 'plot-drag-placeholder';
+  ph.style.height = rect.height + 'px';
+  card.parentNode.insertBefore(ph, card);
+  card.classList.add('plot-dragging');
+
+  _plotDrag.active = true;
+  _plotDrag.pid = pid;
+  _plotDrag.clone = clone;
+  _plotDrag.placeholder = ph;
+  _plotDrag.offsetX = e.clientX - rect.left;
+  _plotDrag.offsetY = e.clientY - rect.top;
+  _plotDrag.dropTabId = null;
+  _plotDrag.didMove = false;
+  _plotDrag.scrollSpeed = 0;
+
+  e.target.setPointerCapture(e.pointerId);
+
+  // Start auto-scroll RAF
+  const list = document.getElementById('plotList');
+  if(list) _plotDrag.scrollRaf = requestAnimationFrame(()=>_plotAutoScrollLoop(list));
+}
+
+function _plotDragMove(e){
+  if(!_plotDrag.active) return;
+  _plotDrag.didMove = true;
+
+  const { clone, placeholder, offsetX, offsetY, pid } = _plotDrag;
+  clone.style.left = (e.clientX - offsetX) + 'px';
+  clone.style.top  = (e.clientY - offsetY) + 'px';
+
+  // Auto-scroll speed (px/frame) based on distance from list edges
+  const list = document.getElementById('plotList');
+  if(list){
+    const ZONE = 60;
+    const lr = list.getBoundingClientRect();
+    const topDist = e.clientY - lr.top;
+    const botDist = lr.bottom - e.clientY;
+    if(topDist < ZONE)      _plotDrag.scrollSpeed = -Math.ceil((ZONE - topDist) / 8);
+    else if(botDist < ZONE) _plotDrag.scrollSpeed =  Math.ceil((ZONE - botDist) / 8);
+    else                    _plotDrag.scrollSpeed = 0;
+  }
+
+  // Detect tab hover (pointer element under clone = already none on events)
+  let hoveredTabId = null;
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  if(el){
+    const tabEl = el.closest('.plot-tab');
+    if(tabEl && tabEl.dataset.tid){
+      const tid = parseInt(tabEl.dataset.tid);
+      if(tid !== activeTabId) hoveredTabId = tid;
+    }
+  }
+
+  // Update tab drop-target highlight
+  if(hoveredTabId !== _plotDrag.dropTabId){
+    document.querySelectorAll('.plot-tab.plot-tab-drop-target').forEach(t=>t.classList.remove('plot-tab-drop-target'));
+    _plotDrag.dropTabId = hoveredTabId;
+    if(hoveredTabId !== null){
+      document.querySelector(`.plot-tab[data-tid="${hoveredTabId}"]`)?.classList.add('plot-tab-drop-target');
+    }
+  }
+
+  // Reposition placeholder among same-tab cards (only when not dropping on another tab)
+  if(hoveredTabId === null && list){
+    const cards = [...list.querySelectorAll('.plot-card:not(.plot-dragging)')];
+    let inserted = false;
+    for(const card of cards){
+      const r = card.getBoundingClientRect();
+      if(e.clientY < r.top + r.height / 2){
+        list.insertBefore(placeholder, card);
+        inserted = true;
+        break;
+      }
+    }
+    if(!inserted){
+      const ghost = list.querySelector('.add-card');
+      if(ghost) list.insertBefore(placeholder, ghost);
+      else      list.appendChild(placeholder);
+    }
+  }
+}
+
+function _plotDragEnd(e){
+  if(!_plotDrag.active) return;
+  _plotDrag.active = false;
+  cancelAnimationFrame(_plotDrag.scrollRaf);
+  _plotDrag.scrollRaf = null;
+  _plotDrag.scrollSpeed = 0;
+
+  const { pid, clone, placeholder, dropTabId, didMove } = _plotDrag;
+
+  // Capture DOM order BEFORE cleanup (placeholder still in list)
+  let newOrder = null;
+  const list = document.getElementById('plotList');
+  if(didMove && dropTabId === null && list){
+    newOrder = [];
+    for(const el of list.children){
+      if(el === placeholder){
+        newOrder.push(pid);
+      } else if(el.classList.contains('plot-card') && !el.classList.contains('plot-dragging')){
+        newOrder.push(parseInt(el.dataset.pid));
+      }
+      // skip .plot-dragging (it's replaced by placeholder in newOrder)
+    }
+  }
+
+  // Cleanup
+  clone.remove();
+  placeholder.remove();
+  document.querySelectorAll('.plot-card.plot-dragging').forEach(c=>c.classList.remove('plot-dragging'));
+  document.querySelectorAll('.plot-tab.plot-tab-drop-target').forEach(t=>t.classList.remove('plot-tab-drop-target'));
+
+  if(!didMove) return;
+
+  // Suppress the synthetic click that follows pointerup so the card doesn't
+  // inadvertently activate/deactivate after a drag gesture.
+  document.addEventListener('click', e=>e.stopPropagation(), { capture:true, once:true });
+
+  if(dropTabId !== null){
+    // ── Cross-tab drop: move plot to end of target tab ────────────
+    const p = gp(pid); if(!p) return;
+    p.tabId = dropTabId;
+
+    const idx = plots.findIndex(pl=>pl.id===pid);
+    plots.splice(idx, 1);
+
+    // Insert after the last plot already in dropTabId (or at end of array)
+    let insertIdx = plots.length;
+    for(let i = plots.length - 1; i >= 0; i--){
+      if(plots[i].tabId === dropTabId){ insertIdx = i + 1; break; }
+    }
+    plots.splice(insertIdx, 0, p);
+
+    // Switch to the target tab with the moved plot active
+    activeTabId = dropTabId;
+    activePid = pid;
+    activeCurveIdx = 0;
+
+    renderDOM();
+    snapshotForUndo();
+
+  } else if(newOrder && newOrder.length > 0){
+    // ── Same-tab reorder: remap flat plots array ───────────────────
+    // Collect plots for other tabs (preserve their relative order/position)
+    const firstIdx = plots.findIndex(p=>p.tabId===activeTabId);
+    const lastIdx  = plots.reduce((acc,p,i)=>p.tabId===activeTabId?i:acc, -1);
+    if(firstIdx === -1) return;
+
+    const plotMap = {};
+    for(const p of plots) plotMap[p.id] = p;
+    const reordered = newOrder.map(id=>plotMap[id]).filter(Boolean);
+
+    const before = plots.slice(0, firstIdx);
+    const after  = plots.slice(lastIdx + 1);
+    plots.length = 0;
+    for(const p of [...before, ...reordered, ...after]) plots.push(p);
+
+    renderDOM();
+    snapshotForUndo();
+  }
+}
+
 function buildCard(p){
   const card = document.createElement('div');
   card.className = 'plot-card' + (p.id===activePid ? ' active' : '');
@@ -150,6 +366,7 @@ function buildTopbarInner(p){
   const dupDelDisabled = inFs ? 'disabled style="opacity:.3;pointer-events:none;cursor:not-allowed"' : '';
   return `
     <div class="ctitle-left">
+      <span class="plot-drag-handle" title="Drag to reorder">⠿</span>
       <span class="ctitle-text">Plot ${p.plotNumber}</span>
       <button class="cbtn addcurve-btn" data-pid="${p.id}" data-action="addcurve">⊕ add curve</button>
     </div>
