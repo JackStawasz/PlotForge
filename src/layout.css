@@ -836,6 +836,8 @@ header{
 .var-result .mq-root-block *{ color:inherit !important; font-size:.8rem !important; }
 .var-result.var-result-ok{ color:var(--acc2);opacity:.9; }
 .var-result.var-result-partial{ color:color-mix(in srgb,var(--acc2) 60%,var(--muted));opacity:.9; }
+.var-eval-loading{ color:var(--muted);letter-spacing:.2em;animation:var-eval-pulse 1s ease-in-out infinite; }
+@keyframes var-eval-pulse{ 0%,100%{opacity:.25} 50%{opacity:.9} }
 
 /* slider row — visible only when the RHS is a plain numeric value */
 .var-param-sliderrow{display:none;align-items:center;gap:5px;}

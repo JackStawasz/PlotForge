@@ -551,34 +551,32 @@ input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
 .tpl-card-dot.general{background:#d4ff5a}
 .tpl-card-dot.other{background:#ff6faa}
 .tpl-card-dot.advanced{background:#38bdf8}
-/* ═══ BACKEND RECONNECT BANNER ══════════════════════════════════════════ */
-.conn-banner{
-  position:fixed;top:72px;left:50%;transform:translateX(-50%) translateY(-8px);
-  background:var(--s1);border:1px solid var(--border2);border-radius:8px;
-  padding:9px 18px 9px 14px;
-  display:flex;align-items:center;gap:10px;
-  font-family:var(--mono);font-size:.72rem;color:var(--muted);
-  box-shadow:0 6px 28px rgba(0,0,0,.5);
-  z-index:9000;
-  opacity:0;pointer-events:none;
+/* ═══ RECONNECT POPUP ════════════════════════════════════════════════════ */
+.reconn-popup{
+  position:fixed;top:12px;left:50%;transform:translateX(-50%) translateY(-8px);
+  z-index:9999;pointer-events:none;
+  opacity:0;
   transition:opacity .2s ease,transform .2s ease;
+}
+.reconn-popup.visible{opacity:1;transform:translateX(-50%) translateY(0);}
+.reconn-popup-card{
+  background:var(--s1);border:1px solid var(--border2);border-radius:8px;
+  padding:7px 16px 7px 12px;
+  display:flex;align-items:center;gap:10px;
+  box-shadow:0 4px 20px rgba(0,0,0,.5);
   white-space:nowrap;
 }
-.conn-banner.visible{
-  opacity:1;pointer-events:auto;
-  transform:translateX(-50%) translateY(0);
+.reconn-spinner{
+  width:10px;height:10px;border-radius:50%;flex-shrink:0;
+  border:1.5px solid var(--border2);
+  border-top-color:var(--acc2);
+  animation:reconn-spin .75s linear infinite;
 }
-.conn-banner-dot{
-  width:7px;height:7px;border-radius:50%;flex-shrink:0;
-  background:var(--acc3);
-  animation:conn-pulse .9s ease-in-out infinite alternate;
+.reconn-msg{
+  font-family:var(--mono);font-size:.72rem;color:var(--muted);
+  letter-spacing:.04em;
 }
-.conn-banner.conn-banner-ok .conn-banner-dot{background:#5aff9a;animation:none;}
-[data-theme="light"] .conn-banner.conn-banner-ok .conn-banner-dot{background:#16a34a;}
-.conn-banner-countdown{
-  font-size:.65rem;color:var(--muted);margin-left:2px;min-width:38px;
-}
-@keyframes conn-pulse{from{opacity:.4;transform:scale(.85)}to{opacity:1;transform:scale(1.1)}}
+@keyframes reconn-spin{to{transform:rotate(360deg);}}
 
 /* ═══ SHAPE ANNOTATIONS ══════════════════════════════════════════════════ */
 /* Shape picker dropdown */

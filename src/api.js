@@ -197,6 +197,7 @@ async function boot(){
   initResizableSidebars();
   wireTemplateModal();
   initStats();
+  _showReconnectPopup(false);
   const connected = await tryConnect();
   plots = [];
   const p = mkPlot(); plots.push(p);
@@ -205,7 +206,8 @@ async function boot(){
   wireAllCfgInputs();
   initCfgPanel();
   snapshotForUndo(); // initial state
-  if(!connected) startReconnectPoller();
+  if(!connected) startReconnectPoller(false);
+  else startHeartbeat();
 
   // Resize all JS charts when the main plot column changes size (fixes vertical expansion).
   const plotListEl = document.getElementById('plotList');
@@ -229,69 +231,65 @@ async function tryConnect(){
     if(!r.ok) throw new Error('not ok');
     TEMPLATES = await r.json();
     buildCategories();
-    setConn('ok','Backend connected');
+    _connected = true;
+    setConn('ok');
+    _hideReconnectPopup();
     return true;
   }catch(e){
-    setConn('err','Backend unreachable — run app.py');
+    _connected = false;
+    setConn('err');
     return false;
   }
 }
 
+let _connected = false;
 let _reconnectTimer = null;
-let _countdownTimer = null;
-const _reconnectIntervalSec = 3;
+let _heartbeatTimer = null;
 
-function startReconnectPoller(){
+function _showReconnectPopup(isReconnecting){
+  const popup = document.getElementById('reconnPopup'); if(!popup) return;
+  document.getElementById('reconnPopupMsg').textContent = isReconnecting ? 'Reconnecting...' : 'Connecting...';
+  popup.classList.add('visible');
+}
+
+function _hideReconnectPopup(){
+  const popup = document.getElementById('reconnPopup'); if(!popup) return;
+  popup.classList.remove('visible');
+}
+
+function startHeartbeat(){
+  clearInterval(_heartbeatTimer);
+  _heartbeatTimer = setInterval(async ()=>{
+    try{
+      const r = await fetch(`${API}/templates`, {signal: AbortSignal.timeout(3000)});
+      if(!r.ok) throw new Error();
+    }catch(e){
+      if(_connected){
+        _connected = false;
+        setConn('err');
+        clearInterval(_heartbeatTimer); _heartbeatTimer = null;
+        startReconnectPoller(true);
+      }
+    }
+  }, 5000);
+}
+
+function startReconnectPoller(isReconnecting){
   if(_reconnectTimer) return;
-  _showConnBanner('Connecting to backend…', false);
-  _startCountdown(_reconnectIntervalSec);
+  _showReconnectPopup(isReconnecting);
   _reconnectTimer = setInterval(async ()=>{
     const ok = await tryConnect();
     if(ok){
       clearInterval(_reconnectTimer); _reconnectTimer = null;
-      clearInterval(_countdownTimer); _countdownTimer = null;
-      plots.forEach((p, i)=>updateTopbar(p.id));
+      plots.forEach(p=>updateTopbar(p.id));
       buildModalNavAndGrid?.();
-    } else {
-      _startCountdown(_reconnectIntervalSec);
+      startHeartbeat();
     }
-  }, _reconnectIntervalSec * 1000);
+  }, 3000);
 }
 
-function setConn(s, _msg){
+function setConn(s){
   document.getElementById('cdot').className = 'cdot'+(s==='ok'?' ok':s==='err'?' err':'');
-  if(s === 'ok'){
-    clearInterval(_countdownTimer); _countdownTimer = null;
-    _showConnBanner('Backend connected', true);
-    setTimeout(_hideConnBanner, 2200);
-  } else if(s === 'err' && !_reconnectTimer){
-    _showConnBanner('Connecting to backend…', false);
-    _startCountdown(_reconnectIntervalSec);
-  }
-}
-
-function _showConnBanner(msg, isOk){
-  const banner = document.getElementById('connBanner'); if(!banner) return;
-  document.getElementById('connBannerMsg').textContent = msg;
-  banner.classList.toggle('conn-banner-ok', isOk);
-  banner.classList.add('visible');
-}
-
-function _hideConnBanner(){
-  const banner = document.getElementById('connBanner'); if(!banner) return;
-  banner.classList.remove('visible');
-}
-
-function _startCountdown(seconds){
-  clearInterval(_countdownTimer);
-  const cd = document.getElementById('connBannerCountdown'); if(!cd) return;
-  let remaining = seconds;
-  cd.textContent = `retry in ${remaining}s`;
-  _countdownTimer = setInterval(()=>{
-    remaining--;
-    if(remaining <= 0){ cd.textContent = 'retrying…'; clearInterval(_countdownTimer); _countdownTimer = null; }
-    else { cd.textContent = `retry in ${remaining}s`; }
-  }, 1000);
 }
 
 // ═══ MATPLOTLIB CALLS ════════════════════════════════════════════════════
@@ -326,8 +324,7 @@ async function convertToMpl(pid){
     const data = await r.json();
     if(data.error) throw new Error(data.error);
     p.mplImage = data.image; p.mplMode = true;
-    setConn('ok', `Matplotlib: ${curvesPayload.map(c=>c.label).join(', ')}`);
-  }catch(e){ setConn('err','Error: '+e.message); }
+  }catch(e){ console.error('mpl render error:', e.message); }
   finally{
     p.loading = false; p.converting = false;
     // Preserve scroll position — updateCardContent may shift layout
@@ -356,7 +353,7 @@ async function savePlotPdf(pid){
       fill_alpha:   c.fill_alpha,
       label:        c.name || (c.template ? (TEMPLATES[c.template]?.equation || c.template) : 'List curve'),
     }));
-  if(!curvesPayload.length){ setConn('err','No curve data to export'); return; }
+  if(!curvesPayload.length){ alert('No curve data to export.'); return; }
   try{
     const r = await fetch(`${API}/plot/pdf`, {
       method: 'POST',
@@ -371,8 +368,7 @@ async function savePlotPdf(pid){
     const a = Object.assign(document.createElement('a'), {href:url, download:filename});
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    setConn('ok','PDF saved');
-  }catch(e){ setConn('err','PDF error: '+e.message); }
+  }catch(e){ console.error('PDF save error:', e.message); }
 }
 
 function revertToJS(pid){

@@ -480,38 +480,49 @@ function partialEvalLatex(latex, ctx){
 // Tries fast JS evaluation first; falls back to the SymPy backend if needed.
 function evaluateConstant(v){
   const el = document.getElementById(`vres_${v.id}`); if(!el) return;
+
+  // Cancel any pending timers on every call (new input resets the clock)
+  clearTimeout(v._evalTimer);
+  clearTimeout(v._invalidTimer);
+  if(v._warning) v._warning.clearInvalid();
+
   if(v._isNumeric){ el.innerHTML = ''; el.className = 'var-result'; return; }
+
+  const expr = (v.exprLatex || '').trim();
+
+  // Empty expression — nothing to evaluate, nothing to show
+  if(!expr){ el.innerHTML = ''; el.className = 'var-result'; return; }
 
   const ctx = buildVarContext();
   delete ctx[v.name]; // exclude self
 
   // Fast path: pure-JS numeric evaluation
-  const val = evalLatexExpr(v.exprLatex || '', ctx);
+  const val = evalLatexExpr(expr, ctx);
   if(val !== null && val !== undefined){
     _renderResultMQ(el, '= ' + fmtNum(val), 'var-result var-result-ok');
-    clearTimeout(v._evalTimer);
-    clearTimeout(v._invalidTimer);
-    if(v._warning) v._warning.clearInvalid();
     return;
   }
 
-  // Show partial (symbolic) result as a placeholder while backend loads
-  const partial = partialEvalLatex(v.exprLatex || '', ctx);
-  if(partial !== null){
-    _renderResultMQ(el, '= ' + partial, 'var-result var-result-partial');
-  } else {
-    el.innerHTML = ''; el.className = 'var-result';
-  }
+  // Non-empty but not immediately resolvable — show loading dots
+  el.innerHTML = '<span class="var-eval-loading">···</span>';
+  el.className = 'var-result';
+
+  // After 1 s of no valid result, treat as invalid and warn
+  v._invalidTimer = setTimeout(()=>{
+    if(v._isNumeric) return;
+    const elNow = document.getElementById(`vres_${v.id}`);
+    if(elNow){ elNow.innerHTML = ''; elNow.className = 'var-result'; }
+    if(v._warning) v._warning.setInvalid('Invalid expression');
+  }, 1000);
 
   // Debounced backend call (300 ms) to avoid flooding on rapid typing
-  clearTimeout(v._evalTimer);
   v._evalTimer = setTimeout(async ()=>{
     try{
       const varDefs = [];
       for(const [name, numVal] of Object.entries(ctx)){
         varDefs.push({ id: `ctx_${name}`, name, expr_latex: String(numVal), kind: 'parameter' });
       }
-      varDefs.push({ id: String(v.id), name: v.name, expr_latex: v.exprLatex || '', kind: 'constant' });
+      varDefs.push({ id: String(v.id), name: v.name, expr_latex: expr, kind: 'constant' });
 
       const resp = await fetch(`${API}/evaluate`, {
         method: 'POST',
@@ -523,26 +534,26 @@ function evaluateConstant(v){
       const result = (data.results || []).find(r => r.id === String(v.id));
       if(!result) return;
 
-      // Re-check that the element and variable are still live
+      // Re-check element is still live and variable hasn't switched to numeric mode
       const elNow = document.getElementById(`vres_${v.id}`);
-      if(!elNow) return;
+      if(!elNow || v._isNumeric) return;
 
       if(result.is_numeric && result.value !== null){
+        clearTimeout(v._invalidTimer);
         _renderResultMQ(elNow, '= ' + fmtNum(result.value), 'var-result var-result-ok');
         if(v._warning) v._warning.clearInvalid();
       } else if(result.latex && result.latex.trim()){
+        clearTimeout(v._invalidTimer);
         _renderResultMQ(elNow, '= ' + result.latex, 'var-result var-result-partial');
         if(v._warning) v._warning.clearInvalid();
       } else if(result.error && result.error !== 'empty'){
+        // Clear the dots immediately; the 1s _invalidTimer will show the warning
         elNow.innerHTML = ''; elNow.className = 'var-result';
-        // Delay the "invalid" warning so transient states don't flash errors
-        clearTimeout(v._invalidTimer);
-        v._invalidTimer = setTimeout(()=>{
-          if(v._warning) v._warning.setInvalid('Invalid expression');
-        }, 1000);
       }
     }catch(e){
-      // Backend unreachable — silently keep the JS partial result
+      // Backend unreachable — clear loading dots; don't warn (reconnect popup handles it)
+      const elNow = document.getElementById(`vres_${v.id}`);
+      if(elNow) { elNow.innerHTML = ''; elNow.className = 'var-result'; }
     }
   }, 300);
 }
