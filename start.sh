@@ -12,7 +12,7 @@ printf " Done\n"
 
 # Only reinstall if requirements.txt has changed
 HASH_FILE="venv/.req_hash"
-REQ_PATH=$(find . -type f -iname "requirements.txt" | head -n 1)
+REQ_PATH="src/backend/requirements.txt"
 CURRENT_HASH=$(md5sum "$REQ_PATH" | awk '{print $1}')
 
 if [ ! -f "$HASH_FILE" ] || [ "$CURRENT_HASH" != "$(cat $HASH_FILE)" ]; then
@@ -24,4 +24,4 @@ fi
 
 # Start the server
 printf "Starting server...\n"
-python3 src/app.py
+python3 src/backend/app.py

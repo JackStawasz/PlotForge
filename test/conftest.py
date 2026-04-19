@@ -10,12 +10,9 @@ import sys, os
 # Support both layouts: app.py at root OR src/app.py
 _here = os.path.dirname(os.path.abspath(__file__))
 _root = os.path.join(_here, '..')
-_src  = os.path.join(_root, 'src')
+_backend = os.path.join(_root, 'src', 'backend')
 
-if os.path.exists(os.path.join(_src, 'app.py')):
-    sys.path.insert(0, _src)   # src/app.py layout (current project)
-else:
-    sys.path.insert(0, _root)  # app.py at root layout (fallback)
+sys.path.insert(0, _backend)
 
 import pytest
 from app import app as flask_app
