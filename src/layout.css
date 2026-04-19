@@ -129,7 +129,8 @@
 .preset-chip.active .preset-chip-name,
 .preset-chip:not(.active) .preset-chip-name{ pointer-events:auto; }
 
-/* Delete × button — hidden until hover */
+/* Edit (pencil) + Delete × buttons — hidden until hover */
+.preset-chip-edit,
 .preset-chip-del{
   display:inline-flex;align-items:center;justify-content:center;
   width:13px;height:13px;border-radius:50%;
@@ -139,7 +140,9 @@
   transition:opacity .12s,color .12s,background .12s;
   flex-shrink:0;
 }
+.preset-chip:hover .preset-chip-edit,
 .preset-chip:hover .preset-chip-del{ opacity:1; }
+.preset-chip-edit:hover{ color:var(--acc2);background:color-mix(in srgb,var(--acc2) 12%,transparent); }
 .preset-chip-del:hover{ color:var(--acc3);background:color-mix(in srgb,var(--acc3) 12%,transparent); }
 
 /* Inline rename input */
@@ -597,6 +600,29 @@ header{
 }
 @keyframes pkl-pulse{ from{opacity:.5} to{opacity:1} }
 
+/* ─── Global drag-and-drop overlay ─────────────────────────────────────── */
+.global-drop-overlay{
+  position:fixed;inset:0;z-index:99990;
+  background:rgba(90,255,206,.05);
+  border:3px dashed rgba(90,255,206,.45);
+  border-radius:4px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;pointer-events:none;
+  animation:gdoPulse .9s ease-in-out infinite alternate;
+}
+.gdo-icon{ font-size:2.6rem; }
+.gdo-title{
+  font-family:var(--mono);font-size:.95rem;font-weight:600;
+  color:var(--acc2);letter-spacing:.03em;
+}
+.gdo-sub{
+  font-family:var(--mono);font-size:.68rem;color:var(--muted);letter-spacing:.06em;
+}
+@keyframes gdoPulse{
+  from{ border-color:rgba(90,255,206,.30); background:rgba(90,255,206,.03); }
+  to  { border-color:rgba(90,255,206,.60); background:rgba(90,255,206,.07); }
+}
+
 /* Pickle import confirmation modal */
 .pkl-modal-backdrop{
   position:fixed;inset:0;z-index:8000;
@@ -963,3 +989,153 @@ header{
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   max-width:80px;flex-shrink:1;cursor:default;
 }
+
+/* ── Variable folder sections ── */
+.var-folder-header{
+  display:flex;align-items:center;gap:5px;
+  padding:3px 4px 3px 6px;margin:5px 0 2px;
+  border-radius:5px;cursor:pointer;user-select:none;
+  font-family:var(--mono);font-size:.67rem;font-weight:600;letter-spacing:.04em;
+  color:var(--muted);
+  border:1px solid transparent;
+  transition:background .1s,color .1s,border-color .1s;
+}
+.var-folder-header:hover{
+  background:color-mix(in srgb,var(--border2) 22%,transparent);
+  color:var(--text);border-color:var(--border);
+}
+.var-folder-toggle{
+  font-size:.55rem;opacity:.6;flex-shrink:0;
+  transition:transform .15s;display:inline-block;
+}
+.var-folder-toggle.open{ transform:rotate(90deg); }
+.var-folder-label{
+  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.var-folder-label-inp{
+  flex:1;min-width:0;
+  background:transparent;border:none;border-bottom:1px solid var(--acc2);
+  color:var(--text);font-family:var(--mono);font-size:.67rem;font-weight:600;
+  outline:none;padding:0 2px;
+}
+.var-folder-count{ font-size:.58rem;color:var(--border2);font-weight:400;flex-shrink:0; }
+.var-folder-del{
+  flex-shrink:0;background:transparent;border:none;cursor:pointer;
+  color:var(--border2);font-size:.72rem;padding:0 2px;line-height:1;
+  opacity:0;transition:opacity .1s,color .1s;
+}
+.var-folder-header:hover .var-folder-del{ opacity:.55; }
+.var-folder-del:hover{ color:var(--acc3);opacity:1 !important; }
+
+/* Folder assignment badge on variable cards */
+.var-folder-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:16px;padding:0 5px;
+  border-radius:3px;
+  border:1px solid color-mix(in srgb,var(--border2) 55%,transparent);
+  background:color-mix(in srgb,var(--border2) 18%,transparent);
+  color:var(--border2);
+  font-family:var(--mono);font-size:.55rem;
+  cursor:pointer;flex-shrink:0;white-space:nowrap;
+  max-width:64px;overflow:hidden;text-overflow:ellipsis;
+  transition:background .12s,border-color .12s,color .12s;
+}
+.var-folder-badge:hover{
+  background:color-mix(in srgb,var(--acc2) 12%,transparent);
+  border-color:color-mix(in srgb,var(--acc2) 45%,transparent);
+  color:var(--acc2);
+}
+.var-folder-badge.has-folder{
+  color:var(--acc4);
+  border-color:color-mix(in srgb,var(--acc4) 38%,transparent);
+  background:color-mix(in srgb,var(--acc4) 10%,transparent);
+}
+.var-folder-badge.has-folder:hover{
+  background:color-mix(in srgb,var(--acc4) 20%,transparent);
+  border-color:color-mix(in srgb,var(--acc4) 65%,transparent);
+}
+
+/* Folder assignment dropdown menu */
+.var-folder-menu{
+  position:fixed;z-index:9999;
+  background:var(--s1);border:1px solid var(--border2);border-radius:6px;
+  box-shadow:0 6px 24px rgba(0,0,0,.5);
+  display:flex;flex-direction:column;overflow:hidden;
+  min-width:150px;max-height:260px;overflow-y:auto;
+}
+.var-folder-menu-row{
+  display:block;width:100%;text-align:left;
+  padding:6px 12px;
+  background:transparent;border:none;cursor:pointer;
+  font-family:var(--mono);font-size:.72rem;color:var(--muted);
+  transition:background .1s,color .1s;white-space:nowrap;
+}
+.var-folder-menu-row:hover{ background:color-mix(in srgb,var(--acc2) 10%,transparent);color:var(--text); }
+.var-folder-menu-row.active{ color:var(--acc2);font-weight:600; }
+.var-folder-menu-row.active::before{ content:'✓ '; }
+.var-folder-menu-sep{ height:1px;background:var(--border);margin:2px 0;flex-shrink:0; }
+.var-folder-menu-new{ color:var(--acc2);font-style:italic; }
+.var-folder-menu-new:hover{ color:var(--acc2);background:color-mix(in srgb,var(--acc2) 10%,transparent); }
+
+/* ── Scope badge (G / tab name) on variable cards ── */
+.var-scope-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:18px;height:16px;padding:0 4px;
+  border-radius:3px;border:1px solid color-mix(in srgb,var(--acc2) 35%,transparent);
+  background:color-mix(in srgb,var(--acc2) 9%,transparent);
+  color:var(--acc2);
+  font-family:var(--mono);font-size:.55rem;font-weight:700;letter-spacing:.05em;
+  cursor:pointer;flex-shrink:0;
+  transition:background .12s,border-color .12s;
+}
+.var-scope-badge:hover{
+  background:color-mix(in srgb,var(--acc2) 18%,transparent);
+  border-color:color-mix(in srgb,var(--acc2) 65%,transparent);
+}
+.var-scope-badge.scope-local{
+  border-color:color-mix(in srgb,var(--acc4) 35%,transparent);
+  background:color-mix(in srgb,var(--acc4) 9%,transparent);
+  color:var(--acc4);
+}
+.var-scope-badge.scope-local:hover{
+  background:color-mix(in srgb,var(--acc4) 18%,transparent);
+  border-color:color-mix(in srgb,var(--acc4) 65%,transparent);
+}
+
+/* ── Scope move dropdown menu ── */
+.var-scope-menu{
+  position:fixed;z-index:9999;
+  background:var(--s1);border:1px solid var(--border2);border-radius:6px;
+  box-shadow:0 6px 24px rgba(0,0,0,.5);
+  display:flex;flex-direction:column;overflow:hidden;
+  min-width:140px;
+}
+.var-scope-menu-row{
+  display:block;width:100%;text-align:left;
+  padding:6px 12px;
+  background:transparent;border:none;cursor:pointer;
+  font-family:var(--mono);font-size:.72rem;color:var(--muted);
+  transition:background .1s,color .1s;
+}
+.var-scope-menu-row:hover{ background:color-mix(in srgb,var(--acc2) 10%,transparent); color:var(--text); }
+.var-scope-menu-row.active{ color:var(--acc2);font-weight:600; }
+.var-scope-menu-row.active::before{ content:'✓ '; }
+
+/* ── Scope selector row inside the import modal ── */
+.pkl-modal-scope-row{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 14px;border-top:1px solid var(--border);
+}
+.pkl-scope-label{
+  font-family:var(--mono);font-size:.72rem;color:var(--muted);
+  white-space:nowrap;flex-shrink:0;
+}
+.pkl-scope-select{
+  flex:1;min-width:0;
+  background:var(--s2);border:1px solid var(--border2);border-radius:5px;
+  color:var(--text);font-family:var(--mono);font-size:.72rem;
+  padding:4px 8px;outline:none;cursor:pointer;
+  transition:border-color .12s;
+  appearance:auto;
+}
+.pkl-scope-select:focus{ border-color:var(--acc2); }

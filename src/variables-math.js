@@ -258,26 +258,38 @@ function parseVarLatex(fullLatex){
 
 // ═══ VARIABLE CONTEXT ════════════════════════════════════════════════════
 // Build a plain {name: numericValue} map from the current variable list.
+// Resolution order: global first, then local (active tab) — local shadows global.
 // Parameters always contribute; constants only if they have no active duplicate warning.
 function buildVarContext(){
   const ctx = {};
-  for(const v of variables){
-    if(v.kind === 'parameter' && v.name) ctx[v.name] = v.value;
-  }
-  for(const v of variables){
-    if(v.kind === 'constant' && v.name && !(v._warning?.active)){
-      try{
-        if(v._isNumeric){
-          ctx[v.name] = v.value;
-        } else {
-          const localCtx = {...ctx};
-          delete localCtx[v.name]; // prevent self-reference
-          const val = evalLatexExpr(v.exprLatex || '', localCtx);
-          if(val !== null) ctx[v.name] = val;
-        }
-      }catch(e){}
+  const localTabId = (typeof activeTabId !== 'undefined') ? activeTabId : null;
+
+  // Helper: fold one ordered subset of variables into ctx.
+  function _foldVars(subset){
+    for(const v of subset){
+      if(v.kind === 'parameter' && v.name) ctx[v.name] = v.value;
+    }
+    for(const v of subset){
+      if(v.kind === 'constant' && v.name && !(v._warning?.active)){
+        try{
+          if(v._isNumeric){
+            ctx[v.name] = v.value;
+          } else {
+            const localCtx = {...ctx};
+            delete localCtx[v.name]; // prevent self-reference
+            const val = evalLatexExpr(v.exprLatex || '', localCtx);
+            if(val !== null) ctx[v.name] = val;
+          }
+        }catch(e){}
+      }
     }
   }
+
+  // Global vars first (baseline)
+  _foldVars(variables.filter(v => (v.scope ?? 'global') === 'global'));
+  // Local vars second — overwrite any global entry with same name
+  if(localTabId) _foldVars(variables.filter(v => v.scope === localTabId));
+
   return ctx;
 }
 

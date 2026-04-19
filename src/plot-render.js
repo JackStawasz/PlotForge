@@ -937,6 +937,9 @@ function wireInteraction(p){
     }
   });
   wrap.addEventListener('wheel', e=>{
+    // Only zoom when this plot is the active (selected) one.
+    // If it isn't, let the event bubble so the plot list scrolls normally.
+    if(p.id !== activePid) return;
     e.preventDefault();
     const ch = chartInstances[p.id]; if(!ch) return;
     const {dataX, dataY} = pixelToData(ch, e.clientX, e.clientY);

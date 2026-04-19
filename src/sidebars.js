@@ -4,17 +4,34 @@ let sbActiveTab = 'vars';
 function initLeftSidebar(){
   document.getElementById('sbTabFiles')?.addEventListener('click', ()=>setSbTab('files'));
   document.getElementById('sbTabVars')?.addEventListener('click', ()=>setSbTab('vars'));
-  const dz = document.getElementById('filesDropZone');
-  const fi = document.getElementById('filesInput');
-  if(dz){
-    dz.addEventListener('click', ()=>fi?.click());
-    dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('dragover'); });
-    dz.addEventListener('dragleave', ()=>dz.classList.remove('dragover'));
-    dz.addEventListener('drop', e=>{ e.preventDefault(); dz.classList.remove('dragover'); handleFilesDrop(e.dataTransfer.files); });
-  }
-  fi?.addEventListener('change', ()=>handleFilesDrop(fi.files));
-  document.getElementById('varsAddBtn')?.addEventListener('click', e=>{ e.stopPropagation(); showVarTypePicker(); });
+  document.getElementById('varsAddBtn')?.addEventListener('click', e=>{ e.stopPropagation(); showVarTypePicker('global'); });
+  document.getElementById('varsAddLocalBtn')?.addEventListener('click', e=>{
+    e.stopPropagation();
+    showVarTypePicker(typeof activeTabId !== 'undefined' ? activeTabId : 'global');
+  });
   document.addEventListener('click', ()=>hideVarTypePicker());
+
+  // ── Global drag-and-drop file import ────────────────────────────────────
+  const overlay = document.getElementById('globalDropOverlay');
+  let _dndDepth = 0; // counter to handle enter/leave on child elements
+
+  document.addEventListener('dragenter', e=>{
+    if(!e.dataTransfer?.types?.includes('Files')) return;
+    e.preventDefault();
+    _dndDepth++;
+    if(overlay && _dndDepth === 1) overlay.style.display = 'flex';
+  });
+  document.addEventListener('dragleave', ()=>{
+    _dndDepth = Math.max(0, _dndDepth - 1);
+    if(overlay && _dndDepth === 0) overlay.style.display = 'none';
+  });
+  document.addEventListener('dragover', e=>{ e.preventDefault(); });
+  document.addEventListener('drop', e=>{
+    e.preventDefault();
+    _dndDepth = 0;
+    if(overlay) overlay.style.display = 'none';
+    if(e.dataTransfer?.files?.length) handleFilesDrop(e.dataTransfer.files);
+  });
 }
 
 // ═══ RESIZABLE SIDEBARS ══════════════════════════════════════════════════
@@ -182,8 +199,8 @@ async function uploadPickleFile(f, badgeEl, isOverwrite=false){
       return;
     }
     // Show confirmation modal before importing
-    showPickleConfirmModal(f.name, data.variables, ()=>{
-      importPickleVars(data.variables, f.name);
+    showPickleConfirmModal(f.name, data.variables, scope=>{
+      importPickleVars(data.variables, f.name, scope);
       const count = Object.keys(data.variables).length;
       setBadge(`✓ ${count} var${count!==1?'s':''}`, 'pkl-ok');
     }, ()=>{
@@ -195,7 +212,7 @@ async function uploadPickleFile(f, badgeEl, isOverwrite=false){
   }
 }
 
-// Render a preview modal of the variables about to be imported, then call onConfirm or onCancel.
+// Render a preview modal of the variables about to be imported, then call onConfirm(scope) or onCancel.
 // isOverwrite=true shows a warning banner when the file was already imported.
 function showPickleConfirmModal(filename, varsData, onConfirm, onCancel, isOverwrite=false){
   const backdrop = document.createElement('div');
@@ -227,6 +244,13 @@ function showPickleConfirmModal(filename, varsData, onConfirm, onCancel, isOverw
       </div>`;
   }
 
+  // Build scope options: Global + one entry per tab (local)
+  const scopeTabs = (typeof tabs !== 'undefined') ? tabs : [];
+  const scopeOptionsHTML = [
+    `<option value="global">Global Vars</option>`,
+    ...scopeTabs.map(t => `<option value="${t.id}">${t.name} (Local)</option>`),
+  ].join('');
+
   const overwriteBanner = isOverwrite ? `
     <div class="pkl-overwrite-banner">
       ⚠ <strong>${shortName}</strong> was already imported — confirming will replace its existing variables.
@@ -240,6 +264,10 @@ function showPickleConfirmModal(filename, varsData, onConfirm, onCancel, isOverw
       </div>
       ${overwriteBanner}
       <div class="pkl-modal-varlist">${varRowsHTML}</div>
+      <div class="pkl-modal-scope-row">
+        <label class="pkl-scope-label" for="pklScopeSelect">Import into:</label>
+        <select class="pkl-scope-select" id="pklScopeSelect">${scopeOptionsHTML}</select>
+      </div>
       <div class="pkl-modal-footer">
         <button class="pkl-modal-btn cancel" id="pklCancel">Cancel</button>
         <button class="pkl-modal-btn confirm" id="pklConfirm">${isOverwrite ? 'Overwrite' : 'Import all'}</button>
@@ -249,13 +277,15 @@ function showPickleConfirmModal(filename, varsData, onConfirm, onCancel, isOverw
   document.body.appendChild(backdrop);
 
   const close = () => backdrop.remove();
+  const getScope = () => backdrop.querySelector('#pklScopeSelect')?.value ?? 'global';
 
   backdrop.querySelector('#pklCancel').addEventListener('click', ()=>{ close(); onCancel?.(); });
   backdrop.querySelector('#pklConfirm').addEventListener('click', ()=>{
+    const scope = getScope();
     if(isOverwrite && typeof removeVariablesBySource === 'function'){
       removeVariablesBySource(filename);
     }
-    close(); onConfirm?.();
+    close(); onConfirm?.(scope);
   });
   backdrop.addEventListener('click', e=>{ if(e.target === backdrop){ close(); onCancel?.(); } });
   const onKey = e=>{ if(e.key==='Escape'){ close(); onCancel?.(); document.removeEventListener('keydown',onKey); } };
@@ -389,11 +419,8 @@ function importDataFile(f, badgeEl, isOverwrite=false){
       console.warn('Import error:', parsed.error);
       return;
     }
-    showPickleConfirmModal(f.name, parsed.variables, ()=>{
-      if(isOverwrite && typeof removeVariablesBySource === 'function'){
-        removeVariablesBySource(f.name);
-      }
-      importPickleVars(parsed.variables, f.name);
+    showPickleConfirmModal(f.name, parsed.variables, scope=>{
+      importPickleVars(parsed.variables, f.name, scope);
       const count = Object.keys(parsed.variables).length;
       setBadge(`✓ ${count} var${count!==1?'s':''}`, 'pkl-ok');
     }, ()=>{
@@ -738,6 +765,17 @@ function renderPresetList(){
         _beginPresetRename(chip, nameSpan, preset);
       });
 
+      // Pencil rename button (visible on hover via CSS)
+      const editBtn = document.createElement('button');
+      editBtn.className = 'preset-chip-edit';
+      editBtn.innerHTML = '✎';
+      editBtn.title = 'Rename';
+      editBtn.addEventListener('mousedown', e=>{
+        e.stopPropagation(); e.preventDefault();
+        _beginPresetRename(chip, nameSpan, preset);
+      });
+      chip.appendChild(editBtn);
+
       // Delete button (visible on hover via CSS)
       const delBtn = document.createElement('button');
       delBtn.className = 'preset-chip-del';
@@ -753,6 +791,7 @@ function renderPresetList(){
 
     chip.addEventListener('click', e=>{
       if(e.target.closest('.preset-chip-del')) return;
+      if(e.target.closest('.preset-chip-edit')) return;
       if(activePid === null) return;
       if(typeof applyPreset === 'function') applyPreset(preset.id, activePid, true);
       // Re-render chip highlights without a full refreshCfg to avoid loop

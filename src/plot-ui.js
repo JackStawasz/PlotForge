@@ -101,13 +101,28 @@ function renderTabBar(){
     const el = document.createElement('button');
     el.className = 'plot-tab' + (t.id===activeTabId ? ' plot-tab-active' : '');
     el.dataset.tid = t.id;
-    el.textContent = t.name;
     el.title = t.name;
     el.addEventListener('click', ()=>switchTab(t.id));
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'plot-tab-name';
+    nameSpan.textContent = t.name;
+    el.appendChild(nameSpan);
+
+    // Only show delete button when there is more than one tab
+    if(tabs.length > 1){
+      const delBtn = document.createElement('button');
+      delBtn.className = 'plot-tab-del';
+      delBtn.textContent = '×';
+      delBtn.title = `Delete "${t.name}"`;
+      delBtn.addEventListener('click', e=>{ e.stopPropagation(); deleteTab(t.id); });
+      el.appendChild(delBtn);
+    }
+
     bar.appendChild(el);
   }
   const add = document.createElement('button');
-  add.className = 'plot-tab-add';
+  add.className = 'plot-tab plot-tab-add';
   add.textContent = '+ add tab';
   add.addEventListener('click', addTab);
   bar.appendChild(add);
@@ -121,20 +136,204 @@ function switchTab(tabId){
   activeCurveIdx = 0;
   renderDOM();
   refreshCfg(); refreshSidebar();
+  if(typeof renderVariables === 'function') renderVariables();
 }
 
 function addTab(){
   const suggested = `Tab ${tabs.length + 1}`;
-  const name = window.prompt('Name the new tab:', suggested);
-  if(name === null) return; // user canceled
-  const t = mkTab(name);
-  tabs.push(t);
-  activeTabId = t.id;
-  activePid = null;
-  activeCurveIdx = 0;
+  _showTabNamePopup(suggested, name => {
+    const t = mkTab(name);
+    tabs.push(t);
+    activeTabId = t.id;
+    activePid = null;
+    activeCurveIdx = 0;
+    renderDOM();
+    refreshCfg(); refreshSidebar();
+    snapshotForUndo();
+  });
+}
+
+function deleteTab(tabId){
+  const t = tabs.find(tt => tt.id === tabId);
+  if(!t) return;
+  const localVars = (typeof variables !== 'undefined') ? variables.filter(v => v.scope === tabId) : [];
+  if(localVars.length > 0){
+    _showTabDeleteConfirm(t.name, localVars.length, () => _doDeleteTab(tabId));
+  } else {
+    _doDeleteTab(tabId);
+  }
+}
+
+function _showTabDeleteConfirm(tabName, varCount, onConfirm){
+  document.getElementById('_tabDeletePopup')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = '_tabDeletePopup';
+  Object.assign(overlay.style, {
+    position:'fixed', inset:'0', zIndex:'9999',
+    display:'flex', alignItems:'center', justifyContent:'center',
+  });
+  overlay.addEventListener('mousedown', e=>{ if(e.target === overlay) overlay.remove(); });
+
+  const box = document.createElement('div');
+  Object.assign(box.style, {
+    background:'var(--s1)', border:'1px solid var(--border)',
+    borderRadius:'8px', padding:'16px 18px', display:'flex',
+    flexDirection:'column', gap:'10px', minWidth:'260px', maxWidth:'320px',
+    boxShadow:'0 8px 32px rgba(0,0,0,.45)',
+    fontFamily:'var(--mono)', fontSize:'.78rem', color:'var(--text)',
+  });
+
+  const label = document.createElement('div');
+  label.innerHTML = `Delete <strong style="color:var(--acc2)">${tabName}</strong>?`;
+  Object.assign(label.style, { fontWeight:'600', fontSize:'.8rem' });
+
+  const warn = document.createElement('div');
+  warn.textContent = `This tab has ${varCount} local variable${varCount !== 1 ? 's' : ''} that will also be deleted.`;
+  Object.assign(warn.style, { color:'var(--acc4)', fontSize:'.72rem', lineHeight:'1.5' });
+
+  const row = document.createElement('div');
+  Object.assign(row.style, { display:'flex', gap:'7px', justifyContent:'flex-end', marginTop:'4px' });
+
+  const btnCancel = document.createElement('button');
+  btnCancel.textContent = 'Cancel';
+  Object.assign(btnCancel.style, {
+    background:'var(--s2)', border:'1px solid var(--border2)',
+    borderRadius:'5px', padding:'4px 12px', cursor:'pointer',
+    fontFamily:'var(--mono)', fontSize:'.75rem', color:'var(--muted)',
+  });
+  btnCancel.addEventListener('click', ()=>overlay.remove());
+
+  const btnDel = document.createElement('button');
+  btnDel.textContent = 'Delete tab';
+  Object.assign(btnDel.style, {
+    background:'rgba(255,80,80,.1)', border:'1px solid rgba(255,80,80,.4)',
+    borderRadius:'5px', padding:'4px 14px', cursor:'pointer',
+    fontFamily:'var(--mono)', fontSize:'.75rem', color:'rgb(255,100,100)', fontWeight:'600',
+  });
+  btnDel.addEventListener('click', ()=>{ overlay.remove(); onConfirm(); });
+
+  const onKey = e=>{
+    if(e.key==='Escape'){ overlay.remove(); document.removeEventListener('keydown', onKey); }
+    e.stopPropagation();
+  };
+  document.addEventListener('keydown', onKey);
+
+  row.append(btnCancel, btnDel);
+  box.append(label, warn, row);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function _doDeleteTab(tabId){
+  // Remove local vars scoped to this tab
+  if(typeof variables !== 'undefined'){
+    for(let i = variables.length - 1; i >= 0; i--){
+      if(variables[i].scope === tabId) variables.splice(i, 1);
+    }
+  }
+  // Destroy charts and remove plots belonging to this tab
+  for(let i = plots.length - 1; i >= 0; i--){
+    if(plots[i].tabId === tabId){
+      if(typeof destroyChart === 'function') destroyChart(plots[i].id);
+      plots.splice(i, 1);
+    }
+  }
+  // Remove the tab itself
+  const tabIdx = tabs.findIndex(tt => tt.id === tabId);
+  if(tabIdx === -1) return;
+  tabs.splice(tabIdx, 1);
+
+  // If we just deleted the active tab, switch to an adjacent one
+  if(activeTabId === tabId){
+    activeTabId = tabs.length > 0 ? tabs[Math.min(tabIdx, tabs.length - 1)].id : null;
+    activePid = null;
+    activeCurveIdx = 0;
+  }
+
   renderDOM();
-  refreshCfg(); refreshSidebar();
+  if(typeof renderVariables === 'function') renderVariables();
   snapshotForUndo();
+}
+
+function _showTabNamePopup(defaultName, onConfirm){
+  // Remove any existing popup
+  document.getElementById('_tabNamePopup')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = '_tabNamePopup';
+  Object.assign(overlay.style, {
+    position:'fixed', inset:'0', zIndex:'9999',
+    display:'flex', alignItems:'center', justifyContent:'center',
+  });
+
+  // Clicking the backdrop cancels
+  overlay.addEventListener('mousedown', e => {
+    if(e.target === overlay) overlay.remove();
+  });
+
+  const box = document.createElement('div');
+  Object.assign(box.style, {
+    background:'var(--s1)', border:'1px solid var(--border)',
+    borderRadius:'8px', padding:'16px 18px', display:'flex',
+    flexDirection:'column', gap:'10px', minWidth:'240px',
+    boxShadow:'0 8px 32px rgba(0,0,0,.45)',
+    fontFamily:'var(--mono)', fontSize:'.78rem', color:'var(--text)',
+  });
+
+  const label = document.createElement('div');
+  label.textContent = 'Name this tab';
+  Object.assign(label.style, { fontWeight:'600', color:'var(--acc2)', fontSize:'.75rem', letterSpacing:'.04em' });
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = defaultName;
+  Object.assign(input.style, {
+    background:'var(--s0)', border:'1px solid var(--border2)',
+    borderRadius:'5px', padding:'5px 9px', color:'var(--text)',
+    fontFamily:'var(--mono)', fontSize:'.78rem', outline:'none',
+    width:'100%', boxSizing:'border-box',
+  });
+  input.addEventListener('focus', () => input.select());
+  input.addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ confirm(); }
+    if(e.key === 'Escape'){ overlay.remove(); }
+    e.stopPropagation();
+  });
+
+  const row = document.createElement('div');
+  Object.assign(row.style, { display:'flex', gap:'7px', justifyContent:'flex-end' });
+
+  const btnCancel = document.createElement('button');
+  btnCancel.textContent = 'Cancel';
+  Object.assign(btnCancel.style, {
+    background:'var(--s2)', border:'1px solid var(--border2)',
+    borderRadius:'5px', padding:'4px 12px', cursor:'pointer',
+    fontFamily:'var(--mono)', fontSize:'.75rem', color:'var(--muted)',
+  });
+  btnCancel.addEventListener('click', () => overlay.remove());
+
+  const btnOk = document.createElement('button');
+  btnOk.textContent = 'Create';
+  Object.assign(btnOk.style, {
+    background:'var(--acc2)', border:'none',
+    borderRadius:'5px', padding:'4px 14px', cursor:'pointer',
+    fontFamily:'var(--mono)', fontSize:'.75rem', color:'#fff', fontWeight:'600',
+  });
+  btnOk.addEventListener('click', confirm);
+
+  function confirm(){
+    const name = input.value.trim() || defaultName;
+    overlay.remove();
+    onConfirm(name);
+  }
+
+  row.append(btnCancel, btnOk);
+  box.append(label, input, row);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  // Focus after a tick so the overlay is in the DOM
+  setTimeout(() => input.focus(), 0);
 }
 
 // ═══ PLOT DRAG ════════════════════════════════════════════════════════════
@@ -360,8 +559,8 @@ function buildTopbarInner(p){
   const cc = p.curves.filter(c=>c.template).length, canMpl = true;
   const inFs = !!document.querySelector('.plot-card.plot-fs');
   const mplBtn = p.mplMode
-    ? `<button class="cbtn revert-btn" data-pid="${p.id}" data-action="revert">⟲ interactive</button>`
-    : `<button class="cbtn mpl-btn${!canMpl?' mpl-disabled':''}" data-pid="${p.id}" data-action="mpl" ${!canMpl?'disabled':''}>▨ matplotlib</button>`;
+    ? `<button class="cbtn revert-btn" data-pid="${p.id}" data-action="revert">⟲</button>`
+    : `<button class="cbtn mpl-btn${!canMpl?' mpl-disabled':''}" data-pid="${p.id}" data-action="mpl" ${!canMpl?'disabled':''}>▨</button>`;
   const annDisabled = p.mplMode ? 'disabled style="opacity:.3;pointer-events:none"' : '';
   const dupDelDisabled = inFs ? 'disabled style="opacity:.3;pointer-events:none;cursor:not-allowed"' : '';
   return `
@@ -372,8 +571,8 @@ function buildTopbarInner(p){
     </div>
     <div class="cactions-center">
       ${mplBtn}
-      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addtext" ${annDisabled}>✎ annotate</button>
-      <button class="cbtn shape-btn" data-pid="${p.id}" data-action="addshape" ${annDisabled}>▣ shape</button>
+      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addtext" ${annDisabled}>✎</button>
+      <button class="cbtn shape-btn" data-pid="${p.id}" data-action="addshape" ${annDisabled}>▣</button>
     </div>
     <div class="cactions-right">
       <span class="ctop-coords" id="ctop_coords_${p.id}"></span>
@@ -479,6 +678,26 @@ function dataToFrac(ch, dataX, dataY){
   const pxX = sx.left + (dataX - sx.min) / (sx.max - sx.min) * (sx.right - sx.left);
   const pxY = sy.top  + (1 - (dataY - sy.min) / (sy.max - sy.min)) * (sy.bottom - sy.top);
   return { x: pxX/cw, y: pxY/ch_ };
+}
+
+// Convert a size in plot-data units (x-axis) → CSS pixels for a given plot
+function _plotSizeToPx(pid, plotSize){
+  const ch = chartInstances[pid]; if(!ch) return plotSize;
+  const wrap = document.getElementById(`cwrap_${pid}`); if(!wrap) return plotSize;
+  const sx = ch.scales.x;
+  const dataRange = sx.max - sx.min; if(!dataRange) return plotSize;
+  const cssScale = wrap.offsetWidth / ch.canvas.width;
+  return plotSize * (sx.right - sx.left) * cssScale / dataRange;
+}
+
+// Convert CSS pixels → plot-data units (x-axis) for a given plot
+function _pxToPlotSize(pid, cssPx){
+  const ch = chartInstances[pid]; if(!ch) return cssPx;
+  const wrap = document.getElementById(`cwrap_${pid}`); if(!wrap) return cssPx;
+  const sx = ch.scales.x;
+  const canvasPx = sx.right - sx.left; if(!canvasPx) return cssPx;
+  const cssScale = wrap.offsetWidth / ch.canvas.width;
+  return cssPx / (canvasPx * cssScale) * (sx.max - sx.min);
 }
 
 // Convert canvas fraction → plot-data coords
@@ -746,6 +965,9 @@ function renderTextAnnotations(pid){
     outer.addEventListener('mouseenter', ()=>{ outer.style.borderColor='rgba(90,255,206,.35)'; });
     outer.addEventListener('mouseleave', ()=>{ outer.style.borderColor='transparent'; });
 
+    // Double-click opens menu
+    outer.addEventListener('dblclick', e=>{ e.stopPropagation(); showAnnMenu(ann, pid, menuBtn); });
+
     // Drag
     let dragging=false, sx=0, sy=0;
     outer.addEventListener('mousedown', e=>{
@@ -798,10 +1020,12 @@ function showShapePicker(pid, btnEl){
   menu.className = 'shape-picker';
   _shapePickerEl = menu;
 
+  const btnsRow = document.createElement('div');
+  btnsRow.className = 'shape-pick-btns';
   [
-    { type:'point',  icon:'●', label:'Point'  },
     { type:'circle', icon:'○', label:'Circle' },
     { type:'square', icon:'□', label:'Square' },
+    { type:'cross',  icon:'✕', label:'Cross'  },
     { type:'arrow',  icon:'→', label:'Arrow'  },
   ].forEach(({type,icon,label})=>{
     const btn = document.createElement('button');
@@ -812,8 +1036,26 @@ function showShapePicker(pid, btnEl){
       closeShapePicker();
       addShapeAnnotation(pid, type);
     });
-    menu.appendChild(btn);
+    btnsRow.appendChild(btn);
   });
+  menu.appendChild(btnsRow);
+
+  const sep = document.createElement('div');
+  sep.className = 'shape-pick-sep';
+  menu.appendChild(sep);
+
+  const delAll = document.createElement('button');
+  delAll.className = 'shape-pick-del';
+  delAll.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>Delete All Shapes`;
+  delAll.addEventListener('click', e=>{
+    e.stopPropagation();
+    closeShapePicker();
+    const p = gp(pid); if(!p) return;
+    p.shapeAnnotations = [];
+    renderShapeAnnotations(pid);
+    snapshotForUndo();
+  });
+  menu.appendChild(delAll);
 
   document.body.appendChild(menu);
   const r = btnEl.getBoundingClientRect();
@@ -830,13 +1072,16 @@ function showShapePicker(pid, btnEl){
 function addShapeAnnotation(pid, type){
   const p = gp(pid); if(!p) return;
   if(!p.shapeAnnotations) p.shapeAnnotations = [];
+  // Default size in px; will be converted to plot units below since default lock='plot'
+  const defaultPx = type==='point' ? 9 : 30;
   const sh = {
     id: mkCid(), type,
     x_frac:0.5, y_frac:0.5,
     x2_frac:0.7, y2_frac:0.3,
     color:'#5affce',
-    size: type==='point' ? 9 : 30,
+    size: defaultPx,
     stroke_width: 2,
+    stroke_style: 'solid',
     fill_color: '#5affce',
     fill_alpha: 0,
     lock:'plot',
@@ -847,6 +1092,8 @@ function addShapeAnnotation(pid, type){
   if(ch){
     const d = fracToData(ch, 0.5, 0.5); sh.data_x=d.dataX; sh.data_y=d.dataY;
     if(type==='arrow'){ const d2=fracToData(ch,0.7,0.3); sh.data_x2=d2.dataX; sh.data_y2=d2.dataY; }
+    // Convert default px size to plot units to match the default lock='plot' mode
+    if(type !== 'arrow') sh.size = _pxToPlotSize(pid, defaultPx);
   }
   p.shapeAnnotations.push(sh);
   renderShapeAnnotations(pid);
@@ -864,24 +1111,35 @@ function renderShapeAnnotations(pid){
   if(ch){
     p.shapeAnnotations.forEach(sh=>{
       if(sh.lock!=='plot') return;
-      if(sh.data_x!=null){ const f=dataToFrac(ch,sh.data_x,sh.data_y); sh.x_frac=Math.max(0,Math.min(1,f.x)); sh.y_frac=Math.max(0,Math.min(1,f.y)); }
-      if(sh.type==='arrow' && sh.data_x2!=null){ const f2=dataToFrac(ch,sh.data_x2,sh.data_y2); sh.x2_frac=Math.max(0,Math.min(1,f2.x)); sh.y2_frac=Math.max(0,Math.min(1,f2.y)); }
+      if(sh.data_x!=null){ const f=dataToFrac(ch,sh.data_x,sh.data_y); sh.x_frac=f.x; sh.y_frac=f.y; }
+      if(sh.type==='arrow' && sh.data_x2!=null){ const f2=dataToFrac(ch,sh.data_x2,sh.data_y2); sh.x2_frac=f2.x; sh.y2_frac=f2.y; }
     });
   }
 
   p.shapeAnnotations.forEach(sh=>_renderOneShape(sh,pid,wrap));
 }
 
-function _applyVisStyle(vis, sh){
-  const s  = sh.size;
+function _applyVisStyle(vis, sh, pid){
+  // If anchored to the plot, sh.size is in plot-data units and must be converted to CSS px.
+  const s  = (sh.lock === 'plot') ? _plotSizeToPx(pid, sh.size) : sh.size;
   const sw = sh.stroke_width ?? 2;
+  const st = sh.stroke_style || 'solid';
   const fill = (sh.fill_alpha > 0) ? _hexToRgba(sh.fill_color || sh.color, sh.fill_alpha) : 'transparent';
   if(sh.type==='point'){
     vis.style.cssText = `width:${s}px;height:${s}px;border-radius:50%;background:${sh.color}`;
   } else if(sh.type==='circle'){
-    vis.style.cssText = `width:${s}px;height:${s}px;border-radius:50%;border:${sw}px solid ${sh.color};background:${fill};box-sizing:border-box`;
+    vis.style.cssText = `width:${s}px;height:${s}px;border-radius:50%;border:${sw}px ${st} ${sh.color};background:${fill};box-sizing:border-box`;
+  } else if(sh.type==='cross'){
+    // X shape via two diagonal gradient stripes
+    const h = sw / 2;
+    vis.style.cssText = [
+      `width:${s}px;height:${s}px`,
+      `background:
+        linear-gradient(45deg,  transparent calc(50% - ${h}px), ${sh.color} calc(50% - ${h}px), ${sh.color} calc(50% + ${h}px), transparent calc(50% + ${h}px)),
+        linear-gradient(-45deg, transparent calc(50% - ${h}px), ${sh.color} calc(50% - ${h}px), ${sh.color} calc(50% + ${h}px), transparent calc(50% + ${h}px))`,
+    ].join(';');
   } else {
-    vis.style.cssText = `width:${s}px;height:${s}px;border:${sw}px solid ${sh.color};background:${fill};box-sizing:border-box`;
+    vis.style.cssText = `width:${s}px;height:${s}px;border:${sw}px ${st} ${sh.color};background:${fill};box-sizing:border-box`;
   }
 }
 
@@ -895,7 +1153,7 @@ function _renderOneShape(sh, pid, wrap){
 
   const vis = document.createElement('div');
   vis.className = 'shape-visual';
-  _applyVisStyle(vis, sh);
+  _applyVisStyle(vis, sh, pid);
   outer.appendChild(vis);
 
   const hbg = document.createElement('button');
@@ -907,6 +1165,9 @@ function _renderOneShape(sh, pid, wrap){
   outer.addEventListener('mouseenter', ()=>{ vis.style.outline='1px dashed rgba(90,255,206,.4)'; hbg.style.opacity='1'; });
   outer.addEventListener('mouseleave', ()=>{ vis.style.outline=''; hbg.style.opacity='0'; });
 
+  // Double-click opens menu
+  outer.addEventListener('dblclick', e=>{ e.stopPropagation(); showShapeMenu(sh, pid, hbg); });
+
   let drag=false, lx=0, ly=0;
   outer.addEventListener('mousedown', e=>{
     if(e.target===hbg) return;
@@ -916,8 +1177,10 @@ function _renderOneShape(sh, pid, wrap){
   const onMove = e=>{
     if(!drag) return;
     const rect=wrap.getBoundingClientRect();
-    sh.x_frac = Math.max(0,Math.min(1, sh.x_frac+(e.clientX-lx)/rect.width));
-    sh.y_frac = Math.max(0,Math.min(1, sh.y_frac+(e.clientY-ly)/rect.height));
+    const nx = sh.x_frac + (e.clientX-lx)/rect.width;
+    const ny = sh.y_frac + (e.clientY-ly)/rect.height;
+    sh.x_frac = (sh.lock==='plot') ? nx : Math.max(0,Math.min(1,nx));
+    sh.y_frac = (sh.lock==='plot') ? ny : Math.max(0,Math.min(1,ny));
     lx=e.clientX; ly=e.clientY;
     outer.style.left=(sh.x_frac*100)+'%'; outer.style.top=(sh.y_frac*100)+'%';
     if(sh.lock==='plot'){ const c=chartInstances[pid]; if(c){ const d=fracToData(c,sh.x_frac,sh.y_frac); sh.data_x=d.dataX; sh.data_y=d.dataY; } }
@@ -943,9 +1206,10 @@ function _renderArrow(sh, pid, wrap){
     d.dataset.shapeId=sh.id; d.style.cssText=css; return d;
   };
 
-  // Line
+  // Line — use border-top so solid/dashed/dotted stroke styles work natively
+  const st = sh.stroke_style || 'solid';
   const lineEl = mkEl('shape-arr-line',
-    `position:absolute;left:${x1}px;top:${y1-sw/2}px;width:${len}px;height:${sw}px;background:${sh.color};transform-origin:0 50%;transform:rotate(${ang}deg);z-index:21;pointer-events:none`);
+    `position:absolute;left:${x1}px;top:${y1-sw/2}px;width:${len}px;height:0;border-top:${sw}px ${st} ${sh.color};transform-origin:0 50%;transform:rotate(${ang}deg);z-index:21;pointer-events:none`);
 
   // Arrowhead
   const headEl = mkEl('shape-arr-head',
@@ -975,7 +1239,12 @@ function _renderArrow(sh, pid, wrap){
   // Hamburger on start handle
   const hbg=document.createElement('button');
   hbg.className='shape-hamburger'; hbg.innerHTML='&#8942;'; hbg.style.opacity='0';
-  hbg.addEventListener('mousedown', e=>{ e.stopPropagation(); e.preventDefault(); showShapeMenu(sh,pid,hbg); });
+  const _arrowMidPt = ()=>{
+    const wr = wrap.getBoundingClientRect();
+    return { x: wr.left + (sh.x_frac + sh.x2_frac) / 2 * wr.width,
+             y: wr.top  + (sh.y_frac + sh.y2_frac) / 2 * wr.height };
+  };
+  hbg.addEventListener('mousedown', e=>{ e.stopPropagation(); e.preventDefault(); showShapeMenu(sh,pid,hbg,_arrowMidPt()); });
   h1el.appendChild(hbg);
   h1el.addEventListener('mouseenter', ()=>hbg.style.opacity='1');
   h1el.addEventListener('mouseleave', ()=>hbg.style.opacity='0');
@@ -983,6 +1252,8 @@ function _renderArrow(sh, pid, wrap){
   // Hitbox drag — moves both endpoints together
   {
     let drag=false, lx=0, ly=0;
+    // Double-click on the arrow body opens menu at the line midpoint
+    hitEl.addEventListener('dblclick', e=>{ e.stopPropagation(); showShapeMenu(sh, pid, hbg, _arrowMidPt()); });
     hitEl.addEventListener('mousedown', e=>{
       if(e.target===hbg) return;
       drag=true; arrowDragging=true; lx=e.clientX; ly=e.clientY;
@@ -993,8 +1264,13 @@ function _renderArrow(sh, pid, wrap){
       const rect=wrap.getBoundingClientRect();
       const dfx=(e.clientX-lx)/rect.width, dfy=(e.clientY-ly)/rect.height;
       lx=e.clientX; ly=e.clientY;
-      sh.x_frac =Math.max(0,Math.min(1,sh.x_frac +dfx)); sh.y_frac =Math.max(0,Math.min(1,sh.y_frac +dfy));
-      sh.x2_frac=Math.max(0,Math.min(1,sh.x2_frac+dfx)); sh.y2_frac=Math.max(0,Math.min(1,sh.y2_frac+dfy));
+      if(sh.lock==='plot'){
+        sh.x_frac +=dfx; sh.y_frac +=dfy;
+        sh.x2_frac+=dfx; sh.y2_frac+=dfy;
+      } else {
+        sh.x_frac =Math.max(0,Math.min(1,sh.x_frac +dfx)); sh.y_frac =Math.max(0,Math.min(1,sh.y_frac +dfy));
+        sh.x2_frac=Math.max(0,Math.min(1,sh.x2_frac+dfx)); sh.y2_frac=Math.max(0,Math.min(1,sh.y2_frac+dfy));
+      }
       if(sh.lock==='plot'){
         const c=chartInstances[pid]; if(c){
           const d=fracToData(c,sh.x_frac,sh.y_frac); sh.data_x=d.dataX; sh.data_y=d.dataY;
@@ -1020,8 +1296,13 @@ function _renderArrow(sh, pid, wrap){
       const rect=wrap.getBoundingClientRect();
       const dfx=(e.clientX-lx)/rect.width, dfy=(e.clientY-ly)/rect.height;
       lx=e.clientX; ly=e.clientY;
-      if(isStart){ sh.x_frac=Math.max(0,Math.min(1,sh.x_frac+dfx)); sh.y_frac=Math.max(0,Math.min(1,sh.y_frac+dfy)); }
-      else        { sh.x2_frac=Math.max(0,Math.min(1,sh.x2_frac+dfx)); sh.y2_frac=Math.max(0,Math.min(1,sh.y2_frac+dfy)); }
+      if(sh.lock==='plot'){
+        if(isStart){ sh.x_frac +=dfx; sh.y_frac +=dfy; }
+        else        { sh.x2_frac+=dfx; sh.y2_frac+=dfy; }
+      } else {
+        if(isStart){ sh.x_frac=Math.max(0,Math.min(1,sh.x_frac+dfx)); sh.y_frac=Math.max(0,Math.min(1,sh.y_frac+dfy)); }
+        else        { sh.x2_frac=Math.max(0,Math.min(1,sh.x2_frac+dfx)); sh.y2_frac=Math.max(0,Math.min(1,sh.y2_frac+dfy)); }
+      }
       if(sh.lock==='plot'){
         const c=chartInstances[pid]; if(c){
           if(isStart){ const d=fracToData(c,sh.x_frac,sh.y_frac); sh.data_x=d.dataX; sh.data_y=d.dataY; }
@@ -1043,7 +1324,7 @@ function _renderArrow(sh, pid, wrap){
   wrap.appendChild(h2el);
 }
 
-function showShapeMenu(sh, pid, triggerEl){
+function showShapeMenu(sh, pid, triggerEl, anchorPt=null){
   closeShapeMenu(); closeAnnMenu();
   const p = gp(pid); if(!p) return;
 
@@ -1053,18 +1334,31 @@ function showShapeMenu(sh, pid, triggerEl){
 
   // ── Stroke color ─────────────────────────────────────────────────
   const colorRow = document.createElement('div'); colorRow.className='ann-menu-row-inline';
-  colorRow.innerHTML = `<label>${sh.type==='point'?'Color':'Stroke color'}</label>
+  colorRow.innerHTML = `<label>Stroke color</label>
     <div class="ann-menu-color-group">
       <div class="ann-color-swatch"><input type="color" id="shMenuColor" value="${sh.color}"/></div>
       <input class="ann-menu-inp ann-menu-inp-hex" id="shMenuColorHex" type="text" value="${sh.color}" maxlength="7"/>
     </div>`;
   menu.appendChild(colorRow);
 
-  // ── Stroke width (not for point) ─────────────────────────────────
-  if(sh.type !== 'point'){
+  // ── Stroke width ─────────────────────────────────────────────────
+  {
     const swRow = document.createElement('div'); swRow.className='ann-menu-row-inline';
-    swRow.innerHTML = `<label>Stroke width</label><input class="ann-menu-inp ann-menu-inp-sm" id="shMenuSW" type="number" value="${sh.stroke_width??2}" min="1" max="20" step="0.5"/>`;
+    swRow.innerHTML = `<label>Stroke width</label><input class="ann-menu-inp ann-menu-inp-sm" id="shMenuSW" type="number" value="${sh.stroke_width??2}" min="0.5" max="20" step="0.5"/>`;
     menu.appendChild(swRow);
+  }
+
+  // ── Stroke style ─────────────────────────────────────────────────
+  {
+    const stRow = document.createElement('div'); stRow.className='ann-menu-row-inline';
+    const cur = sh.stroke_style || 'solid';
+    stRow.innerHTML = `<label>Stroke style</label>
+      <div class="ann-lock-group">
+        <button class="ann-lock-btn${cur==='solid' ?' active':''}" id="shMenuStSolid" title="Solid">—</button>
+        <button class="ann-lock-btn${cur==='dashed'?' active':''}" id="shMenuStDashed" title="Dashed">╌</button>
+        <button class="ann-lock-btn${cur==='dotted'?' active':''}" id="shMenuStDotted" title="Dotted">···</button>
+      </div>`;
+    menu.appendChild(stRow);
   }
 
   // ── Fill color + alpha (circle / square only) ─────────────────────
@@ -1081,8 +1375,11 @@ function showShapeMenu(sh, pid, triggerEl){
 
     const alphaRow = document.createElement('div'); alphaRow.className='ann-menu-row-inline';
     const alphaPct = Math.round((sh.fill_alpha||0)*100);
-    alphaRow.innerHTML = `<label>Fill opacity — <span id="shMenuAlphaVal" style="color:var(--acc2)">${alphaPct}%</span></label>
-      <input type="range" id="shMenuAlpha" min="0" max="1" step="0.05" value="${sh.fill_alpha||0}" style="width:90px"/>`;
+    alphaRow.innerHTML = `<label>Fill opacity</label>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input type="range" id="shMenuAlpha" min="0" max="1" step="0.05" value="${sh.fill_alpha||0}" style="width:80px"/>
+        <span id="shMenuAlphaVal" style="color:var(--acc2);font-family:var(--mono);font-size:.7rem;min-width:28px;text-align:right">${alphaPct}%</span>
+      </div>`;
     menu.appendChild(alphaRow);
   }
 
@@ -1090,7 +1387,15 @@ function showShapeMenu(sh, pid, triggerEl){
   if(sh.type !== 'arrow'){
     const divider = document.createElement('div'); divider.className='ann-menu-divider'; menu.appendChild(divider);
     const sizeRow = document.createElement('div'); sizeRow.className='ann-menu-row-inline';
-    sizeRow.innerHTML = `<label>Size (px)</label><input class="ann-menu-inp ann-menu-inp-sm" id="shMenuSize" type="number" value="${sh.size}" min="4" max="200" step="1"/>`;
+    const _sizeLabelText = sh.type==='circle' ? 'Diameter' : sh.type==='square' ? 'Side length' : 'Size';
+    const _sizeIsPlot    = sh.lock === 'plot';
+    const _sizeUnit      = _sizeIsPlot ? 'plot units' : 'px';
+    const _sizeVal       = parseFloat(sh.size.toPrecision(5));
+    const _sizeMinMax    = _sizeIsPlot ? '' : 'min="1" max="2000"';
+    const _sizeStep      = _sizeIsPlot ? 'any' : '1';
+    sizeRow.id = 'shMenuSizeRow';
+    sizeRow.innerHTML = `<label id="shMenuSizeLbl">${_sizeLabelText} (${_sizeUnit})</label>
+      <input class="ann-menu-inp ann-menu-inp-sm" id="shMenuSize" type="number" value="${_sizeVal}" ${_sizeMinMax} step="${_sizeStep}"/>`;
     menu.appendChild(sizeRow);
   }
 
@@ -1142,6 +1447,21 @@ function showShapeMenu(sh, pid, triggerEl){
     swInp.addEventListener('change', ()=>snapshotForUndo());
   }
 
+  // ── Stroke style buttons ──────────────────────────────────────────
+  ['solid','dashed','dotted'].forEach(style=>{
+    const id = `shMenuSt${style.charAt(0).toUpperCase()+style.slice(1)}`;
+    const btn = document.getElementById(id);
+    if(!btn) return;
+    btn.addEventListener('mousedown', e=>{
+      e.preventDefault();
+      sh.stroke_style = style;
+      document.querySelectorAll('#shMenuStSolid,#shMenuStDashed,#shMenuStDotted')
+        .forEach(b=>b.classList.toggle('active', b===btn));
+      reRender();
+      snapshotForUndo();
+    });
+  });
+
   const fillInp = document.getElementById('shMenuFill');
   const fillHex = document.getElementById('shMenuFillHex');
   if(fillInp && fillHex){
@@ -1164,7 +1484,10 @@ function showShapeMenu(sh, pid, triggerEl){
 
   const sizeInp = document.getElementById('shMenuSize');
   if(sizeInp){
-    sizeInp.addEventListener('input', ()=>{ sh.size=Math.max(4,parseInt(sizeInp.value)||sh.size); reRender(); });
+    sizeInp.addEventListener('input', ()=>{
+      const v = parseFloat(sizeInp.value);
+      if(!isNaN(v) && v > 0){ sh.size = v; reRender(); }
+    });
     sizeInp.addEventListener('change', ()=>snapshotForUndo());
   }
 
@@ -1172,7 +1495,27 @@ function showShapeMenu(sh, pid, triggerEl){
   const lockWindowBtn = document.getElementById('shLockWindow');
   if(lockPlotBtn && lockWindowBtn){
     const setLock = mode=>{
+      const prevMode = sh.lock;
       sh.lock = mode;
+      // Convert stored size between unit systems so the visual size stays the same
+      if(sh.type !== 'arrow'){
+        if(prevMode === 'window' && mode === 'plot'){
+          sh.size = _pxToPlotSize(pid, sh.size);
+        } else if(prevMode === 'plot' && mode === 'window'){
+          sh.size = _plotSizeToPx(pid, sh.size);
+        }
+        // Refresh size input: label, units, value, step/constraints
+        const sizeInpEl = document.getElementById('shMenuSize');
+        const sizeLblEl = document.getElementById('shMenuSizeLbl');
+        if(sizeInpEl && sizeLblEl){
+          const lbl = sh.type==='circle' ? 'Diameter' : sh.type==='square' ? 'Side length' : 'Size';
+          sizeLblEl.textContent = `${lbl} (${mode==='plot' ? 'plot units' : 'px'})`;
+          sizeInpEl.value = parseFloat(sh.size.toPrecision(5));
+          sizeInpEl.step  = mode==='plot' ? 'any' : '1';
+          if(mode==='plot'){ sizeInpEl.removeAttribute('min'); sizeInpEl.removeAttribute('max'); }
+          else { sizeInpEl.min='1'; sizeInpEl.max='2000'; }
+        }
+      }
       // Seed/clear data coords on switch
       if(mode==='plot'){
         const c=chartInstances[pid]; if(c){
@@ -1182,21 +1525,24 @@ function showShapeMenu(sh, pid, triggerEl){
       } else { sh.data_x=null; sh.data_y=null; sh.data_x2=null; sh.data_y2=null; }
       lockPlotBtn.classList.toggle('active', mode==='plot');
       lockWindowBtn.classList.toggle('active', mode==='window');
+      reRender();
       snapshotForUndo();
     };
     lockPlotBtn.addEventListener('mousedown', e=>{ e.preventDefault(); setLock('plot'); });
     lockWindowBtn.addEventListener('mousedown', e=>{ e.preventDefault(); setLock('window'); });
   }
 
-  // Position below trigger, flip up if no room
-  const r=triggerEl.getBoundingClientRect();
-  menu.style.visibility='hidden'; menu.style.display='flex';
-  const mh=menu.offsetHeight, mw=menu.offsetWidth;
-  menu.style.visibility=''; menu.style.display='';
-  let top=r.bottom+6, left=r.left+r.width/2-mw/2;
-  if(top+mh > window.innerHeight-8) top=r.top-mh-6;
-  menu.style.top  = Math.max(8,top)+'px';
-  menu.style.left = Math.max(8,Math.min(window.innerWidth-mw-8,left))+'px';
+  // Position to the right of the anchor point (or trigger element), flip left if no room.
+  // anchorPt overrides triggerEl for arrows (midpoint of the line instead of the handle end).
+  const r = anchorPt ? { left: anchorPt.x, right: anchorPt.x, top: anchorPt.y } : triggerEl.getBoundingClientRect();
+  menu.style.visibility='hidden'; menu.style.display='block';
+  const mh=menu.offsetHeight||240, mw=menu.offsetWidth||200;
+  menu.style.visibility='';
+  let left=r.right+8, top=r.top;
+  if(left+mw > window.innerWidth-8) left=r.left-mw-8;
+  if(top+mh  > window.innerHeight-8) top=window.innerHeight-mh-8;
+  menu.style.top  = Math.max(4,top)+'px';
+  menu.style.left = Math.max(4,left)+'px';
 
   setTimeout(()=>{
     const outside=e=>{ if(!menu.contains(e.target)){ closeShapeMenu(); document.removeEventListener('mousedown',outside); } };

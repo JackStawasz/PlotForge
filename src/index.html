@@ -87,18 +87,18 @@
     </div>
   </div>
 
-  <!-- LEFT SIDEBAR: Variables + Files tabs -->
+  <!-- LEFT SIDEBAR: Global Vars + Local Vars tabs -->
   <aside class="sidebar" id="leftSidebar">
     <div class="sidebar-tabs">
-      <button class="sidebar-tab sidebar-tab-active" id="sbTabVars" data-tab="vars">Variables</button>
-      <button class="sidebar-tab" id="sbTabFiles" data-tab="files">Files</button>
+      <button class="sidebar-tab sidebar-tab-active" id="sbTabVars" data-tab="vars">Global Vars</button>
+      <button class="sidebar-tab" id="sbTabFiles" data-tab="files">Local Vars</button>
     </div>
 
-    <!-- VARIABLES TAB -->
+    <!-- GLOBAL VARS TAB -->
     <div class="sb-pane" id="sbPaneVars">
       <div class="sb-pane-inner">
         <div class="vars-header">
-          <span class="slbl" style="margin-bottom:0">Variables</span>
+          <span class="slbl" style="margin-bottom:0">Global Vars</span>
           <button class="vars-add-btn" id="varsAddBtn" title="Add variable">+</button>
         </div>
         <div class="vars-list" id="varsList"></div>
@@ -109,18 +109,28 @@
       </div>
     </div>
 
-    <!-- FILES TAB -->
+    <!-- LOCAL VARS TAB -->
     <div class="sb-pane" id="sbPaneFiles" style="display:none">
       <div class="sb-pane-inner">
-        <div class="files-drop-zone" id="filesDropZone">
-          <div class="fdz-icon">&#8853;</div>
-          <div class="fdz-text">Drop files here<br><span>or click to browse</span></div>
-          <input type="file" id="filesInput" multiple style="display:none"/>
+        <div class="vars-header">
+          <span class="slbl" style="margin-bottom:0">Local Vars</span>
+          <button class="vars-add-btn" id="varsAddLocalBtn" title="Add local variable">+</button>
         </div>
-        <div class="files-list" id="filesList"></div>
+        <div class="vars-list" id="localVarsList"></div>
+        <div class="vars-empty" id="localVarsEmpty" style="display:flex">
+          <div style="font-size:1.4rem;opacity:.13">&#120131;</div>
+          <div>No local variables yet<br><span style="font-size:.7rem;opacity:.6">Scoped to this tab only</span></div>
+        </div>
       </div>
     </div>
   </aside>
+
+  <!-- GLOBAL DRAG-AND-DROP OVERLAY -->
+  <div id="globalDropOverlay" class="global-drop-overlay" style="display:none">
+    <div class="gdo-icon">&#128193;</div>
+    <div class="gdo-title">Drop to import as variables</div>
+    <div class="gdo-sub">.csv &nbsp;·&nbsp; .json &nbsp;·&nbsp; .pkl</div>
+  </div>
 
   <!-- MAIN: tab bar + scrollable plot list -->
   <main class="main">

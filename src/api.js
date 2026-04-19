@@ -55,6 +55,8 @@ function snapshotForUndo(){
       fromTemplate: v.fromTemplate, templateKey: v.templateKey,
       paramKey: v.paramKey, pickleSource: v.pickleSource,
       _isNumeric: v._isNumeric || false,
+      scope: v.scope ?? 'global',
+      folder: v.folder ?? null,
     })),
     varIdCtr,
     tabs: tabs.map(t=>({ id:t.id, name:t.name })),
@@ -123,8 +125,16 @@ function restoreSnapshot(snap){
   refreshCfg();
 
   if(restoredVars && typeof renderVariables === 'function'){
+    // Build the set of valid tab IDs after tab restore, so orphaned local vars
+    // (whose tab was deleted) can be promoted to global.
+    const validTabIds = new Set(tabs.map(t => t.id));
     variables.length = 0;
-    for(const rv of restoredVars) variables.push(rv);
+    for(const rv of restoredVars){
+      const scope = rv.scope ?? 'global';
+      // Sanitize: local vars whose tab no longer exists → promote to global
+      const safeScope = (scope === 'global' || validTabIds.has(scope)) ? scope : 'global';
+      variables.push({ ...rv, scope: safeScope, folder: rv.folder ?? null });
+    }
     if(state.varIdCtr !== undefined) varIdCtr = state.varIdCtr;
     renderVariables();
     if(typeof reEvalAllConstants === 'function') reEvalAllConstants();
