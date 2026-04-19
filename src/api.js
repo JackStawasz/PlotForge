@@ -210,6 +210,7 @@ function mkPlot(tabId){
     id: mkPid(),
     tabId: tabId ?? activeTabId,
     plotNumber: ++plot_num_ctr,
+    name: '',
     curves: [ defCurve([]) ],
     view: defView(),
     labels: { title:'', xlabel:'', ylabel:'' },

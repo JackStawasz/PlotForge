@@ -329,14 +329,17 @@ class VarWarning {
   _apply(){
     const btn = document.querySelector(`.var-warn-btn[data-vid="${this.varId}"]`);
     if(!btn) return;
-    // Tip may be a detached body element — use stored reference if available
     const tip = btn._tipEl || btn.querySelector('.var-warn-tip');
     const msg = this._dupMsg || this._invalidMsg; // duplicate takes priority
     if(msg){
       btn.classList.add('var-warn-active');
+      btn.innerHTML = '&#9888;'; // ⚠ warning triangle
+      btn.setAttribute('aria-label', msg);
       if(tip) tip.textContent = msg;
     } else {
       btn.classList.remove('var-warn-active');
+      btn.innerHTML = '&#9881;'; // ⚙ gear
+      btn.setAttribute('aria-label', 'Variable settings');
       if(tip) tip.textContent = 'No errors';
     }
   }
@@ -431,25 +434,30 @@ function _renderVarSubset(listEl, varSubset){
     item.addEventListener('focusin',  ()=> item.classList.add('var-item--focused'));
     item.addEventListener('focusout', ()=> item.classList.remove('var-item--focused'));
 
-    // ── Warning button + tooltip ─────────────────────────────────────────
+    // ── Settings / warning button + tooltip ─────────────────────────────
+    // Shows a gear (settings) by default; swaps to ⚠ when a warning is active.
     const warnBtn = document.createElement('div');
     warnBtn.className = 'var-warn-btn';
     warnBtn.dataset.vid = v.id;
-    warnBtn.innerHTML   = '&#9888;';
-    warnBtn.setAttribute('aria-label', 'No errors');
+    warnBtn.innerHTML   = '&#9881;'; // ⚙ gear — flips to ⚠ via VarWarning._apply()
+    warnBtn.setAttribute('aria-label', 'Variable settings');
     const warnTip = document.createElement('div');
     warnTip.className   = 'var-warn-tip';
     warnTip.textContent = 'No errors';
     document.body.appendChild(warnTip);
     const _positionTip = ()=>{ const r=warnBtn.getBoundingClientRect(); warnTip.style.top=(r.bottom+4)+'px'; warnTip.style.left=r.left+'px'; };
-    const _showTip = ()=>{ _positionTip(); warnTip.style.display='block'; };
+    const _showTip = ()=>{ if(!warnBtn.classList.contains('var-warn-active')) return; _positionTip(); warnTip.style.display='block'; };
     const _hideTip = ()=>{ if(!warnBtn.classList.contains('var-warn-pinned')) warnTip.style.display='none'; };
     warnBtn.addEventListener('mouseenter', _showTip);
     warnBtn.addEventListener('mouseleave', _hideTip);
     warnBtn.addEventListener('click', e=>{
       e.stopPropagation();
-      const pinned = warnBtn.classList.toggle('var-warn-pinned');
-      if(pinned){ _positionTip(); warnTip.style.display='block'; } else { warnTip.style.display='none'; }
+      if(warnBtn.classList.contains('var-warn-active')){
+        const pinned = warnBtn.classList.toggle('var-warn-pinned');
+        if(pinned){ _positionTip(); warnTip.style.display='block'; } else { warnTip.style.display='none'; }
+      } else {
+        _showVarSettingsMenu(v, warnBtn);
+      }
     });
     document.addEventListener('click', ()=>{ warnBtn.classList.remove('var-warn-pinned'); warnTip.style.display='none'; });
     warnBtn._tipEl = warnTip;
@@ -784,6 +792,29 @@ function _beginFolderRename(headerEl, labelEl, oldName, folderVars, collapseKey)
     if(e.key === 'Escape'){ inp.value = oldName; inp.blur(); }
     e.stopPropagation();
   });
+}
+
+// ═══ VARIABLE SETTINGS MENU ══════════════════════════════════════════════
+function _showVarSettingsMenu(v, anchorEl){
+  document.querySelectorAll('.var-settings-menu').forEach(m => m.remove());
+  const menu = document.createElement('div');
+  menu.className = 'var-settings-menu';
+  const msg = document.createElement('div');
+  msg.className = 'var-settings-msg';
+  msg.textContent = 'Variable settings coming soon…';
+  menu.appendChild(msg);
+  document.body.appendChild(menu);
+  const r = anchorEl.getBoundingClientRect();
+  menu.style.top  = (r.bottom + 4) + 'px';
+  menu.style.left = r.left + 'px';
+  requestAnimationFrame(()=>{
+    const mw = menu.offsetWidth;
+    if(r.left + mw > window.innerWidth - 8) menu.style.left = Math.max(8, r.right - mw) + 'px';
+  });
+  const outside = e=>{
+    if(!menu.contains(e.target)){ menu.remove(); document.removeEventListener('mousedown', outside); }
+  };
+  setTimeout(()=>document.addEventListener('mousedown', outside), 0);
 }
 
 // ═══ SCOPE BADGE + MOVE MENU ═════════════════════════════════════════════
@@ -1493,7 +1524,11 @@ function syncTemplateParamsToVars(tplKey, params){
 // Import variables from a parsed .pickle file (called by sidebars.js).
 // Naming: single-char keys are used as-is; multi-char keys are wrapped in \text{}.
 function importPickleVars(data, sourceName, scope='global'){
-  for(const [rawKey, info] of Object.entries(data)){
+  const entries = Object.entries(data);
+  // Auto-folder: when importing multiple variables, group them under the filename (no extension)
+  const folderName = entries.length > 1 ? sourceName.replace(/\.[^.]+$/, '') : null;
+
+  for(const [rawKey, info] of entries){
     const isSingleChar = rawKey.length === 1;
     const latexName    = isSingleChar ? rawKey : `\\text{${rawKey}}`;
 
@@ -1505,12 +1540,13 @@ function importPickleVars(data, sourceName, scope='global'){
         existing._isNumeric = true;
         existing.value      = info.value;
         existing.scope      = scope;
+        if(folderName && !existing.folder) existing.folder = folderName;
         renderVariables();
       } else {
         addVariable('constant', {
           name: rawKey, value: info.value,
           exprLatex: String(info.value), fullLatex: `${latexName}=${info.value}`,
-          pickleSource: sourceName, silent: true, scope,
+          pickleSource: sourceName, silent: true, scope, folder: folderName,
         });
       }
     } else if(info.kind === 'list'){
@@ -1524,12 +1560,13 @@ function importPickleVars(data, sourceName, scope='global'){
         existing._categorical = isCat;
         existing._labels      = labels;
         existing.scope        = scope;
+        if(folderName && !existing.folder) existing.folder = folderName;
         renderVariables();
       } else {
         addVariable('list', {
           name: rawKey, listItems: items, listLength: items.length,
           pickleSource: sourceName, silent: true, scope,
-          _categorical: isCat, _labels: labels,
+          _categorical: isCat, _labels: labels, folder: folderName,
         });
       }
     }

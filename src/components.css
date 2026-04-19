@@ -94,6 +94,53 @@
   box-shadow:0 0 0 1px var(--acc2);
 }
 
+/* Inline rename input inside a tab */
+.plot-tab-rename-input{
+  flex:1;min-width:0;max-width:120px;
+  background:var(--s0);color:var(--text);
+  border:1px solid var(--acc2);border-radius:3px;
+  padding:0 4px;font:inherit;font-size:.75rem;
+  outline:none;
+}
+
+/* Tab drag-to-reorder */
+.plot-tab-dragging{
+  opacity:.35;
+  pointer-events:none;
+}
+.plot-tab-ghost{
+  opacity:.88;
+  transform:rotate(.3deg) scale(1.03);
+  box-shadow:0 4px 18px rgba(0,0,0,.5);
+  cursor:grabbing !important;
+  user-select:none;
+}
+/* Insertion indicators */
+.plot-tab.plot-tab-drop-before{
+  border-left:2px solid var(--acc2);
+}
+.plot-tab.plot-tab-drop-after{
+  border-right:2px solid var(--acc2);
+}
+
+/* Plot window title — clickable to rename */
+.ctitle-text{
+  cursor:text;
+  border-radius:3px;
+  padding:0 3px;
+  transition:background .12s;
+}
+.ctitle-text:hover{
+  background:color-mix(in srgb,var(--acc2) 14%,transparent);
+}
+/* Inline rename input in plot topbar */
+.plot-title-rename-input{
+  background:var(--s0);color:var(--text);
+  border:1px solid var(--acc2);border-radius:3px;
+  padding:0 4px;font:inherit;font-size:inherit;
+  outline:none;min-width:60px;
+}
+
 /* ═══ PLOT DRAG HANDLE + PLACEHOLDER ══════════════════════════════ */
 .plot-drag-handle{
   display:inline-flex;align-items:center;justify-content:center;

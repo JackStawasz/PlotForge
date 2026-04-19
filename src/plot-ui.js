@@ -102,11 +102,22 @@ function renderTabBar(){
     el.className = 'plot-tab' + (t.id===activeTabId ? ' plot-tab-active' : '');
     el.dataset.tid = t.id;
     el.title = t.name;
-    el.addEventListener('click', ()=>switchTab(t.id));
+    el.addEventListener('click', ()=>{ if(!_tabDrag.active) switchTab(t.id); });
+    el.addEventListener('pointerdown', e=>{
+      if(e.button !== 0 || e.target.closest('.plot-tab-del') || e.target.closest('.plot-tab-rename-input')) return;
+      const idx = tabs.indexOf(t);
+      if(idx < 0) return;
+      _tabDrag.pending = true;
+      _tabDrag.active  = false;
+      _tabDrag.fromIdx = idx;
+      _tabDrag.overIdx = idx;
+      _tabDrag.startX  = e.clientX;
+    });
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'plot-tab-name';
     nameSpan.textContent = t.name;
+    nameSpan.addEventListener('dblclick', e=>{ e.stopPropagation(); _beginTabRename(el, nameSpan, t); });
     el.appendChild(nameSpan);
 
     // Only show delete button when there is more than one tab
@@ -126,6 +137,59 @@ function renderTabBar(){
   add.textContent = '+ add tab';
   add.addEventListener('click', addTab);
   bar.appendChild(add);
+}
+
+function _beginTabRename(tabEl, nameSpan, t){
+  const inp = document.createElement('input');
+  inp.className = 'plot-tab-rename-input';
+  inp.value = t.name;
+  nameSpan.replaceWith(inp);
+  inp.focus();
+  inp.select();
+
+  const commit = ()=>{
+    const val = inp.value.trim();
+    if(val) t.name = val;
+    renderTabBar();
+    snapshotForUndo();
+  };
+  const cancel = ()=>{ renderTabBar(); };
+
+  inp.addEventListener('keydown', e=>{
+    if(e.key === 'Enter'){ e.preventDefault(); commit(); }
+    else if(e.key === 'Escape'){ e.preventDefault(); cancel(); }
+  });
+  inp.addEventListener('blur', commit);
+}
+
+function _beginPlotRename(pid, titleSpan){
+  const p = gp(pid); if(!p || !titleSpan) return;
+  const inp = document.createElement('input');
+  inp.className = 'plot-title-rename-input';
+  inp.value = p.name || `Plot ${p.plotNumber}`;
+  inp.style.width = Math.max(80, titleSpan.offsetWidth) + 'px';
+  titleSpan.replaceWith(inp);
+  inp.focus(); inp.select();
+
+  let committed = false;
+  const commit = ()=>{
+    if(committed) return; committed = true;
+    const val = inp.value.trim();
+    // Empty or matches default → clear custom name (revert to "Plot N")
+    p.name = (val && val !== `Plot ${p.plotNumber}`) ? val : '';
+    updateTopbar(pid);
+    snapshotForUndo();
+  };
+  const cancel = ()=>{
+    if(committed) return; committed = true;
+    updateTopbar(pid);
+  };
+
+  inp.addEventListener('keydown', e=>{
+    if(e.key === 'Enter'){ e.preventDefault(); commit(); }
+    else if(e.key === 'Escape'){ e.preventDefault(); cancel(); }
+  });
+  inp.addEventListener('blur', commit);
 }
 
 function switchTab(tabId){
@@ -149,6 +213,7 @@ function addTab(){
     activeCurveIdx = 0;
     renderDOM();
     refreshCfg(); refreshSidebar();
+    if(typeof renderVariables === 'function') renderVariables();
     snapshotForUndo();
   });
 }
@@ -336,6 +401,105 @@ function _showTabNamePopup(defaultName, onConfirm){
   setTimeout(() => input.focus(), 0);
 }
 
+// ═══ TAB DRAG-TO-REORDER ══════════════════════════════════════════════════
+const _tabDrag = {
+  active: false, pending: false,
+  fromIdx: -1, overIdx: -1,
+  startX: 0, ghost: null, ghostOffsetX: 0,
+};
+
+// Wire document-level listeners once so they survive renderTabBar() rebuilds
+(()=>{
+  document.addEventListener('pointermove', e=>{
+    if(_tabDrag.pending && !_tabDrag.active && Math.abs(e.clientX - _tabDrag.startX) > 5){
+      _startTabDrag(e);
+    } else if(_tabDrag.active){
+      _moveTabDrag(e);
+    }
+  });
+  const _endOrCancel = e=>{ _endTabDrag(e); };
+  document.addEventListener('pointerup',     _endOrCancel);
+  document.addEventListener('pointercancel', _endOrCancel);
+})();
+
+function _startTabDrag(e){
+  const bar = document.getElementById('plotTabs'); if(!bar) return;
+  const allTabEls = [...bar.querySelectorAll('.plot-tab:not(.plot-tab-add)')];
+  const fromEl = allTabEls[_tabDrag.fromIdx]; if(!fromEl) return;
+  const rect = fromEl.getBoundingClientRect();
+
+  const ghost = document.createElement('button');
+  ghost.className = 'plot-tab plot-tab-ghost';
+  ghost.textContent = tabs[_tabDrag.fromIdx]?.name ?? '';
+  ghost.style.cssText = `position:fixed;top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px;pointer-events:none;z-index:9100;`;
+  document.body.appendChild(ghost);
+
+  fromEl.classList.add('plot-tab-dragging');
+
+  _tabDrag.active = true;
+  _tabDrag.pending = false;
+  _tabDrag.ghost = ghost;
+  _tabDrag.ghostOffsetX = e.clientX - rect.left;
+  _tabDrag.overIdx = _tabDrag.fromIdx;
+}
+
+function _computeTabInsertIdx(cursorX){
+  const bar = document.getElementById('plotTabs'); if(!bar) return _tabDrag.fromIdx;
+  const allTabEls = [...bar.querySelectorAll('.plot-tab:not(.plot-tab-add)')];
+  let leftCount = 0;
+  for(let i = 0; i < allTabEls.length; i++){
+    if(i === _tabDrag.fromIdx) continue;
+    const r = allTabEls[i].getBoundingClientRect();
+    if(r.left + r.width / 2 < cursorX) leftCount++;
+  }
+  return leftCount;
+}
+
+function _moveTabDrag(e){
+  const { ghost, ghostOffsetX } = _tabDrag;
+  if(!ghost) return;
+  const bar = document.getElementById('plotTabs');
+  const barRect = bar?.getBoundingClientRect();
+  if(barRect){
+    const ghostW = ghost.offsetWidth || 80;
+    const left = Math.max(barRect.left, Math.min(barRect.right - ghostW, e.clientX - ghostOffsetX));
+    ghost.style.left = left + 'px';
+  }
+
+  const newIdx = _computeTabInsertIdx(e.clientX);
+  if(newIdx !== _tabDrag.overIdx){
+    _tabDrag.overIdx = newIdx;
+    // Update drop indicator
+    const allTabEls = bar ? [...bar.querySelectorAll('.plot-tab:not(.plot-tab-add)')] : [];
+    allTabEls.forEach(t=>t.classList.remove('plot-tab-drop-before', 'plot-tab-drop-after'));
+    const nonDragged = allTabEls.filter((_, i)=> i !== _tabDrag.fromIdx);
+    if(newIdx < nonDragged.length) nonDragged[newIdx]?.classList.add('plot-tab-drop-before');
+    else if(nonDragged.length)    nonDragged[nonDragged.length-1]?.classList.add('plot-tab-drop-after');
+  }
+}
+
+function _endTabDrag(e){
+  if(!_tabDrag.active && !_tabDrag.pending){ return; }
+  _tabDrag.pending = false;
+  if(!_tabDrag.active){ return; }
+  _tabDrag.active = false;
+
+  _tabDrag.ghost?.remove();
+  _tabDrag.ghost = null;
+  document.querySelectorAll('.plot-tab-dragging').forEach(t=>t.classList.remove('plot-tab-dragging'));
+  document.querySelectorAll('.plot-tab-drop-before,.plot-tab-drop-after').forEach(t=>{
+    t.classList.remove('plot-tab-drop-before'); t.classList.remove('plot-tab-drop-after');
+  });
+
+  const { fromIdx, overIdx } = _tabDrag;
+  if(fromIdx === overIdx || fromIdx < 0) return;
+
+  const moved = tabs.splice(fromIdx, 1)[0];
+  tabs.splice(overIdx, 0, moved);
+  renderTabBar();
+  snapshotForUndo();
+}
+
 // ═══ PLOT DRAG ════════════════════════════════════════════════════════════
 const _plotDrag = {
   active: false, pid: null,
@@ -487,10 +651,13 @@ function _plotDragEnd(e){
 
   // Suppress the synthetic click that follows pointerup so the card doesn't
   // inadvertently activate/deactivate after a drag gesture.
-  document.addEventListener('click', e=>e.stopPropagation(), { capture:true, once:true });
+  // Allow clicks on .plot-tab so tab switching works after a cross-tab drop.
+  document.addEventListener('click', e=>{
+    if(!e.target.closest('.plot-tab')) e.stopPropagation();
+  }, { capture:true, once:true });
 
   if(dropTabId !== null){
-    // ── Cross-tab drop: move plot to end of target tab ────────────
+    // ── Cross-tab drop: move plot to target tab, stay in current tab ─
     const p = gp(pid); if(!p) return;
     p.tabId = dropTabId;
 
@@ -504,10 +671,11 @@ function _plotDragEnd(e){
     }
     plots.splice(insertIdx, 0, p);
 
-    // Switch to the target tab with the moved plot active
-    activeTabId = dropTabId;
-    activePid = pid;
-    activeCurveIdx = 0;
+    // Stay in the current tab. If the moved plot was active, pick another.
+    if(activePid === pid){
+      const remaining = plots.filter(pl => pl.tabId === activeTabId);
+      activePid = remaining.length > 0 ? remaining[remaining.length - 1].id : null;
+    }
 
     renderDOM();
     snapshotForUndo();
@@ -566,7 +734,7 @@ function buildTopbarInner(p){
   return `
     <div class="ctitle-left">
       <span class="plot-drag-handle" title="Drag to reorder">⠿</span>
-      <span class="ctitle-text">Plot ${p.plotNumber}</span>
+      <span class="ctitle-text" data-pid="${p.id}" data-action="rename" title="Click to rename">${p.name || `Plot ${p.plotNumber}`}</span>
       <button class="cbtn addcurve-btn" data-pid="${p.id}" data-action="addcurve">⊕ add curve</button>
     </div>
     <div class="cactions-center">
@@ -1578,6 +1746,7 @@ function handleAction(action, pid, triggerEl){
   const anyFs = !!document.querySelector('.plot-card.plot-fs');
   if(anyFs && (action==='dup' || action==='del')) return;
 
+  if(action==='rename'){ _beginPlotRename(pid, triggerEl); return; }
   if(action==='dup')  { duplicatePlot(pid); return; }
   if(action==='addcurve'){
     // Set this plot active first so the modal adds to the right plot

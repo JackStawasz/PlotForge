@@ -277,7 +277,13 @@ function showPickleConfirmModal(filename, varsData, onConfirm, onCancel, isOverw
   document.body.appendChild(backdrop);
 
   const close = () => backdrop.remove();
-  const getScope = () => backdrop.querySelector('#pklScopeSelect')?.value ?? 'global';
+  // HTML select always returns strings; tab IDs are numbers — coerce back.
+  const getScope = () => {
+    const val = backdrop.querySelector('#pklScopeSelect')?.value ?? 'global';
+    if(val === 'global') return 'global';
+    const num = Number(val);
+    return isNaN(num) ? val : num;
+  };
 
   backdrop.querySelector('#pklCancel').addEventListener('click', ()=>{ close(); onCancel?.(); });
   backdrop.querySelector('#pklConfirm').addEventListener('click', ()=>{
