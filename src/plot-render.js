@@ -558,7 +558,8 @@ function drawChart(p){
       if(hasDiscrete) ch.data.labels = p.curves.find(c=>c.jsData?.discrete)?.jsData.x.map(n=>n) || [];
       const isLight = v.chart_theme === 'light';
       const galpha = v.grid_alpha ?? 0.5;
-      const gc = isLight ? `rgba(50,80,180,${galpha})` : `rgba(60,60,100,${galpha})`;
+      const gridBase = v.grid_color ?? (isLight ? '#3250b4' : '#3c3c64');
+      const gc = hexAlpha(gridBase, galpha);
       ch.options.scales.x.grid.display=v.show_grid; ch.options.scales.x.grid.color=gc;
       ch.options.scales.y.grid.display=v.show_grid; ch.options.scales.y.grid.color=gc;
       ch.options.scales.x.ticks.callback = v.x_log ? makeLogTickCb() : makeTickCb('x');
@@ -593,6 +594,15 @@ function drawChart(p){
   refreshOverlayLegend(p.id);
 }
 
+// Convert a 6-digit hex color + opacity to an rgba() string used by Chart.js.
+function hexAlpha(hex, alpha){
+  const h = (hex || '#000000').replace('#','');
+  const r = parseInt(h.slice(0,2), 16) || 0;
+  const g = parseInt(h.slice(2,4), 16) || 0;
+  const b = parseInt(h.slice(4,6), 16) || 0;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function dashFor(ls){ return ls==='dashed'?[6,3]:ls==='dotted'?[2,3]:ls==='dashdot'?[6,3,2,3]:[]; }
 function borderWidthFor(curve){ return curve.line_connection==='none' ? 0 : (curve.line_width||2); }
 function tensionFor(lc){ return lc==='cubic'?0.4:lc==='bezier'?0.6:0; }
@@ -600,9 +610,9 @@ function tensionFor(lc){ return lc==='cubic'?0.4:lc==='bezier'?0.6:0; }
 function buildAxisLineDatasets(v){
   if(!v.show_axis_lines) return [];
   const alpha = v.axis_alpha ?? 0.6;
-  const color = v.chart_theme === 'light'
-    ? `rgba(30,50,140,${alpha})`
-    : `rgba(180,180,220,${alpha})`;
+  const isLight = v.chart_theme === 'light';
+  const baseColor = v.axis_color ?? (isLight ? '#1e328c' : '#b4b4dc');
+  const color = hexAlpha(baseColor, alpha);
   const big = 1e9;
   return [
     { // y=0 line (horizontal)
@@ -633,9 +643,8 @@ function makeTickCb(axisKey){
 function buildScales(v){
   const isLight = v.chart_theme === 'light';
   const galpha = v.grid_alpha ?? 0.5;
-  const gc = isLight
-    ? `rgba(50,80,180,${galpha})`
-    : `rgba(60,60,100,${galpha})`;
+  const gridBase = v.grid_color ?? (isLight ? '#3250b4' : '#3c3c64');
+  const gc = hexAlpha(gridBase, galpha);
   const tickColor = isLight ? '#2a3570' : '#b0b0e0';
 
   // Shared tick config builder — log axes get afterBuildTicks for correct grid alignment

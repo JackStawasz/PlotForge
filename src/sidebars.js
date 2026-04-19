@@ -578,9 +578,13 @@ function refreshCfg(){
   document.getElementById('c_grid').checked = v.show_grid;
   sv('c_galpha', v.grid_alpha ?? 0.5);
   document.getElementById('c_galpha_val').textContent = Math.round((v.grid_alpha ?? 0.5)*100)+'%';
+  const gcEl = document.getElementById('c_grid_color'); if(gcEl) gcEl.value = v.grid_color ?? '#3c3c64';
+  const ghEl = document.getElementById('c_grid_hex');  if(ghEl) ghEl.value = v.grid_color ?? '#3c3c64';
   const axEl = document.getElementById('c_axis_lines'); if(axEl) axEl.checked = v.show_axis_lines ?? true;
   sv('c_aalpha', v.axis_alpha ?? 1.0);
   document.getElementById('c_aalpha_val').textContent = Math.round((v.axis_alpha ?? 1.0)*100)+'%';
+  const acEl = document.getElementById('c_axis_color'); if(acEl) acEl.value = v.axis_color ?? '#b4b4dc';
+  const ahEl = document.getElementById('c_axis_hex');  if(ahEl) ahEl.value = v.axis_color ?? '#b4b4dc';
   const xlEl = document.getElementById('c_x_log'); if(xlEl) xlEl.checked = v.x_log ?? false;
   const ylEl = document.getElementById('c_y_log'); if(ylEl) ylEl.checked = v.y_log ?? false;
   sv('c_ts', v.title_size); sv('c_ls2', v.label_size);
@@ -635,17 +639,27 @@ function commitMaskInput(id, axis, minMax){
 }
 
 function updateGridOpacityState(gridOn){
-  const row = document.getElementById('row_galpha');
+  const row      = document.getElementById('row_galpha');
+  const colorRow = document.getElementById('row_grid_color');
   if(!row) return;
-  row.style.opacity = gridOn ? '1' : '0.35';
+  row.style.opacity      = gridOn ? '1' : '0.35';
   row.style.pointerEvents = gridOn ? '' : 'none';
+  if(colorRow){
+    colorRow.style.opacity      = gridOn ? '1' : '0.35';
+    colorRow.style.pointerEvents = gridOn ? '' : 'none';
+  }
 }
 
 function updateAxisOpacityState(axisOn){
-  const row = document.getElementById('row_aalpha');
+  const row      = document.getElementById('row_aalpha');
+  const colorRow = document.getElementById('row_axis_color');
   if(!row) return;
-  row.style.opacity = axisOn ? '1' : '0.35';
+  row.style.opacity      = axisOn ? '1' : '0.35';
   row.style.pointerEvents = axisOn ? '' : 'none';
+  if(colorRow){
+    colorRow.style.opacity      = axisOn ? '1' : '0.35';
+    colorRow.style.pointerEvents = axisOn ? '' : 'none';
+  }
 }
 
 function updateLegendOpacityState(legendOn){
@@ -705,8 +719,10 @@ function readCfgIntoActive(){
   const v = p.view;
   v.show_grid        = document.getElementById('c_grid').checked;
   v.grid_alpha       = parseFloat(document.getElementById('c_galpha').value) || 0.5;
+  v.grid_color       = document.getElementById('c_grid_color')?.value || '#3c3c64';
   v.show_axis_lines  = document.getElementById('c_axis_lines')?.checked ?? true;
   v.axis_alpha       = parseFloat(document.getElementById('c_aalpha')?.value) || 1.0;
+  v.axis_color       = document.getElementById('c_axis_color')?.value || '#b4b4dc';
   v.x_log            = document.getElementById('c_x_log')?.checked ?? false;
   v.y_log            = document.getElementById('c_y_log')?.checked ?? false;
   v.title_size       = parseInt(document.getElementById('c_ts').value) || 13;
@@ -851,6 +867,28 @@ function initCfgPanel(){
       document.getElementById('c_bg_color').value = this.value;
       triggerCfgRender();
       applyBgColorToCanvas(activePid);
+    }
+  });
+
+  document.getElementById('c_grid_color')?.addEventListener('input', function(){
+    document.getElementById('c_grid_hex').value = this.value;
+    triggerCfgRender();
+  });
+  document.getElementById('c_grid_hex')?.addEventListener('input', function(){
+    if(/^#[0-9a-fA-F]{6}$/.test(this.value)){
+      document.getElementById('c_grid_color').value = this.value;
+      triggerCfgRender();
+    }
+  });
+
+  document.getElementById('c_axis_color')?.addEventListener('input', function(){
+    document.getElementById('c_axis_hex').value = this.value;
+    triggerCfgRender();
+  });
+  document.getElementById('c_axis_hex')?.addEventListener('input', function(){
+    if(/^#[0-9a-fA-F]{6}$/.test(this.value)){
+      document.getElementById('c_axis_color').value = this.value;
+      triggerCfgRender();
     }
   });
 

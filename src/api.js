@@ -164,7 +164,8 @@ function defView(){
   const t = typeof defViewThemeOverrides === 'function'
     ? defViewThemeOverrides()
     : { bg_color:'#12121c', surface_color:'#12121c', chart_theme:'dark',
-        show_grid:true, grid_alpha:.5, show_axis_lines:true, axis_alpha:1.0,
+        show_grid:true, grid_alpha:.5, grid_color:'#3c3c64',
+        show_axis_lines:true, axis_alpha:1.0, axis_color:'#b4b4dc',
         show_legend:true, title_size:13, label_size:10, legend_size:9 };
   return {
     x_min:null, x_max:null, y_min:null, y_max:null,

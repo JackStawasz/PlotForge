@@ -185,12 +185,40 @@ function _varDragMove(e){
     const r = el.getBoundingClientRect();
     if(e.clientY >= r.top && e.clientY <= r.bottom){ target = el; break; }
   }
+
   if(target){
+    // Cursor is directly over a var-item — insert adjacent to it inside
+    // whichever container (list or var-folder-group) owns that item.
     const r = target.getBoundingClientRect();
+    const targetParent = target.parentNode;
     if(e.clientY < r.top + r.height / 2){
-      if(placeholder.nextSibling !== target) list.insertBefore(placeholder, target);
+      if(placeholder.nextSibling !== target) targetParent.insertBefore(placeholder, target);
     } else {
-      if(target.nextSibling !== placeholder) list.insertBefore(placeholder, target.nextSibling);
+      if(target.nextSibling !== placeholder) targetParent.insertBefore(placeholder, target.nextSibling);
+    }
+  } else {
+    // Cursor is not over any var-item (e.g. hovering a folder header, between
+    // groups, or in empty list space).  Walk top-level children so the user
+    // can escape into the ungrouped area or reorder between groups.
+    const topEls = [...list.children].filter(el =>
+      (el.classList.contains('var-item') || el.classList.contains('var-folder-group')) &&
+      el !== placeholder
+    );
+    let best = null, insertBefore = true;
+    for(const el of topEls){
+      const r = el.getBoundingClientRect();
+      if(e.clientY < r.top){
+        best = el; insertBefore = true; break;
+      } else if(e.clientY <= r.bottom){
+        best = el; insertBefore = false; break;
+      }
+    }
+    if(best){
+      if(insertBefore){
+        if(placeholder.nextSibling !== best) list.insertBefore(placeholder, best);
+      } else {
+        if(best.nextSibling !== placeholder) list.insertBefore(placeholder, best.nextSibling);
+      }
     }
   }
 }
@@ -202,31 +230,44 @@ function _varDragEnd(e){
 
   const { srcId, scopeIds, srcItem, clone, placeholder, list } = _varDrag;
   clone.remove();
-  srcItem.style.display = '';
+  // NOTE: srcItem is intentionally left hidden (display:'none') during the
+  // DOM walk below.  Restoring it now would make it appear at its original
+  // position AND let the placeholder represent it at the new position,
+  // causing srcId to be pushed twice into newScopeIds (corrupting the
+  // slot-swap and making items bleed into the wrong folder or vanish).
 
-  if(placeholder.parentNode === list){
-    // Walk children to determine new order AND new folder assignments.
-    // Folder headers (var-folder-header) set the "current folder" context;
-    // var-items that follow inherit that folder.
+  if(list.contains(placeholder)){
+    // Walk the DOM to determine new order AND folder assignments.
+    // Top-level children of `list` are ungrouped var-items or var-folder-group
+    // containers; the placeholder may live at either level.
     const newScopeIds = [];
     const folderByVid = {};
-    let currentFolder = null;
 
-    for(const child of list.children){
-      if(child.classList.contains('var-folder-header')){
-        currentFolder = child.dataset.folder || null;
-      } else if(child === placeholder){
-        newScopeIds.push(srcId);
-        folderByVid[srcId] = currentFolder;
-      } else if(child.classList.contains('var-item') && child.style.display !== 'none'){
-        const vid = parseInt(child.dataset.vid);
-        newScopeIds.push(vid);
-        folderByVid[vid] = currentFolder;
+    const walkContainer = (container, folderName) => {
+      for(const child of container.children){
+        if(child.classList.contains('var-folder-header')) continue; // metadata — skip
+        if(child === placeholder){
+          newScopeIds.push(srcId);
+          folderByVid[srcId] = folderName;
+        } else if(child.classList.contains('var-item') && child !== srcItem){
+          // srcItem is display:none — but guard by identity too so collapsed
+          // clones can never sneak in.
+          const vid = parseInt(child.dataset.vid);
+          newScopeIds.push(vid);
+          folderByVid[vid] = folderName;
+        } else if(child.classList.contains('var-folder-group')){
+          // Read folder name from the group's own dataset (set at render time)
+          // — more reliable than querying for the header element.
+          const gFolder = child.dataset.folder || null;
+          walkContainer(child, gFolder);
+        }
       }
-    }
-    if(!newScopeIds.includes(srcId)){ newScopeIds.push(srcId); folderByVid[srcId] = currentFolder; }
+    };
+    walkContainer(list, null);
 
-    // Re-append any collapsed (hidden) vars that weren't visible in the DOM walk.
+    if(!newScopeIds.includes(srcId)){ newScopeIds.push(srcId); folderByVid[srcId] = null; }
+
+    // Re-append any collapsed (hidden) vars that were invisible during the walk.
     // They keep their existing folder assignment and go to the end.
     for(const id of scopeIds){
       if(!newScopeIds.includes(id)){
@@ -256,12 +297,17 @@ function _varDragEnd(e){
       const reordered = newScopeIds.map(id => variables.find(v => v.id === id)).filter(Boolean);
       for(let i = 0; i < positions.length; i++) variables[positions[i]] = reordered[i];
 
-      renderVariables();
+      renderVariables(); // re-renders everything — srcItem restoration happens here
       reEvalAllConstants();
       if(typeof snapshotForUndo === 'function') snapshotForUndo();
+    } else {
+      // No data change — just restore srcItem in place (no full re-render needed).
+      srcItem.style.display = '';
     }
   } else {
+    // Placeholder was orphaned (drag cancelled or pointer released outside list).
     placeholder.remove();
+    srcItem.style.display = '';
     _varDrag = null;
   }
 }
@@ -359,7 +405,8 @@ function _renderVarSubset(listEl, varSubset){
   const scopeId  = varSubset.length > 0 ? (varSubset[0].scope ?? 'global') : 'global';
 
   // ── Inner closure: build and append one variable card ──────────────────
-  const appendVarItem = v => {
+  // containerEl defaults to listEl; pass a var-folder-group to nest inside one.
+  const appendVarItem = (v, containerEl = listEl) => {
     const item = document.createElement('div');
     item.className   = `var-item var-item-${v.kind}`;
     item.dataset.vid = v.id;
@@ -514,12 +561,12 @@ function _renderVarSubset(listEl, varSubset){
       else if(v.kind === 'equation')  buildEquationBody(inner, v);
     }
 
-    listEl.appendChild(item);
+    containerEl.appendChild(item);
     return item;
   }; // end appendVarItem
 
   // ── Ungrouped vars (folder === null) ────────────────────────────────────
-  varSubset.filter(v => !v.folder).forEach(appendVarItem);
+  varSubset.filter(v => !v.folder).forEach(v => appendVarItem(v));
 
   // ── Folder sections — in order of first appearance ──────────────────────
   const seenFolders = [];
@@ -531,6 +578,12 @@ function _renderVarSubset(listEl, varSubset){
     const folderVars   = varSubset.filter(v => v.folder === folderName);
     const collapseKey  = `${scopeId}::${folderName}`;
     const isCollapsed  = _folderCollapsed.has(collapseKey);
+
+    // ── Outer group container — provides visual containment ──────────────
+    const group = document.createElement('div');
+    group.className = 'var-folder-group';
+    group.dataset.folder = folderName;
+    if(isCollapsed) group.dataset.collapsed = '1';
 
     // ── Folder header ────────────────────────────────────────────────────
     const fHeader = document.createElement('div');
@@ -571,21 +624,31 @@ function _renderVarSubset(listEl, varSubset){
       _beginFolderRename(fHeader, labelEl, folderName, folderVars, collapseKey);
     });
 
-    // Single click → toggle collapse
-    fHeader.addEventListener('click', e=>{
-      if(e.target.closest('.var-folder-del')) return;
+    // Toggle arrow: primary expand/collapse click target
+    const doToggle = () => {
       if(isCollapsed) _folderCollapsed.delete(collapseKey);
       else            _folderCollapsed.add(collapseKey);
       renderVariables();
+    };
+    toggle.addEventListener('click', e=>{ e.stopPropagation(); doToggle(); });
+
+    // Clicking the rest of the header (but not the del button or label rename)
+    // also toggles, for convenience.
+    fHeader.addEventListener('click', e=>{
+      if(e.target.closest('.var-folder-del'))   return;
+      if(e.target.closest('.var-folder-toggle')) return; // already handled above
+      doToggle();
     });
 
-    listEl.appendChild(fHeader);
+    group.appendChild(fHeader);
 
     // ── Folder's var items (hidden when collapsed) ───────────────────────
     folderVars.forEach(v => {
-      const item = appendVarItem(v);
+      const item = appendVarItem(v, group);
       if(isCollapsed) item.style.display = 'none';
     });
+
+    listEl.appendChild(group);
   }
 }
 
