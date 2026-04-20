@@ -216,6 +216,13 @@ function _varDragMove(e){
     if(best){
       if(insertBefore){
         if(placeholder.nextSibling !== best) list.insertBefore(placeholder, best);
+      } else if(best.classList.contains('var-folder-group')){
+        // Cursor is inside a folder group — place placeholder inside it
+        // (after the folder header) so dropping assigns the var to this folder
+        const header = best.querySelector('.var-folder-header');
+        const refNode = header ? header.nextSibling : null;
+        if(placeholder.parentNode !== best || placeholder !== refNode)
+          best.insertBefore(placeholder, refNode || null);
       } else {
         if(best.nextSibling !== placeholder) list.insertBefore(placeholder, best.nextSibling);
       }
@@ -580,12 +587,50 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
     return item;
   }; // end appendVarItem
 
-  // ── Render ungrouped vars and folder groups in variables-array order ────
-  // A folder group is inserted where its first variable appears in varSubset.
-  // This ensures drag-reordering (which reorders the variables array) is
-  // reflected correctly — folders no longer always sink below bare vars.
-  // Persisted-but-empty folders have no anchor position, so they go at the end.
+  // ── Build / sync the desired folder render order for this scope ─────────
+  // _folderRenderOrder is the canonical folder sequence (updated by drags).
+  // New folders (from vars or _persistedFolders) are appended at the end.
+  // Stale folder names (no longer in _persistedFolders or vars) are pruned.
+  const scopeKey = String(scopeId);
+  let desiredFolderOrder = _folderRenderOrder.get(scopeKey);
+  if(!desiredFolderOrder){ desiredFolderOrder = []; _folderRenderOrder.set(scopeKey, desiredFolderOrder); }
+
+  // Append any new folders not yet tracked
+  for(const v of varSubset){
+    if(v.folder && !desiredFolderOrder.includes(v.folder)) desiredFolderOrder.push(v.folder);
+  }
+  for(const key of _persistedFolders){
+    const sep = key.indexOf('::');
+    if(sep < 0) continue;
+    const sid = key.slice(0, sep), fname = key.slice(sep + 2);
+    if(sid === scopeKey && !desiredFolderOrder.includes(fname)) desiredFolderOrder.push(fname);
+  }
+  // Prune folders that are no longer alive in this scope
+  const aliveFolders = new Set();
+  for(const v of varSubset){ if(v.folder) aliveFolders.add(v.folder); }
+  for(const key of _persistedFolders){
+    const sep = key.indexOf('::');
+    if(sep >= 0 && key.slice(0, sep) === scopeKey) aliveFolders.add(key.slice(sep + 2));
+  }
+  for(let i = desiredFolderOrder.length - 1; i >= 0; i--){
+    if(!aliveFolders.has(desiredFolderOrder[i])) desiredFolderOrder.splice(i, 1);
+  }
+
+  // ── Render ungrouped vars and folder groups in variables-array order ─────
+  // A non-empty folder group is inserted where its first variable appears in
+  // varSubset. Before rendering each non-empty folder, any empty folders that
+  // precede it in desiredFolderOrder are rendered first, preserving drag order.
+  // Remaining empty folders (those that come after all non-empty ones) follow.
   const renderedFolders = new Set();
+
+  const renderEmptyFoldersBefore = (upToFolderName) => {
+    const limit = desiredFolderOrder.indexOf(upToFolderName);
+    for(let i = 0; i < limit; i++){
+      const fn = desiredFolderOrder[i];
+      if(!renderedFolders.has(fn) && varSubset.filter(v => v.folder === fn).length === 0)
+        appendFolderGroup(fn);
+    }
+  };
 
   const appendFolderGroup = (folderName) => {
     if(renderedFolders.has(folderName)) return;
@@ -637,6 +682,8 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
       for(const v of folderVars) v.folder = null;
       _folderCollapsed.delete(collapseKey);
       _persistedFolders.delete(collapseKey);
+      const _fro = _folderRenderOrder.get(scopeKey);
+      if(_fro){ const _fi = _fro.indexOf(folderName); if(_fi >= 0) _fro.splice(_fi, 1); }
       renderVariables();
       if(typeof snapshotForUndo === 'function') snapshotForUndo();
     });
@@ -690,19 +737,21 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
     listEl.appendChild(group);
   };
 
-  // Single pass through varSubset in array order: bare vars render immediately,
-  // a folder group renders on the first encounter of any of its members.
+  // Single pass: bare vars render immediately; on first encounter of a folder's
+  // member, render any empty folders that come before it (per desiredFolderOrder),
+  // then render the folder group itself.
   for(const v of varSubset){
-    if(!v.folder) appendVarItem(v);
-    else          appendFolderGroup(v.folder);
+    if(!v.folder){
+      appendVarItem(v);
+    } else if(!renderedFolders.has(v.folder)){
+      renderEmptyFoldersBefore(v.folder);
+      appendFolderGroup(v.folder);
+    }
   }
 
-  // Persisted empty folders have no vars to anchor them — append at the end.
-  for(const key of _persistedFolders){
-    const sep = key.indexOf('::');
-    if(sep < 0) continue;
-    const sid = key.slice(0, sep), fname = key.slice(sep + 2);
-    if(sid === String(scopeId)) appendFolderGroup(fname);
+  // Render any remaining folders in desired order (all are empty at this point).
+  for(const fn of desiredFolderOrder){
+    if(!renderedFolders.has(fn)) appendFolderGroup(fn);
   }
 }
 
@@ -713,6 +762,11 @@ const _folderCollapsed = new Set();
 // Tracks all ever-created folders so they persist when empty.
 // Key = "scopeId::folderName". Cleared only on explicit × delete.
 const _persistedFolders = new Set();
+
+// Tracks the intended render order of folder groups per scope (both empty and non-empty).
+// Key = scopeId (as string). Value = ordered string[] of folder names.
+// Updated by folder-drag-end; new folders are appended automatically during render.
+const _folderRenderOrder = new Map();
 
 // ── Folder drag-to-reorder ────────────────────────────────────────────────
 const _folderDragPending = {
@@ -791,23 +845,35 @@ function _folderDragEnd(){
   _folderDrag = null;
   ghost.remove();
 
-  // Walk the DOM in its current order to determine the new variable sequence.
-  const newOrderedIds = [];
+  // Walk the DOM in its current order to determine:
+  // 1. New variable sequence (for non-empty folders)
+  // 2. New folder render order (for all folders, including empty ones)
+  const newOrderedIds  = [];
+  const newFolderOrder = [];
   const walkContainer = (container) => {
     for(const child of container.children){
       if(child.classList.contains('var-folder-header')) continue;
       if(child === placeholder){
         variables.filter(v => String(v.scope) === String(scopeId) && v.folder === folderName)
                  .forEach(v => newOrderedIds.push(v.id));
+        newFolderOrder.push(folderName);
       } else if(child.classList.contains('var-item') && child !== group){
         const vid = parseInt(child.dataset.vid);
         if(!isNaN(vid)) newOrderedIds.push(vid);
       } else if(child.classList.contains('var-folder-group') && child !== group){
+        if(child.dataset.folder && !newFolderOrder.includes(child.dataset.folder))
+          newFolderOrder.push(child.dataset.folder);
         walkContainer(child);
       }
     }
   };
   walkContainer(listEl);
+
+  // Persist new folder render order (any unseen folders go to the end)
+  const scopeKeyFD = String(scopeId);
+  const prevOrder = _folderRenderOrder.get(scopeKeyFD) ?? [];
+  for(const fn of prevOrder){ if(!newFolderOrder.includes(fn)) newFolderOrder.push(fn); }
+  _folderRenderOrder.set(scopeKeyFD, newFolderOrder);
 
   // Append any collapsed/hidden vars not visited by the DOM walk
   for(const id of allScopeIds){
@@ -856,9 +922,14 @@ function _showFolderMenu(v, anchorEl, allScopeVars){
   _folderMenuEl = menu;
 
   const currentFolder = v.folder ?? null;
-  const existingFolders = [...new Set(
-    allScopeVars.map(sv => sv.folder).filter(Boolean)
-  )].sort();
+  const varScopeName  = String(v.scope ?? 'global');
+  const emptyPersistedFolders = [..._persistedFolders]
+    .filter(k => { const sep=k.indexOf('::'); return sep>=0 && k.slice(0,sep)===varScopeName; })
+    .map(k => k.slice(k.indexOf('::')+2));
+  const existingFolders = [...new Set([
+    ...allScopeVars.map(sv => sv.folder).filter(Boolean),
+    ...emptyPersistedFolders,
+  ])].sort();
 
   const addRow = (label, folderVal, isCurrent, extraCls = '') => {
     const row = document.createElement('button');
@@ -945,11 +1016,20 @@ function _beginFolderRename(headerEl, labelEl, oldName, folderVars, collapseKey)
     const newName = inp.value.trim() || oldName;
     // Rename all vars in this folder
     for(const v of folderVars) v.folder = newName;
-    // Transfer collapse state to the new key
-    if(newName !== oldName && _folderCollapsed.has(collapseKey)){
-      _folderCollapsed.delete(collapseKey);
+    if(newName !== oldName){
       const scopePart = collapseKey.split('::')[0];
-      _folderCollapsed.add(`${scopePart}::${newName}`);
+      const newKey = `${scopePart}::${newName}`;
+      // Transfer _persistedFolders key
+      _persistedFolders.delete(collapseKey);
+      _persistedFolders.add(newKey);
+      // Transfer collapse state
+      if(_folderCollapsed.has(collapseKey)){
+        _folderCollapsed.delete(collapseKey);
+        _folderCollapsed.add(newKey);
+      }
+      // Rename in _folderRenderOrder
+      const _fro = _folderRenderOrder.get(scopePart);
+      if(_fro){ const _fi = _fro.indexOf(oldName); if(_fi >= 0) _fro[_fi] = newName; }
     }
     renderVariables();
     if(typeof snapshotForUndo === 'function') snapshotForUndo();
