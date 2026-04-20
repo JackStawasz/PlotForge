@@ -391,21 +391,28 @@ function renderVariables(){
   const gEmpty = document.getElementById('varsEmpty');
   const lEmpty = document.getElementById('localVarsEmpty');
 
-  if(gEmpty) gEmpty.style.display = globalVars.length ? 'none' : 'flex';
-  if(lEmpty) lEmpty.style.display  = localVars.length  ? 'none' : 'flex';
+  const gHasFolders = [..._persistedFolders].some(k => k.startsWith('global::'));
+  const lHasFolders = localTabId != null
+    ? [..._persistedFolders].some(k => k.startsWith(`${localTabId}::`)) : false;
+  if(gEmpty) gEmpty.style.display = (globalVars.length || gHasFolders) ? 'none' : 'flex';
+  if(lEmpty) lEmpty.style.display  = (localVars.length  || lHasFolders)  ? 'none' : 'flex';
 
-  if(gList) _renderVarSubset(gList, globalVars);
-  if(lList) _renderVarSubset(lList, localVars);
+  if(gList) _renderVarSubset(gList, globalVars, 'global');
+  if(lList) _renderVarSubset(lList, localVars, localTabId ?? 'global');
 
   requestAnimationFrame(()=> checkAllWarnings());
 }
 
 // Renders a scoped subset of variables into listEl, grouped by folder.
 // Ungrouped vars appear first; each folder is a collapsible section after them.
-function _renderVarSubset(listEl, varSubset){
+function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
   listEl.innerHTML = '';
   const scopeIds = varSubset.map(v => v.id);
-  const scopeId  = varSubset.length > 0 ? (varSubset[0].scope ?? 'global') : 'global';
+
+  // Persist all currently-used folders so they survive having zero vars
+  for(const v of varSubset){
+    if(v.folder) _persistedFolders.add(`${scopeId}::${v.folder}`);
+  }
 
   // ── Inner closure: build and append one variable card ──────────────────
   // containerEl defaults to listEl; pass a var-folder-group to nest inside one.
@@ -573,30 +580,38 @@ function _renderVarSubset(listEl, varSubset){
     return item;
   }; // end appendVarItem
 
-  // ── Ungrouped vars (folder === null) ────────────────────────────────────
-  varSubset.filter(v => !v.folder).forEach(v => appendVarItem(v));
+  // ── Render ungrouped vars and folder groups in variables-array order ────
+  // A folder group is inserted where its first variable appears in varSubset.
+  // This ensures drag-reordering (which reorders the variables array) is
+  // reflected correctly — folders no longer always sink below bare vars.
+  // Persisted-but-empty folders have no anchor position, so they go at the end.
+  const renderedFolders = new Set();
 
-  // ── Folder sections — in order of first appearance ──────────────────────
-  const seenFolders = [];
-  for(const v of varSubset){
-    if(v.folder && !seenFolders.includes(v.folder)) seenFolders.push(v.folder);
-  }
+  const appendFolderGroup = (folderName) => {
+    if(renderedFolders.has(folderName)) return;
+    renderedFolders.add(folderName);
 
-  for(const folderName of seenFolders){
-    const folderVars   = varSubset.filter(v => v.folder === folderName);
-    const collapseKey  = `${scopeId}::${folderName}`;
-    const isCollapsed  = _folderCollapsed.has(collapseKey);
+    const folderVars  = varSubset.filter(v => v.folder === folderName);
+    const collapseKey = `${scopeId}::${folderName}`;
+    const isCollapsed = _folderCollapsed.has(collapseKey);
 
-    // ── Outer group container — provides visual containment ──────────────
+    // ── Outer group container ─────────────────────────────────────────────
     const group = document.createElement('div');
     group.className = 'var-folder-group';
     group.dataset.folder = folderName;
     if(isCollapsed) group.dataset.collapsed = '1';
 
-    // ── Folder header ────────────────────────────────────────────────────
+    // ── Folder header ─────────────────────────────────────────────────────
     const fHeader = document.createElement('div');
     fHeader.className = 'var-folder-header';
     fHeader.dataset.folder = folderName;
+
+    // Drag handle — must come first so it's visually leftmost
+    const fDragHandle = document.createElement('span');
+    fDragHandle.className = 'var-folder-drag-handle';
+    fDragHandle.textContent = '⠿';
+    fDragHandle.title = 'Drag to reorder folder';
+    fHeader.appendChild(fDragHandle);
 
     const toggle = document.createElement('span');
     toggle.className = 'var-folder-toggle' + (isCollapsed ? '' : ' open');
@@ -610,7 +625,7 @@ function _renderVarSubset(listEl, varSubset){
 
     const countEl = document.createElement('span');
     countEl.className = 'var-folder-count';
-    countEl.textContent = `(${folderVars.length})`;
+    countEl.textContent = folderVars.length > 0 ? `(${folderVars.length})` : '(empty)';
     fHeader.appendChild(countEl);
 
     const fDelBtn = document.createElement('button');
@@ -621,6 +636,7 @@ function _renderVarSubset(listEl, varSubset){
       e.stopPropagation();
       for(const v of folderVars) v.folder = null;
       _folderCollapsed.delete(collapseKey);
+      _persistedFolders.delete(collapseKey);
       renderVariables();
       if(typeof snapshotForUndo === 'function') snapshotForUndo();
     });
@@ -640,29 +656,182 @@ function _renderVarSubset(listEl, varSubset){
     };
     toggle.addEventListener('click', e=>{ e.stopPropagation(); doToggle(); });
 
-    // Clicking the rest of the header (but not the del button or label rename)
+    // Clicking the rest of the header (but not the del button, drag handle, or rename)
     // also toggles, for convenience.
     fHeader.addEventListener('click', e=>{
-      if(e.target.closest('.var-folder-del'))   return;
-      if(e.target.closest('.var-folder-toggle')) return; // already handled above
+      if(e.target.closest('.var-folder-del'))         return;
+      if(e.target.closest('.var-folder-toggle'))      return;
+      if(e.target.closest('.var-folder-drag-handle')) return;
       doToggle();
+    });
+
+    // ── Folder drag handle — wire pointerdown ─────────────────────────────
+    fDragHandle.addEventListener('pointerdown', e=>{
+      if(e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      _folderDragPending.on           = true;
+      _folderDragPending.startX       = e.clientX;
+      _folderDragPending.startY       = e.clientY;
+      _folderDragPending.group        = group;
+      _folderDragPending.folderName   = folderName;
+      _folderDragPending.scopeId      = scopeId;
+      _folderDragPending.listEl       = listEl;
+      _folderDragPending.allScopeIds  = [...scopeIds];
     });
 
     group.appendChild(fHeader);
 
-    // ── Folder's var items (hidden when collapsed) ───────────────────────
+    // ── Folder's var items (hidden when collapsed) ────────────────────────
     folderVars.forEach(v => {
       const item = appendVarItem(v, group);
       if(isCollapsed) item.style.display = 'none';
     });
 
     listEl.appendChild(group);
+  };
+
+  // Single pass through varSubset in array order: bare vars render immediately,
+  // a folder group renders on the first encounter of any of its members.
+  for(const v of varSubset){
+    if(!v.folder) appendVarItem(v);
+    else          appendFolderGroup(v.folder);
+  }
+
+  // Persisted empty folders have no vars to anchor them — append at the end.
+  for(const key of _persistedFolders){
+    const sep = key.indexOf('::');
+    if(sep < 0) continue;
+    const sid = key.slice(0, sep), fname = key.slice(sep + 2);
+    if(sid === String(scopeId)) appendFolderGroup(fname);
   }
 }
 
 // ═══ FOLDER SYSTEM ═══════════════════════════════════════════════════════
 // Tracks which folder sections are collapsed. Key = "scopeId::folderName".
 const _folderCollapsed = new Set();
+
+// Tracks all ever-created folders so they persist when empty.
+// Key = "scopeId::folderName". Cleared only on explicit × delete.
+const _persistedFolders = new Set();
+
+// ── Folder drag-to-reorder ────────────────────────────────────────────────
+const _folderDragPending = {
+  on: false, startX: 0, startY: 0,
+  group: null, folderName: null, scopeId: null, listEl: null, allScopeIds: null,
+};
+let _folderDrag = null;
+
+(()=>{
+  document.addEventListener('pointermove', e=>{
+    if(_folderDragPending.on && !_folderDrag){
+      if(Math.abs(e.clientX - _folderDragPending.startX) > 5 ||
+         Math.abs(e.clientY - _folderDragPending.startY) > 5){
+        const p = _folderDragPending;
+        p.on = false;
+        _folderDragStart(e, p.group, p.folderName, p.scopeId, p.listEl, p.allScopeIds);
+      }
+    } else if(_folderDrag){
+      _folderDragMove(e);
+    }
+  });
+  const endOrCancel = () => { _folderDragPending.on = false; _folderDragEnd(); };
+  document.addEventListener('pointerup',     endOrCancel);
+  document.addEventListener('pointercancel', endOrCancel);
+})();
+
+function _folderDragStart(e, group, folderName, scopeId, listEl, allScopeIds){
+  const rect = group.getBoundingClientRect();
+
+  const ghost = document.createElement('div');
+  ghost.className = 'var-folder-ghost';
+  ghost.textContent = `📁 ${folderName}`;
+  ghost.style.cssText = [
+    'position:fixed', 'z-index:99999', 'pointer-events:none',
+    `left:${rect.left}px`, `top:${rect.top}px`, `width:${rect.width}px`,
+    'opacity:.9', 'box-shadow:0 8px 28px rgba(0,0,0,.55)',
+  ].join(';');
+  document.body.appendChild(ghost);
+
+  const ph = document.createElement('div');
+  ph.className = 'var-drag-placeholder';
+  ph.style.height = rect.height + 'px';
+  group.before(ph);
+  group.style.opacity = '0.25';
+  group.style.pointerEvents = 'none';
+
+  _folderDrag = {
+    folderName, scopeId, listEl, allScopeIds,
+    ghost, placeholder: ph, group,
+    offY: e.clientY - rect.top,
+  };
+}
+
+function _folderDragMove(e){
+  if(!_folderDrag) return;
+  const { ghost, placeholder, offY, listEl, group } = _folderDrag;
+
+  ghost.style.top = (e.clientY - offY) + 'px';
+
+  const topEls = [...listEl.children].filter(el =>
+    (el.classList.contains('var-item') || el.classList.contains('var-folder-group')) &&
+    el !== group && el !== placeholder
+  );
+  let insertBefore = null;
+  for(const el of topEls){
+    const r = el.getBoundingClientRect();
+    if(e.clientY < r.top + r.height / 2){ insertBefore = el; break; }
+  }
+  if(insertBefore){ if(placeholder.nextSibling !== insertBefore) listEl.insertBefore(placeholder, insertBefore); }
+  else             { if(listEl.lastChild !== placeholder)         listEl.appendChild(placeholder); }
+}
+
+function _folderDragEnd(){
+  if(!_folderDrag) return;
+  const { folderName, scopeId, listEl, allScopeIds, ghost, placeholder, group } = _folderDrag;
+  _folderDrag = null;
+  ghost.remove();
+
+  // Walk the DOM in its current order to determine the new variable sequence.
+  const newOrderedIds = [];
+  const walkContainer = (container) => {
+    for(const child of container.children){
+      if(child.classList.contains('var-folder-header')) continue;
+      if(child === placeholder){
+        variables.filter(v => String(v.scope) === String(scopeId) && v.folder === folderName)
+                 .forEach(v => newOrderedIds.push(v.id));
+      } else if(child.classList.contains('var-item') && child !== group){
+        const vid = parseInt(child.dataset.vid);
+        if(!isNaN(vid)) newOrderedIds.push(vid);
+      } else if(child.classList.contains('var-folder-group') && child !== group){
+        walkContainer(child);
+      }
+    }
+  };
+  walkContainer(listEl);
+
+  // Append any collapsed/hidden vars not visited by the DOM walk
+  for(const id of allScopeIds){
+    if(!newOrderedIds.includes(id)) newOrderedIds.push(id);
+  }
+
+  placeholder.remove();
+  group.style.opacity = '';
+  group.style.pointerEvents = '';
+
+  // Reorder the variables array to match
+  const positions = [];
+  for(let i = 0; i < variables.length; i++){
+    if(allScopeIds.includes(variables[i].id)) positions.push(i);
+  }
+  const reordered = newOrderedIds.map(id => variables.find(v => v.id === id)).filter(Boolean);
+  let changed = false;
+  for(let i = 0; i < positions.length; i++){
+    if(variables[positions[i]] !== reordered[i]){ variables[positions[i]] = reordered[i]; changed = true; }
+  }
+
+  renderVariables();
+  if(changed && typeof snapshotForUndo === 'function') snapshotForUndo();
+}
 
 // Appends a small folder badge to a variable card header.
 // Clicking it opens a dropdown to assign / move the var to a folder.
@@ -1497,15 +1666,20 @@ function rebuildListCells(v, cellsWrap){
 // Called when a template is applied; syncs its parameters to the variables panel.
 function syncTemplateParamsToVars(tplKey, params){
   if(!TEMPLATES || !TEMPLATES[tplKey]) return;
-  const tplParams = TEMPLATES[tplKey].params;
+  const tpl        = TEMPLATES[tplKey];
+  const tplParams  = tpl.params;
+  const localScope = (typeof activeTabId !== 'undefined' && activeTabId != null) ? activeTabId : 'global';
+  const folderName = tpl.label;
+
   for(const [pk, pd] of Object.entries(tplParams)){
     const currentVal = params[pk] ?? pd.default;
-    const existing   = variables.find(v=>v.fromTemplate && v.templateKey===tplKey && v.paramKey===pk);
+    const existing   = variables.find(v=>v.fromTemplate && v.templateKey===tplKey && v.paramKey===pk && v.scope===localScope);
     if(existing){
       existing.value      = currentVal;
       existing.exprLatex  = String(currentVal);
       existing.fullLatex  = `${pk}=${currentVal}`;
       existing._isNumeric = true;
+      existing.folder     = existing.folder ?? folderName;
       if(document.getElementById(`vpslider_${existing.id}`)) syncParamSlider(existing);
     } else {
       addVariable('constant', {
@@ -1513,11 +1687,25 @@ function syncTemplateParamsToVars(tplKey, params){
         exprLatex: String(currentVal), fullLatex: `${pk}=${currentVal}`,
         paramMin: pd.min, paramMax: pd.max,
         fromTemplate: true, templateKey: tplKey, paramKey: pk,
-        silent: true, scope: 'global',
+        silent: true, scope: localScope, folder: folderName,
       });
     }
   }
-  setSbTab('vars');
+
+  // Add formula variable (equation kind) once per template+scope
+  const existingFormula = variables.find(v=>v.fromTemplate && v.templateKey===tplKey && v.paramKey==='_formula' && v.scope===localScope);
+  if(!existingFormula){
+    const eqLatex = tpl.equation;
+    addVariable('equation', {
+      name: 'f',
+      exprLatex: eqLatex,
+      fullLatex: `f\\left(x\\right)=${eqLatex}`,
+      fromTemplate: true, templateKey: tplKey, paramKey: '_formula',
+      silent: true, scope: localScope, folder: folderName,
+    });
+  }
+
+  setSbTab('files');
 }
 
 // ═══ PICKLE IMPORT ═══════════════════════════════════════════════════════

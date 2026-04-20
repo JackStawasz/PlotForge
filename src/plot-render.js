@@ -821,6 +821,7 @@ function refreshOverlayLegend(pid){
     const swrap = document.createElement('span'); swrap.className = 'ol-swatch';
     swrap.innerHTML = makeCurveSymbolSVG(curve, 32, symH);
     const nm  = document.createElement('span'); nm.className = 'ol-label'; nm.textContent = label;
+    if(p.view.legend_text_color) nm.style.color = p.view.legend_text_color;
     row.appendChild(swrap); row.appendChild(nm); box.appendChild(row);
   });
   requestAnimationFrame(()=>positionOverlayLegend(box, pid));

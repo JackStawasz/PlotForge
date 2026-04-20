@@ -172,6 +172,10 @@ function defView(){
     x_log:false, y_log:false,
     legend_x_frac: 0.98,
     legend_y_frac: 0.02,
+    legend_text_color: '#e8e8f0',
+    title_color: '#e8e8f0',
+    xlabel_color: '#e8e8f0',
+    ylabel_color: '#e8e8f0',
     ...t,
   };
 }
@@ -336,9 +340,7 @@ function startReconnectPoller(isReconnecting){
   }, 3000);
 }
 
-function setConn(s){
-  document.getElementById('cdot').className = 'cdot'+(s==='ok'?' ok':s==='err'?' err':'');
-}
+function setConn(s){ /* dot removed — status shown via reconnect popup */ }
 
 // ═══ MATPLOTLIB CALLS ════════════════════════════════════════════════════
 async function convertToMpl(pid){

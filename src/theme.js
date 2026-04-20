@@ -83,8 +83,12 @@ function _captureView(view){
     y_max:           view.y_max           ?? null,
     x_log:           view.x_log           ?? false,
     y_log:           view.y_log           ?? false,
-    legend_x_frac:   view.legend_x_frac   ?? 0.98,
-    legend_y_frac:   view.legend_y_frac   ?? 0.02,
+    legend_x_frac:      view.legend_x_frac      ?? 0.98,
+    legend_y_frac:      view.legend_y_frac      ?? 0.02,
+    legend_text_color:  view.legend_text_color  ?? '#e8e8f0',
+    title_color:        view.title_color        ?? '#e8e8f0',
+    xlabel_color:       view.xlabel_color        ?? '#e8e8f0',
+    ylabel_color:       view.ylabel_color        ?? '#e8e8f0',
   };
 }
 

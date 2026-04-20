@@ -180,6 +180,11 @@ def generate_xy(tkey, params, view):
         x=_xrange(view,xd,600); A=p.get("A",1); f=p.get("f",1)
         Ai, Aip, Bi, Bip=_airy(f*x)
         y=A*Ai
+    elif tkey == "hermite_h":
+        from numpy.polynomial.hermite import hermval
+        x=_xrange(view,xd,600); n=max(0,int(round(p.get("n",3)))); A=p.get("A",1)
+        coeffs=[0]*n+[1]
+        y=A*hermval(x,coeffs)
     else:
         raise ValueError(f"Unknown template '{tkey}'")
     return x, y
@@ -295,11 +300,15 @@ def render_matplotlib_multi(curves_data, view, labels, text_annotations=None):
     ax.tick_params(colors=TEXT_C,labelsize=8,length=4,width=0.6)
     for t in ax.get_xticklabels()+ax.get_yticklabels():
         t.set_color(TEXT_C); t.set_fontfamily("monospace")
-    ax.set_title(labels.get("title",""),color=TEXT_C,fontsize=view.get("title_size",13),
+    title_c  = view.get("title_color",  TEXT_C) or TEXT_C
+    xlabel_c = view.get("xlabel_color", TEXT_C) or TEXT_C
+    ylabel_c = view.get("ylabel_color", TEXT_C) or TEXT_C
+    legend_c = view.get("legend_text_color", TEXT_C) or TEXT_C
+    ax.set_title(labels.get("title",""),color=title_c,fontsize=view.get("title_size",13),
                  fontfamily="monospace",pad=10,loc="left",fontweight="bold")
-    ax.set_xlabel(labels.get("xlabel",""),color=TEXT_C,fontsize=view.get("label_size",10),
+    ax.set_xlabel(labels.get("xlabel",""),color=xlabel_c,fontsize=view.get("label_size",10),
                   fontfamily="monospace",labelpad=6)
-    ax.set_ylabel(labels.get("ylabel",""),color=TEXT_C,fontsize=view.get("label_size",10),
+    ax.set_ylabel(labels.get("ylabel",""),color=ylabel_c,fontsize=view.get("label_size",10),
                   fontfamily="monospace",labelpad=6)
 
     if show_legend and any(cd.get("label","") for cd in curves_data):
@@ -308,7 +317,7 @@ def render_matplotlib_multi(curves_data, view, labels, text_annotations=None):
         mpl_ly = 1.0 - ly
         leg=ax.legend(
             facecolor="#0c0c1a", edgecolor=SPINE_C,
-            labelcolor=TEXT_C,
+            labelcolor=legend_c,
             fontsize=max(6, view.get("legend_size", 9)),
             prop={"family":"monospace","size":max(6, view.get("legend_size", 9))},
             framealpha=0.85,
@@ -517,12 +526,16 @@ def plot_matplotlib_pdf():
         for sp in ax.spines.values(): sp.set_edgecolor(SPINE_C); sp.set_linewidth(0.8)
         ax.tick_params(colors=TEXT_C,labelsize=8,length=4,width=0.6)
         for t in ax.get_xticklabels()+ax.get_yticklabels(): t.set_color(TEXT_C); t.set_fontfamily("monospace")
-        ax.set_title(labels.get("title",""),color=TEXT_C,fontsize=view.get("title_size",13),fontfamily="monospace",pad=10,loc="left",fontweight="bold")
-        ax.set_xlabel(labels.get("xlabel",""),color=TEXT_C,fontsize=view.get("label_size",10),fontfamily="monospace",labelpad=6)
-        ax.set_ylabel(labels.get("ylabel",""),color=TEXT_C,fontsize=view.get("label_size",10),fontfamily="monospace",labelpad=6)
+        title_c  = view.get("title_color",  TEXT_C) or TEXT_C
+        xlabel_c = view.get("xlabel_color", TEXT_C) or TEXT_C
+        ylabel_c = view.get("ylabel_color", TEXT_C) or TEXT_C
+        legend_c = view.get("legend_text_color", TEXT_C) or TEXT_C
+        ax.set_title(labels.get("title",""),color=title_c,fontsize=view.get("title_size",13),fontfamily="monospace",pad=10,loc="left",fontweight="bold")
+        ax.set_xlabel(labels.get("xlabel",""),color=xlabel_c,fontsize=view.get("label_size",10),fontfamily="monospace",labelpad=6)
+        ax.set_ylabel(labels.get("ylabel",""),color=ylabel_c,fontsize=view.get("label_size",10),fontfamily="monospace",labelpad=6)
         if show_legend and any(cd.get("label","") for cd in curves_data):
             lx=view.get("legend_x_frac",0.98); ly=view.get("legend_y_frac",0.02)
-            leg=ax.legend(facecolor="#0c0c1a",edgecolor=SPINE_C,labelcolor=TEXT_C,
+            leg=ax.legend(facecolor="#0c0c1a",edgecolor=SPINE_C,labelcolor=legend_c,
                 fontsize=max(6,view.get("legend_size",9)),
                 prop={"family":"monospace","size":max(6,view.get("legend_size",9))},
                 framealpha=0.85,bbox_to_anchor=(lx,1.0-ly),bbox_transform=ax.transAxes,

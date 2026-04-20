@@ -386,5 +386,13 @@
       "A": { "label": "Scale (A)",   "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Stretch (f)", "default": 1.0, "min":  0.1, "max": 5.0, "step": 0.1 }
     }
+  },
+  "hermite_h": {
+    "category": "advanced",
+    "label": "Hermite H_n", "equation": "A\\cdot H_n\\left(x\\right)", "x_default": [-3, 3],
+    "params": {
+      "n": { "label": "Degree (n)", "default": 3, "min": 0, "max": 10, "step": 1 },
+      "A": { "label": "Scale (A)",  "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
+    }
   }
 }

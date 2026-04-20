@@ -29,7 +29,6 @@
         <button class="undo-redo-btn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
         <button class="undo-redo-btn" id="redoBtn" title="Redo (Ctrl+Y)" disabled>&#8631;</button>
       </div>
-      <div class="cdot" id="cdot"></div>
       <button class="gear-btn" id="gearBtn" title="Settings">&#9881;</button>
       <div class="gear-panel" id="gearPanel">
         <div class="gear-panel-title">Site Settings</div>
@@ -90,8 +89,8 @@
   <!-- LEFT SIDEBAR: Global Vars + Local Vars tabs -->
   <aside class="sidebar" id="leftSidebar">
     <div class="sidebar-tabs">
-      <button class="sidebar-tab sidebar-tab-active" id="sbTabVars" data-tab="vars">Global Vars</button>
-      <button class="sidebar-tab" id="sbTabFiles" data-tab="files">Local Vars</button>
+      <button class="sidebar-tab sidebar-tab-active" id="sbTabVars" data-tab="vars" data-tip="Variables accessible across all tabs">Global Vars</button>
+      <button class="sidebar-tab" id="sbTabFiles" data-tab="files" data-tip="Variables only seen by selected tab">Local Vars</button>
     </div>
 
     <!-- GLOBAL VARS TAB -->
@@ -171,21 +170,19 @@
             <button class="home-btn" id="domainHomeBtn" title="Reset to default view">&#8634; reset view</button>
           </div>
           <div class="cfg-sec">
-            <div class="crow">
+            <div class="crow-range">
               <label>X range</label>
               <div class="drow">
-                <input type="text" inputmode="decimal" id="c_xn" placeholder="&#8212;"/>
-                <input type="text" inputmode="decimal" id="c_xx" placeholder="&#8212;"/>
+                <input type="text" inputmode="decimal" id="c_xn" placeholder="min"/>
+                <input type="text" inputmode="decimal" id="c_xx" placeholder="max"/>
               </div>
-              <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
             </div>
-            <div class="crow">
+            <div class="crow-range">
               <label>Y range</label>
               <div class="drow">
-                <input type="text" inputmode="decimal" id="c_yn" placeholder="&#8212;"/>
-                <input type="text" inputmode="decimal" id="c_yx" placeholder="&#8212;"/>
+                <input type="text" inputmode="decimal" id="c_yn" placeholder="min"/>
+                <input type="text" inputmode="decimal" id="c_yx" placeholder="max"/>
               </div>
-              <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
             </div>
             <div class="trow">
               <label>Log scale X</label>
@@ -256,13 +253,34 @@
               <label>Legend font size (pt)</label>
               <input type="number" id="c_legend_size" value="9" min="6" max="18" step="1"/>
             </div>
+            <div class="crow" id="row_legend_color">
+              <label>Legend text color</label>
+              <div class="color-row">
+                <div class="cswatch"><input type="color" id="c_legend_color" value="#e8e8f0"/></div>
+                <input class="chex" type="text" id="c_legend_hex" value="#e8e8f0" maxlength="7"/>
+              </div>
+            </div>
             <div class="crow-inline">
               <label>Title size (pt)</label>
               <input type="number" id="c_ts" value="13" min="7" max="22" step="1"/>
             </div>
+            <div class="crow">
+              <label>Title color</label>
+              <div class="color-row">
+                <div class="cswatch"><input type="color" id="c_title_color" value="#e8e8f0"/></div>
+                <input class="chex" type="text" id="c_title_hex" value="#e8e8f0" maxlength="7"/>
+              </div>
+            </div>
             <div class="crow-inline">
               <label>Axis label size (pt)</label>
               <input type="number" id="c_ls2" value="10" min="6" max="18" step="1"/>
+            </div>
+            <div class="crow">
+              <label>Label color</label>
+              <div class="color-row">
+                <div class="cswatch"><input type="color" id="c_label_color" value="#e8e8f0"/></div>
+                <input class="chex" type="text" id="c_label_hex" value="#e8e8f0" maxlength="7"/>
+              </div>
             </div>
           </div>
         </div>
@@ -327,21 +345,19 @@
             <button class="home-btn" id="maskResetBtn" title="Clear all mask values">&#8634; reset</button>
           </div>
           <div class="cfg-sec">
-            <div class="crow">
+            <div class="crow-range">
               <label>X range</label>
               <div class="drow">
                 <input type="text" inputmode="decimal" id="c_mask_xn" placeholder="-inf"/>
                 <input type="text" inputmode="decimal" id="c_mask_xx" placeholder="+inf"/>
               </div>
-              <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
             </div>
-            <div class="crow">
+            <div class="crow-range">
               <label>Y range</label>
               <div class="drow">
                 <input type="text" inputmode="decimal" id="c_mask_yn" placeholder="-inf"/>
                 <input type="text" inputmode="decimal" id="c_mask_yx" placeholder="+inf"/>
               </div>
-              <div class="drow"><div class="dlbl">min</div><div class="dlbl">max</div></div>
             </div>
           </div>
         </div>

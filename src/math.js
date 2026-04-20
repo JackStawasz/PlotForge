@@ -127,6 +127,19 @@ function evalTemplate(tkey, params, view){
       y = x.map(v => A * airyAi(f*v));
       break;
     }
+    case 'hermite_h':{
+      // Physicist's Hermite H_n via recurrence: H_0=1, H_1=2x, H_n=2x·H_{n-1} - 2(n-1)·H_{n-2}
+      x = linspace(xLo, xHi, N);
+      const A=p.A??1, n=Math.max(0, Math.round(p.n??3));
+      y = x.map(v => {
+        if(n===0) return A;
+        if(n===1) return A * 2*v;
+        let hm1=1, hc=2*v;
+        for(let k=1; k<n; k++){ const hn=2*v*hc - 2*k*hm1; hm1=hc; hc=hn; }
+        return A * hc;
+      });
+      break;
+    }
     default: return null;
   }
 

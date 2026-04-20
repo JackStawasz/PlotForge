@@ -623,6 +623,10 @@
 }
 .crow{display:flex;flex-direction:column;gap:3px}
 .crow>label{font-size:.7rem;color:var(--muted);letter-spacing:.04em}
+/* Inline range row: label + two inputs on one line */
+.crow-range{display:flex;align-items:center;gap:8px;}
+.crow-range>label{font-size:.7rem;color:var(--muted);letter-spacing:.04em;white-space:nowrap;flex-shrink:0;}
+.crow-range>.drow{flex:1;}
 .crow-inline{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .crow-inline>label{font-size:.7rem;color:var(--muted);letter-spacing:.04em;flex:1;min-width:0}
 .crow-inline>input[type=number]{

@@ -4,6 +4,32 @@ let sbActiveTab = 'vars';
 function initLeftSidebar(){
   document.getElementById('sbTabFiles')?.addEventListener('click', ()=>setSbTab('files'));
   document.getElementById('sbTabVars')?.addEventListener('click', ()=>setSbTab('vars'));
+
+  // ── Sidebar tab tooltips — JS-positioned fixed div to escape overflow:hidden ──
+  const sbTip = document.createElement('div');
+  sbTip.id = '_sbTabTip';
+  document.body.appendChild(sbTip);
+  document.querySelectorAll('.sidebar-tab[data-tip]').forEach(tab=>{
+    tab.addEventListener('mouseenter', ()=>{
+      sbTip.textContent = tab.dataset.tip;
+      sbTip.style.opacity = '0';
+      sbTip.style.display = 'block';
+      // Position below the tab, clamped to viewport
+      const r = tab.getBoundingClientRect();
+      const tipW = sbTip.offsetWidth;
+      const tipH = sbTip.offsetHeight;
+      let left = r.left + r.width / 2 - tipW / 2;
+      let top  = r.bottom + 6;
+      // Clamp horizontally
+      left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
+      // Clamp vertically (flip above if off-screen bottom)
+      if(top + tipH > window.innerHeight - 8) top = r.top - tipH - 6;
+      sbTip.style.left = left + 'px';
+      sbTip.style.top  = top  + 'px';
+      sbTip.style.opacity = '1';
+    });
+    tab.addEventListener('mouseleave', ()=>{ sbTip.style.opacity = '0'; });
+  });
   document.getElementById('varsAddBtn')?.addEventListener('click', e=>{ e.stopPropagation(); showVarTypePicker('global'); });
   document.getElementById('varsAddLocalBtn')?.addEventListener('click', e=>{
     e.stopPropagation();
@@ -595,6 +621,12 @@ function refreshCfg(){
   const ylEl = document.getElementById('c_y_log'); if(ylEl) ylEl.checked = v.y_log ?? false;
   sv('c_ts', v.title_size); sv('c_ls2', v.label_size);
   sv('c_legend_size', v.legend_size ?? 9);
+  const lcEl = document.getElementById('c_legend_color'); if(lcEl) lcEl.value = v.legend_text_color || '#e8e8f0';
+  const lchEl = document.getElementById('c_legend_hex');  if(lchEl) lchEl.value = v.legend_text_color || '#e8e8f0';
+  const tcEl = document.getElementById('c_title_color'); if(tcEl) tcEl.value = v.title_color || '#e8e8f0';
+  const tchEl = document.getElementById('c_title_hex');  if(tchEl) tchEl.value = v.title_color || '#e8e8f0';
+  const labcEl = document.getElementById('c_label_color'); if(labcEl) labcEl.value = v.xlabel_color || '#e8e8f0';
+  const labchEl = document.getElementById('c_label_hex');  if(labchEl) labchEl.value = v.xlabel_color || '#e8e8f0';
   const slEl = document.getElementById('c_show_legend'); if(slEl) slEl.checked = v.show_legend ?? true;
   const bgEl = document.getElementById('c_bg_color'); if(bgEl) bgEl.value = v.bg_color || '#12121c';
   const bgHexEl = document.getElementById('c_bg_hex'); if(bgHexEl) bgHexEl.value = v.bg_color || '#12121c';
@@ -669,10 +701,15 @@ function updateAxisOpacityState(axisOn){
 }
 
 function updateLegendOpacityState(legendOn){
-  const row = document.getElementById('row_legend_size');
+  const row      = document.getElementById('row_legend_size');
+  const colorRow = document.getElementById('row_legend_color');
   if(!row) return;
-  row.style.opacity = legendOn ? '1' : '0.35';
+  row.style.opacity       = legendOn ? '1' : '0.35';
   row.style.pointerEvents = legendOn ? '' : 'none';
+  if(colorRow){
+    colorRow.style.opacity       = legendOn ? '1' : '0.35';
+    colorRow.style.pointerEvents = legendOn ? '' : 'none';
+  }
 }
 
 function sv(id, val){ const el=document.getElementById(id); if(el) el.value=val; }
@@ -733,7 +770,11 @@ function readCfgIntoActive(){
   v.y_log            = document.getElementById('c_y_log')?.checked ?? false;
   v.title_size       = parseInt(document.getElementById('c_ts').value) || 13;
   v.label_size       = parseInt(document.getElementById('c_ls2').value) || 10;
-  v.legend_size      = parseInt(document.getElementById('c_legend_size')?.value) || 9;
+  v.legend_size       = parseInt(document.getElementById('c_legend_size')?.value) || 9;
+  v.legend_text_color = document.getElementById('c_legend_color')?.value || '#e8e8f0';
+  v.title_color       = document.getElementById('c_title_color')?.value || '#e8e8f0';
+  v.xlabel_color      = document.getElementById('c_label_color')?.value || '#e8e8f0';
+  v.ylabel_color      = v.xlabel_color;
   v.show_legend      = document.getElementById('c_show_legend')?.checked ?? true;
   v.bg_color         = document.getElementById('c_bg_color')?.value || '#12121c';
   v.surface_color    = v.bg_color;
@@ -894,6 +935,39 @@ function initCfgPanel(){
   document.getElementById('c_axis_hex')?.addEventListener('input', function(){
     if(/^#[0-9a-fA-F]{6}$/.test(this.value)){
       document.getElementById('c_axis_color').value = this.value;
+      triggerCfgRender();
+    }
+  });
+
+  document.getElementById('c_legend_color')?.addEventListener('input', function(){
+    document.getElementById('c_legend_hex').value = this.value;
+    triggerCfgRender();
+  });
+  document.getElementById('c_legend_hex')?.addEventListener('input', function(){
+    if(/^#[0-9a-fA-F]{6}$/.test(this.value)){
+      document.getElementById('c_legend_color').value = this.value;
+      triggerCfgRender();
+    }
+  });
+
+  document.getElementById('c_title_color')?.addEventListener('input', function(){
+    document.getElementById('c_title_hex').value = this.value;
+    triggerCfgRender();
+  });
+  document.getElementById('c_title_hex')?.addEventListener('input', function(){
+    if(/^#[0-9a-fA-F]{6}$/.test(this.value)){
+      document.getElementById('c_title_color').value = this.value;
+      triggerCfgRender();
+    }
+  });
+
+  document.getElementById('c_label_color')?.addEventListener('input', function(){
+    document.getElementById('c_label_hex').value = this.value;
+    triggerCfgRender();
+  });
+  document.getElementById('c_label_hex')?.addEventListener('input', function(){
+    if(/^#[0-9a-fA-F]{6}$/.test(this.value)){
+      document.getElementById('c_label_color').value = this.value;
       triggerCfgRender();
     }
   });

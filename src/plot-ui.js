@@ -5,20 +5,21 @@ function buildInnerHTML(p){
     return `<div class="mpl-body"><img class="mpl-img" src="data:image/png;base64,${p.mplImage}" alt="plot"/></div>`;
   const titleVal=p.labels.title||'', xlabelVal=p.labels.xlabel||'', ylabelVal=p.labels.ylabel||'';
   const tpx=Math.max(14,(p.view.title_size||13)+3), lpx=Math.max(12,(p.view.label_size||10)+3);
+  const tcol=p.view.title_color||'#e8e8f0', xcol=p.view.xlabel_color||'#e8e8f0', ycol=p.view.ylabel_color||'#e8e8f0';
   return `
     <div class="chart-region" id="cregion_${pid}">
       <input class="chart-title-inp auto-inp" id="ctitleinp_${pid}" type="text"
-             value="${titleVal}" placeholder="Title" maxlength="80" style="font-size:${tpx}px"/>
+             value="${titleVal}" placeholder="Title" maxlength="80" style="font-size:${tpx}px;color:${tcol}"/>
       <div class="canvas-wrap" id="cwrap_${pid}">
         <canvas id="chart_${pid}" style="display:block;width:100%"></canvas>
       </div>
       <div class="ax-xlabel">
         <input class="lbl-inp auto-inp" id="xlabel_${pid}" type="text"
-               value="${xlabelVal}" placeholder="x-label" maxlength="40" style="font-size:${lpx}px"/>
+               value="${xlabelVal}" placeholder="x-label" maxlength="40" style="font-size:${lpx}px;color:${xcol}"/>
       </div>
       <div class="ax-ylabel">
         <input class="lbl-inp auto-inp" id="ylabel_${pid}" type="text"
-               value="${ylabelVal}" placeholder="y-label" maxlength="40" style="font-size:${lpx}px"/>
+               value="${ylabelVal}" placeholder="y-label" maxlength="40" style="font-size:${lpx}px;color:${ycol}"/>
       </div>
     </div>`;
 }
@@ -237,6 +238,7 @@ function _showTabDeleteConfirm(tabName, varCount, onConfirm){
   Object.assign(overlay.style, {
     position:'fixed', inset:'0', zIndex:'9999',
     display:'flex', alignItems:'center', justifyContent:'center',
+    background:'rgba(4,4,12,.72)', backdropFilter:'blur(3px)',
   });
   overlay.addEventListener('mousedown', e=>{ if(e.target === overlay) overlay.remove(); });
 
@@ -809,11 +811,12 @@ function wireAxisLabelInputs(p){
 function applyLabelFontSizes(pid){
   const p = gp(pid); if(!p) return;
   const tpx=Math.max(14,(p.view.title_size||13)+3), lpx=Math.max(12,(p.view.label_size||10)+3);
+  const tcol=p.view.title_color||'#e8e8f0', xcol=p.view.xlabel_color||'#e8e8f0', ycol=p.view.ylabel_color||'#e8e8f0';
   const dims = getCanvasDims(pid);
   const ti=document.getElementById(`ctitleinp_${pid}`), xi=document.getElementById(`xlabel_${pid}`), yi=document.getElementById(`ylabel_${pid}`);
-  if(ti){ ti.style.fontSize=tpx+'px'; autoResizeInput(ti, dims.w); }
-  if(xi){ xi.style.fontSize=lpx+'px'; autoResizeInput(xi, Math.floor(dims.w * 0.9)); }
-  if(yi){ yi.style.fontSize=lpx+'px'; autoResizeInput(yi, Math.floor(dims.h * 0.9)); }
+  if(ti){ ti.style.fontSize=tpx+'px'; ti.style.color=tcol; autoResizeInput(ti, dims.w); }
+  if(xi){ xi.style.fontSize=lpx+'px'; xi.style.color=xcol; autoResizeInput(xi, Math.floor(dims.w * 0.9)); }
+  if(yi){ yi.style.fontSize=lpx+'px'; yi.style.color=ycol; autoResizeInput(yi, Math.floor(dims.h * 0.9)); }
 }
 
 function syncActiveHighlight(){
@@ -1194,6 +1197,7 @@ function showShapePicker(pid, btnEl){
     { type:'circle', icon:'○', label:'Circle' },
     { type:'square', icon:'□', label:'Square' },
     { type:'cross',  icon:'✕', label:'Cross'  },
+    { type:'star',   icon:'★', label:'Star'   },
     { type:'arrow',  icon:'→', label:'Arrow'  },
   ].forEach(({type,icon,label})=>{
     const btn = document.createElement('button');
@@ -1253,6 +1257,7 @@ function addShapeAnnotation(pid, type){
     fill_color: '#5affce',
     fill_alpha: 0,
     lock:'plot',
+    rotation: 0,
     data_x:null, data_y:null,
     data_x2:null, data_y2:null,
   };
@@ -1306,9 +1311,13 @@ function _applyVisStyle(vis, sh, pid){
         linear-gradient(45deg,  transparent calc(50% - ${h}px), ${sh.color} calc(50% - ${h}px), ${sh.color} calc(50% + ${h}px), transparent calc(50% + ${h}px)),
         linear-gradient(-45deg, transparent calc(50% - ${h}px), ${sh.color} calc(50% - ${h}px), ${sh.color} calc(50% + ${h}px), transparent calc(50% + ${h}px))`,
     ].join(';');
+  } else if(sh.type==='star'){
+    const starFill = (sh.fill_alpha > 0) ? _hexToRgba(sh.fill_color || sh.color, sh.fill_alpha) : sh.color;
+    vis.style.cssText = `width:${s}px;height:${s}px;background:${starFill};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)`;
   } else {
     vis.style.cssText = `width:${s}px;height:${s}px;border:${sw}px ${st} ${sh.color};background:${fill};box-sizing:border-box`;
   }
+  if(sh.rotation) vis.style.transform = `rotate(${sh.rotation}deg)`;
 }
 
 function _renderOneShape(sh, pid, wrap){
@@ -1529,8 +1538,8 @@ function showShapeMenu(sh, pid, triggerEl, anchorPt=null){
     menu.appendChild(stRow);
   }
 
-  // ── Fill color + alpha (circle / square only) ─────────────────────
-  if(sh.type==='circle' || sh.type==='square'){
+  // ── Fill color + alpha (circle / square / star) ───────────────────
+  if(sh.type==='circle' || sh.type==='square' || sh.type==='star'){
     const divider = document.createElement('div'); divider.className='ann-menu-divider'; menu.appendChild(divider);
 
     const fillColorRow = document.createElement('div'); fillColorRow.className='ann-menu-row-inline';
@@ -1553,9 +1562,8 @@ function showShapeMenu(sh, pid, triggerEl, anchorPt=null){
 
   // ── Size (not for arrow) ──────────────────────────────────────────
   if(sh.type !== 'arrow'){
-    const divider = document.createElement('div'); divider.className='ann-menu-divider'; menu.appendChild(divider);
     const sizeRow = document.createElement('div'); sizeRow.className='ann-menu-row-inline';
-    const _sizeLabelText = sh.type==='circle' ? 'Diameter' : sh.type==='square' ? 'Side length' : 'Size';
+    const _sizeLabelText = sh.type==='circle' ? 'Diameter' : sh.type==='square' ? 'Side length' : sh.type==='star' ? 'Size' : 'Size';
     const _sizeIsPlot    = sh.lock === 'plot';
     const _sizeUnit      = _sizeIsPlot ? 'plot units' : 'px';
     const _sizeVal       = parseFloat(sh.size.toPrecision(5));
@@ -1567,9 +1575,20 @@ function showShapeMenu(sh, pid, triggerEl, anchorPt=null){
     menu.appendChild(sizeRow);
   }
 
+  // ── Rotation (not for arrow) ─────────────────────────────────────
+  if(sh.type !== 'arrow'){
+    const rotDeg = Math.round(sh.rotation || 0);
+    const rotRow = document.createElement('div'); rotRow.className='ann-menu-row-inline';
+    rotRow.innerHTML = `<label>Rotation</label>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <input type="range" id="shMenuRot" min="0" max="360" step="1" value="${rotDeg}" style="width:80px"/>
+        <span id="shMenuRotVal" style="color:var(--acc2);font-family:var(--mono);font-size:.7rem;min-width:32px;text-align:right">${rotDeg}°</span>
+      </div>`;
+    menu.appendChild(rotRow);
+  }
+
   // ── Anchor (lock) ────────────────────────────────────────────────
   {
-    const divider = document.createElement('div'); divider.className='ann-menu-divider'; menu.appendChild(divider);
     const isPlot = sh.lock==='plot';
     const lockRow = document.createElement('div'); lockRow.className='ann-menu-row-inline';
     lockRow.innerHTML = `<label>Anchor</label>
@@ -1657,6 +1676,17 @@ function showShapeMenu(sh, pid, triggerEl, anchorPt=null){
       if(!isNaN(v) && v > 0){ sh.size = v; reRender(); }
     });
     sizeInp.addEventListener('change', ()=>snapshotForUndo());
+  }
+
+  const rotInp = document.getElementById('shMenuRot');
+  const rotVal = document.getElementById('shMenuRotVal');
+  if(rotInp && rotVal){
+    rotInp.addEventListener('input', ()=>{
+      sh.rotation = parseInt(rotInp.value) || 0;
+      rotVal.textContent = sh.rotation + '°';
+      reRender();
+    });
+    rotInp.addEventListener('change', ()=>snapshotForUndo());
   }
 
   const lockPlotBtn   = document.getElementById('shLockPlot');
