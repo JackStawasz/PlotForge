@@ -62,6 +62,18 @@ function setActivePresetId(id){
   localStorage.setItem('pf-active-preset', id);
 }
 
+// ── Default preset ── applied to newly created plots ──────────────────────
+// Distinct from the "active" preset (which tracks what's applied to existing plots).
+const _BUILTIN_DARK_LIGHT = new Set(['dark', 'light']);
+
+function getDefaultPresetId(){
+  return localStorage.getItem('pf-default-preset') || 'dark';
+}
+
+function setDefaultPresetId(id){
+  localStorage.setItem('pf-default-preset', id);
+}
+
 function _captureView(view){
   return {
     bg_color:        view.bg_color        ?? '#12121c',
@@ -110,7 +122,8 @@ function deletePreset(id){
   _loadUserPresets();
   _userPresets = _userPresets.filter(p => p.id !== id);
   _saveUserPresets();
-  if(getActivePresetId() === id) setActivePresetId('dark');
+  if(getActivePresetId()  === id) setActivePresetId('dark');
+  if(getDefaultPresetId() === id) setDefaultPresetId('dark');
 }
 
 function renamePreset(id, name){
@@ -176,16 +189,29 @@ function applySiteTheme(theme, syncPlots = true){
   const toggle = document.getElementById('siteThemeToggle');
   if(toggle) toggle.checked = (theme === 'light');
 
+  // Auto-swap the default preset when switching between the two built-in themes.
+  // Only applies when the current default is itself a built-in light/dark theme
+  // — user presets are never auto-changed.
+  const curDefault = getDefaultPresetId();
+  if(_BUILTIN_DARK_LIGHT.has(curDefault)){
+    const newDefault = (theme === 'light') ? 'light' : 'dark';
+    if(newDefault !== curDefault){
+      setDefaultPresetId(newDefault);
+      if(typeof renderPresetList === 'function') renderPresetList();
+    }
+  }
+
   if(syncPlots && typeof plots !== 'undefined' && plots.length){
     applyPreset(getActivePresetId(), null, true);
   }
 }
 
-// Return view defaults for new plots from the active preset
+// Return view defaults for new plots from the DEFAULT preset
+// (separate from the "active" preset which tracks what existing plots use)
 function defViewThemeOverrides(){
-  const activeId   = getActivePresetId();
+  const defaultId  = getDefaultPresetId();
   const allPresets = getAllPresets();
-  const preset     = allPresets.find(p => p.id === activeId);
+  const preset     = allPresets.find(p => p.id === defaultId);
 
   if(!preset) return { ...PLOT_THEMES.dark };
   if(preset.builtIn) return { ...(PLOT_THEMES[preset.id] || PLOT_THEMES.dark) };

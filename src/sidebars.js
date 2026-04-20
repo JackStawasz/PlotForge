@@ -807,13 +807,29 @@ function renderPresetList(){
   const container = document.getElementById('presetList'); if(!container) return;
   container.innerHTML = '';
 
-  const all      = typeof getAllPresets      === 'function' ? getAllPresets()      : [];
-  const activeId = typeof getActivePresetId === 'function' ? getActivePresetId() : 'dark';
+  const all       = typeof getAllPresets       === 'function' ? getAllPresets()       : [];
+  const activeId  = typeof getActivePresetId  === 'function' ? getActivePresetId()  : 'dark';
+  const defaultId = typeof getDefaultPresetId === 'function' ? getDefaultPresetId() : 'dark';
 
   all.forEach(preset=>{
+    const isActive  = preset.id === activeId;
+    const isDefault = preset.id === defaultId;
+
     const chip = document.createElement('div');
-    chip.className = 'preset-chip' + (preset.id === activeId ? ' active' : '');
+    chip.className = 'preset-chip' + (isActive ? ' active' : '') + (isDefault ? ' default' : '');
     chip.dataset.presetId = preset.id;
+
+    // ── Star: "Set as default for new plots" ──────────────────────────
+    const starBtn = document.createElement('button');
+    starBtn.className = 'preset-chip-star' + (isDefault ? ' is-default' : '');
+    starBtn.innerHTML = '★';
+    starBtn.title = isDefault ? 'Default for new plots' : 'Set as default for new plots';
+    starBtn.addEventListener('mousedown', e=>{
+      e.stopPropagation(); e.preventDefault();
+      if(typeof setDefaultPresetId === 'function') setDefaultPresetId(preset.id);
+      renderPresetList();
+    });
+    chip.appendChild(starBtn);
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'preset-chip-name';
@@ -853,8 +869,9 @@ function renderPresetList(){
     }
 
     chip.addEventListener('click', e=>{
-      if(e.target.closest('.preset-chip-del')) return;
+      if(e.target.closest('.preset-chip-del'))  return;
       if(e.target.closest('.preset-chip-edit')) return;
+      if(e.target.closest('.preset-chip-star')) return;
       if(activePid === null) return;
       if(typeof applyPreset === 'function') applyPreset(preset.id, activePid, true);
       // Re-render chip highlights without a full refreshCfg to avoid loop

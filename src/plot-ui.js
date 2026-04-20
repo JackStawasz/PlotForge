@@ -121,15 +121,12 @@ function renderTabBar(){
     nameSpan.addEventListener('dblclick', e=>{ e.stopPropagation(); _beginTabRename(el, nameSpan, t); });
     el.appendChild(nameSpan);
 
-    // Only show delete button when there is more than one tab
-    if(tabs.length > 1){
-      const delBtn = document.createElement('button');
-      delBtn.className = 'plot-tab-del';
-      delBtn.textContent = '×';
-      delBtn.title = `Delete "${t.name}"`;
-      delBtn.addEventListener('click', e=>{ e.stopPropagation(); deleteTab(t.id); });
-      el.appendChild(delBtn);
-    }
+    const delBtn = document.createElement('button');
+    delBtn.className = 'plot-tab-del';
+    delBtn.textContent = '×';
+    delBtn.title = `Delete "${t.name}"`;
+    delBtn.addEventListener('click', e=>{ e.stopPropagation(); deleteTab(t.id); });
+    el.appendChild(delBtn);
 
     bar.appendChild(el);
   }
@@ -204,8 +201,15 @@ function switchTab(tabId){
   if(typeof renderVariables === 'function') renderVariables();
 }
 
+function _nextTabName(){
+  const existing = new Set(tabs.map(t => t.name.toLowerCase()));
+  let n = 1;
+  while(existing.has(`tab ${n}`)) n++;
+  return `Tab ${n}`;
+}
+
 function addTab(){
-  const suggested = `Tab ${tabs.length + 1}`;
+  const suggested = _nextTabName();
   _showTabNamePopup(suggested, name => {
     const t = mkTab(name);
     tabs.push(t);
@@ -529,7 +533,8 @@ function _plotDragStart(e, pid){
     `left:${rect.left}px`, `top:${rect.top}px`,
     `width:${rect.width}px`, `height:${rect.height}px`,
     'pointer-events:none', 'z-index:9000', 'opacity:.85',
-    'transform:rotate(.4deg) scale(1.01)',
+    'transform-origin:top left',
+    'transform:rotate(.4deg) scale(0.6)',
     'box-shadow:0 8px 32px rgba(0,0,0,.55)',
     'transition:box-shadow .1s',
   ].join(';');
@@ -564,8 +569,8 @@ function _plotDragMove(e){
   _plotDrag.didMove = true;
 
   const { clone, placeholder, offsetX, offsetY, pid } = _plotDrag;
-  clone.style.left = (e.clientX - offsetX) + 'px';
-  clone.style.top  = (e.clientY - offsetY) + 'px';
+  clone.style.left = (e.clientX - offsetX * 0.6) + 'px';
+  clone.style.top  = (e.clientY - offsetY * 0.6) + 'px';
 
   // Auto-scroll speed (px/frame) based on distance from list edges
   const list = document.getElementById('plotList');

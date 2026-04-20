@@ -127,6 +127,24 @@
 .preset-chip.active .preset-chip-name,
 .preset-chip:not(.active) .preset-chip-name{ pointer-events:auto; }
 
+/* Star: "Set as default for new plots" — always visible but dim when not default */
+.preset-chip-star{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:13px;height:13px;border-radius:50%;
+  background:transparent;border:none;
+  color:var(--muted);font-size:.72rem;line-height:1;
+  cursor:pointer;padding:0;opacity:.35;
+  transition:opacity .12s,color .12s,background .12s;
+  flex-shrink:0;order:-1; /* appears before the name */
+}
+.preset-chip:hover .preset-chip-star{ opacity:.75; }
+.preset-chip-star:hover{ color:#f5c842;opacity:1 !important; }
+/* When this preset IS the default — star is always bright */
+.preset-chip-star.is-default{
+  color:#f5c842;opacity:1;
+}
+.preset-chip-star.is-default:hover{ background:color-mix(in srgb,#f5c842 14%,transparent); }
+
 /* Edit (pencil) + Delete × buttons — hidden until hover */
 .preset-chip-edit,
 .preset-chip-del{
