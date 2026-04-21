@@ -285,15 +285,15 @@ def render_matplotlib_multi(curves_data, view, labels, text_annotations=None):
         ax.set_ylim(view.get("y_min",float(valid_y.min()) if len(valid_y) else 0),
                     view.get("y_max",float(valid_y.max()) if len(valid_y) else 1))
 
-    ax.grid(view.get("show_grid",True),color=GRID_C,linewidth=0.7,
-            alpha=view.get("grid_alpha",.5),zorder=1)
+    _galpha = view.get("grid_alpha",.5)
+    ax.grid(_galpha > 0, color=GRID_C, linewidth=0.7, alpha=_galpha, zorder=1)
 
     if view.get("x_log",False): ax.set_xscale('log')
     if view.get("y_log",False): ax.set_yscale('log')
 
-    if view.get("show_axis_lines",True):
-        aa = view.get("axis_alpha",0.6)
-        axis_color=(0.7,0.7,0.86,aa)
+    _aalpha = view.get("axis_alpha",1.0)
+    if _aalpha > 0:
+        axis_color=(0.7,0.7,0.86,_aalpha)
         ax.axhline(0,color=axis_color,linewidth=0.9,zorder=2)
         ax.axvline(0,color=axis_color,linewidth=0.9,zorder=2)
     for sp in ax.spines.values(): sp.set_edgecolor(SPINE_C); sp.set_linewidth(0.8)
@@ -517,12 +517,11 @@ def plot_matplotlib_pdf():
             all_y=np.concatenate([cd["y"] for cd in curves_data]) if curves_data else np.array([0,1])
             valid_y=all_y[~np.isnan(all_y)] if len(all_y) else all_y
             ax.set_ylim(view.get("y_min",float(valid_y.min()) if len(valid_y) else 0),view.get("y_max",float(valid_y.max()) if len(valid_y) else 1))
-        ax.grid(view.get("show_grid",True),color=GRID_C,linewidth=0.7,alpha=view.get("grid_alpha",.5),zorder=1)
+        _galpha=view.get("grid_alpha",.5); ax.grid(_galpha>0,color=GRID_C,linewidth=0.7,alpha=_galpha,zorder=1)
         if view.get("x_log",False): ax.set_xscale('log')
         if view.get("y_log",False): ax.set_yscale('log')
-        if view.get("show_axis_lines",True):
-            aa=view.get("axis_alpha",0.6); ac=(0.7,0.7,0.86,aa)
-            ax.axhline(0,color=ac,linewidth=0.9,zorder=2); ax.axvline(0,color=ac,linewidth=0.9,zorder=2)
+        _aalpha=view.get("axis_alpha",1.0)
+        if _aalpha>0: ac=(0.7,0.7,0.86,_aalpha); ax.axhline(0,color=ac,linewidth=0.9,zorder=2); ax.axvline(0,color=ac,linewidth=0.9,zorder=2)
         for sp in ax.spines.values(): sp.set_edgecolor(SPINE_C); sp.set_linewidth(0.8)
         ax.tick_params(colors=TEXT_C,labelsize=8,length=4,width=0.6)
         for t in ax.get_xticklabels()+ax.get_yticklabels(): t.set_color(TEXT_C); t.set_fontfamily("monospace")

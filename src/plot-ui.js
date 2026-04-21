@@ -55,14 +55,21 @@ function renderDOM(){
   for(const p of plots) destroyChart(p.id);
   const list = document.getElementById('plotList'); list.innerHTML = '';
   const visible = plots.filter(p => p.tabId === activeTabId);
-  visible.forEach(p => list.appendChild(buildCard(p)));
-  const ghost = document.createElement('div'); ghost.className = 'add-card';
-  ghost.innerHTML = `<div class="add-plus">+</div><span>Add new plot</span>`;
-  ghost.addEventListener('click', ()=>{
-    const np = mkPlot(activeTabId); plots.push(np); activePid=np.id; activeCurveIdx=0;
-    renderDOM(); refreshCfg(); refreshSidebar(); snapshotForUndo();
-  });
-  list.appendChild(ghost);
+  if(tabs.length === 0){
+    const msg = document.createElement('div');
+    msg.className = 'no-tab-msg';
+    msg.innerHTML = `<span>Create a tab first to start adding plots.</span>`;
+    list.appendChild(msg);
+  } else {
+    visible.forEach(p => list.appendChild(buildCard(p)));
+    const ghost = document.createElement('div'); ghost.className = 'add-card';
+    ghost.innerHTML = `<div class="add-plus">+</div><span>Add new plot</span>`;
+    ghost.addEventListener('click', ()=>{
+      const np = mkPlot(activeTabId); plots.push(np); activePid=np.id; activeCurveIdx=0;
+      renderDOM(); refreshCfg(); refreshSidebar(); snapshotForUndo();
+    });
+    list.appendChild(ghost);
+  }
   list.addEventListener('click', e=>{
     const onCard = e.target.closest('.plot-card');
     const onGhost = e.target.closest('.add-card');
@@ -147,7 +154,17 @@ function _beginTabRename(tabEl, nameSpan, t){
 
   const commit = ()=>{
     const val = inp.value.trim();
-    if(val) t.name = val;
+    if(val && val.toLowerCase() !== t.name.toLowerCase()){
+      const isDupe = tabs.some(other => other.id !== t.id && other.name.toLowerCase() === val.toLowerCase());
+      if(isDupe){
+        renderTabBar(); // revert the input
+        _showTabNameToast(`"${val}" is already in use — tab names must be unique.`);
+        return;
+      }
+      t.name = val;
+    } else if(val){
+      t.name = val; // same name (case change only is fine)
+    }
     renderTabBar();
     snapshotForUndo();
   };
@@ -158,6 +175,24 @@ function _beginTabRename(tabEl, nameSpan, t){
     else if(e.key === 'Escape'){ e.preventDefault(); cancel(); }
   });
   inp.addEventListener('blur', commit);
+}
+
+function _showTabNameToast(msg){
+  document.getElementById('_tabNameToast')?.remove();
+  const toast = document.createElement('div');
+  toast.id = '_tabNameToast';
+  toast.textContent = msg;
+  Object.assign(toast.style, {
+    position:'fixed', bottom:'22px', left:'50%', transform:'translateX(-50%)',
+    background:'var(--s1)', border:'1px solid var(--acc)',
+    borderRadius:'6px', padding:'7px 16px',
+    fontFamily:'var(--mono)', fontSize:'.73rem', color:'var(--acc)',
+    boxShadow:'0 4px 18px rgba(0,0,0,.5)', zIndex:'99999',
+    whiteSpace:'nowrap', pointerEvents:'none',
+    opacity:'1', transition:'opacity .3s',
+  });
+  document.body.appendChild(toast);
+  setTimeout(()=>{ toast.style.opacity='0'; setTimeout(()=>toast.remove(), 320); }, 2800);
 }
 
 function _beginPlotRename(pid, titleSpan){
@@ -363,8 +398,17 @@ function _showTabNamePopup(defaultName, onConfirm){
     background:'var(--s0)', border:'1px solid var(--border2)',
     borderRadius:'5px', padding:'5px 9px', color:'var(--text)',
     fontFamily:'var(--mono)', fontSize:'.78rem', outline:'none',
-    width:'100%', boxSizing:'border-box',
+    width:'100%', boxSizing:'border-box', transition:'border-color .15s',
   });
+
+  const errMsg = document.createElement('div');
+  Object.assign(errMsg.style, {
+    fontSize:'.7rem', color:'var(--acc)', display:'none',
+    marginTop:'-4px',
+  });
+
+  const _clearErr = ()=>{ errMsg.style.display='none'; input.style.borderColor=''; };
+  input.addEventListener('input', _clearErr);
   input.addEventListener('focus', () => input.select());
   input.addEventListener('keydown', e => {
     if(e.key === 'Enter'){ confirm(); }
@@ -395,12 +439,20 @@ function _showTabNamePopup(defaultName, onConfirm){
 
   function confirm(){
     const name = input.value.trim() || defaultName;
+    const isDupe = tabs.some(t => t.name.toLowerCase() === name.toLowerCase());
+    if(isDupe){
+      errMsg.textContent = `"${name}" is already in use — tab names must be unique.`;
+      errMsg.style.display = 'block';
+      input.style.borderColor = 'var(--acc)';
+      input.focus();
+      return;
+    }
     overlay.remove();
     onConfirm(name);
   }
 
   row.append(btnCancel, btnOk);
-  box.append(label, input, row);
+  box.append(label, input, errMsg, row);
   overlay.appendChild(box);
   document.body.appendChild(overlay);
   // Focus after a tick so the overlay is in the DOM
@@ -895,8 +947,8 @@ function updatePlotLockedAnnotations(pid){
   p.textAnnotations.forEach(ann=>{
     if(ann.lock!=='plot' || ann.data_x==null) return;
     const frac = dataToFrac(ch, ann.data_x, ann.data_y);
-    ann.x_frac = Math.max(0, Math.min(1, frac.x));
-    ann.y_frac = Math.max(0, Math.min(1, frac.y));
+    ann.x_frac = frac.x;
+    ann.y_frac = frac.y;
     const outer = wrap.querySelector(`.text-annotation[data-ann-id="${ann.id}"]`);
     if(outer){
       outer.style.left = (ann.x_frac*100)+'%';
@@ -1089,8 +1141,8 @@ function renderTextAnnotations(pid){
     p.textAnnotations.forEach(ann=>{
       if(ann.lock==='plot' && ann.data_x!=null){
         const frac = dataToFrac(ch, ann.data_x, ann.data_y);
-        ann.x_frac = Math.max(0, Math.min(1, frac.x));
-        ann.y_frac = Math.max(0, Math.min(1, frac.y));
+        ann.x_frac = frac.x;
+        ann.y_frac = frac.y;
       }
     });
   }
@@ -1158,8 +1210,8 @@ function renderTextAnnotations(pid){
       const rect=wrap.getBoundingClientRect();
       const nx = ((parseFloat(outer.style.left)/100)*rect.width  + (e.clientX-sx)) / rect.width;
       const ny = ((parseFloat(outer.style.top) /100)*rect.height + (e.clientY-sy)) / rect.height;
-      ann.x_frac = Math.max(0,Math.min(1,nx));
-      ann.y_frac = Math.max(0,Math.min(1,ny));
+      ann.x_frac = (ann.lock==='plot') ? nx : Math.max(0,Math.min(1,nx));
+      ann.y_frac = (ann.lock==='plot') ? ny : Math.max(0,Math.min(1,ny));
       outer.style.left = (ann.x_frac*100)+'%';
       outer.style.top  = (ann.y_frac*100)+'%';
       // Update stored data coords if plot-locked

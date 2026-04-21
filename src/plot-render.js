@@ -560,8 +560,9 @@ function drawChart(p){
       const galpha = v.grid_alpha ?? 0.5;
       const gridBase = v.grid_color ?? (isLight ? '#3250b4' : '#3c3c64');
       const gc = hexAlpha(gridBase, galpha);
-      ch.options.scales.x.grid.display=v.show_grid; ch.options.scales.x.grid.color=gc;
-      ch.options.scales.y.grid.display=v.show_grid; ch.options.scales.y.grid.color=gc;
+      const gridOn = galpha > 0;
+      ch.options.scales.x.grid.display=gridOn; ch.options.scales.x.grid.color=gc;
+      ch.options.scales.y.grid.display=gridOn; ch.options.scales.y.grid.color=gc;
       ch.options.scales.x.ticks.callback = v.x_log ? makeLogTickCb() : makeTickCb('x');
       ch.options.scales.y.ticks.callback = v.y_log ? makeLogTickCb() : makeTickCb('y');
       // Ensure afterBuildTicks is always set correctly for log axes
@@ -608,8 +609,8 @@ function borderWidthFor(curve){ return curve.line_connection==='none' ? 0 : (cur
 function tensionFor(lc){ return lc==='cubic'?0.4:lc==='bezier'?0.6:0; }
 
 function buildAxisLineDatasets(v){
-  if(!v.show_axis_lines) return [];
-  const alpha = v.axis_alpha ?? 0.6;
+  const alpha = v.axis_alpha ?? 1.0;
+  if(alpha <= 0) return [];
   const isLight = v.chart_theme === 'light';
   const baseColor = v.axis_color ?? (isLight ? '#1e328c' : '#b4b4dc');
   const color = hexAlpha(baseColor, alpha);
@@ -658,7 +659,7 @@ function buildScales(v){
       ...(isLog ? {} : {maxTicksLimit: axisKey==='x' ? 12 : 10}),
       callback: isLog ? makeLogTickCb() : makeTickCb(axisKey),
     },
-    grid:{color:gc, display:v.show_grid, drawBorder:true},
+    grid:{color:gc, display:galpha > 0, drawBorder:true},
     // Force tick positions at log-decade boundaries so grid lines are semantically correct
     ...(isLog ? {afterBuildTicks: makeLogAfterBuildTicks()} : {}),
   });

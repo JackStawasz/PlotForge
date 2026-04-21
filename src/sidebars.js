@@ -607,12 +607,10 @@ function refreshCfg(){
   syncCfgDomain();
   const v = p.view;
   renderPresetList();
-  document.getElementById('c_grid').checked = v.show_grid;
   sv('c_galpha', v.grid_alpha ?? 0.5);
   document.getElementById('c_galpha_val').textContent = Math.round((v.grid_alpha ?? 0.5)*100)+'%';
   const gcEl = document.getElementById('c_grid_color'); if(gcEl) gcEl.value = v.grid_color ?? '#3c3c64';
   const ghEl = document.getElementById('c_grid_hex');  if(ghEl) ghEl.value = v.grid_color ?? '#3c3c64';
-  const axEl = document.getElementById('c_axis_lines'); if(axEl) axEl.checked = v.show_axis_lines ?? true;
   sv('c_aalpha', v.axis_alpha ?? 1.0);
   document.getElementById('c_aalpha_val').textContent = Math.round((v.axis_alpha ?? 1.0)*100)+'%';
   const acEl = document.getElementById('c_axis_color'); if(acEl) acEl.value = v.axis_color ?? '#b4b4dc';
@@ -631,8 +629,6 @@ function refreshCfg(){
   const bgEl = document.getElementById('c_bg_color'); if(bgEl) bgEl.value = v.bg_color || '#12121c';
   const bgHexEl = document.getElementById('c_bg_hex'); if(bgHexEl) bgHexEl.value = v.bg_color || '#12121c';
   applyBgColorToCanvas(activePid);
-  updateGridOpacityState(v.show_grid);
-  updateAxisOpacityState(v.show_axis_lines ?? true);
   updateLegendOpacityState(v.show_legend ?? true);
   refreshLineCurveSelector();
   const curve = activeCurve();
@@ -676,40 +672,11 @@ function commitMaskInput(id, axis, minMax){
   else renderJS(p.id, false);
 }
 
-function updateGridOpacityState(gridOn){
-  const row      = document.getElementById('row_galpha');
-  const colorRow = document.getElementById('row_grid_color');
-  if(!row) return;
-  row.style.opacity      = gridOn ? '1' : '0.35';
-  row.style.pointerEvents = gridOn ? '' : 'none';
-  if(colorRow){
-    colorRow.style.opacity      = gridOn ? '1' : '0.35';
-    colorRow.style.pointerEvents = gridOn ? '' : 'none';
-  }
-}
-
-function updateAxisOpacityState(axisOn){
-  const row      = document.getElementById('row_aalpha');
-  const colorRow = document.getElementById('row_axis_color');
-  if(!row) return;
-  row.style.opacity      = axisOn ? '1' : '0.35';
-  row.style.pointerEvents = axisOn ? '' : 'none';
-  if(colorRow){
-    colorRow.style.opacity      = axisOn ? '1' : '0.35';
-    colorRow.style.pointerEvents = axisOn ? '' : 'none';
-  }
-}
-
 function updateLegendOpacityState(legendOn){
-  const row      = document.getElementById('row_legend_size');
-  const colorRow = document.getElementById('row_legend_color');
+  const row = document.getElementById('row_legend_size');
   if(!row) return;
   row.style.opacity       = legendOn ? '1' : '0.35';
   row.style.pointerEvents = legendOn ? '' : 'none';
-  if(colorRow){
-    colorRow.style.opacity       = legendOn ? '1' : '0.35';
-    colorRow.style.pointerEvents = legendOn ? '' : 'none';
-  }
 }
 
 function sv(id, val){ const el=document.getElementById(id); if(el) el.value=val; }
@@ -760,11 +727,9 @@ function triggerCfgRender(){
 function readCfgIntoActive(){
   const p = activePid!==null ? gp(activePid) : null; if(!p) return;
   const v = p.view;
-  v.show_grid        = document.getElementById('c_grid').checked;
-  v.grid_alpha       = parseFloat(document.getElementById('c_galpha').value) || 0.5;
+  v.grid_alpha       = parseFloat(document.getElementById('c_galpha').value);
   v.grid_color       = document.getElementById('c_grid_color')?.value || '#3c3c64';
-  v.show_axis_lines  = document.getElementById('c_axis_lines')?.checked ?? true;
-  v.axis_alpha       = parseFloat(document.getElementById('c_aalpha')?.value) || 1.0;
+  v.axis_alpha       = parseFloat(document.getElementById('c_aalpha')?.value);
   v.axis_color       = document.getElementById('c_axis_color')?.value || '#b4b4dc';
   v.x_log            = document.getElementById('c_x_log')?.checked ?? false;
   v.y_log            = document.getElementById('c_y_log')?.checked ?? false;
@@ -1000,8 +965,6 @@ function initCfgPanel(){
   });
 
   ['c_ts','c_ls2','c_legend_size'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input',triggerCfgRender); el.addEventListener('change',triggerCfgRender); } });
-  document.getElementById('c_grid').addEventListener('change', function(){ updateGridOpacityState(this.checked); triggerCfgRender(); });
-  document.getElementById('c_axis_lines')?.addEventListener('change', function(){ updateAxisOpacityState(this.checked); triggerCfgRender(); });
   document.getElementById('c_show_legend')?.addEventListener('change', function(){ updateLegendOpacityState(this.checked); triggerCfgRender(); });
   document.getElementById('c_x_log')?.addEventListener('change', triggerCfgRender);
   document.getElementById('c_y_log')?.addEventListener('change', triggerCfgRender);
