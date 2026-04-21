@@ -5,30 +5,30 @@ function initLeftSidebar(){
   document.getElementById('sbTabFiles')?.addEventListener('click', ()=>setSbTab('files'));
   document.getElementById('sbTabVars')?.addEventListener('click', ()=>setSbTab('vars'));
 
-  // ── Sidebar tab tooltips — JS-positioned fixed div to escape overflow:hidden ──
+  // ── Global data-tip tooltips — delegated so dynamic elements (e.g. plot toolbar buttons) work ──
   const sbTip = document.createElement('div');
   sbTip.id = '_sbTabTip';
   document.body.appendChild(sbTip);
-  document.querySelectorAll('.sidebar-tab[data-tip]').forEach(tab=>{
-    tab.addEventListener('mouseenter', ()=>{
-      sbTip.textContent = tab.dataset.tip;
-      sbTip.style.opacity = '0';
-      sbTip.style.display = 'block';
-      // Position below the tab, clamped to viewport
-      const r = tab.getBoundingClientRect();
-      const tipW = sbTip.offsetWidth;
-      const tipH = sbTip.offsetHeight;
-      let left = r.left + r.width / 2 - tipW / 2;
-      let top  = r.bottom + 6;
-      // Clamp horizontally
-      left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
-      // Clamp vertically (flip above if off-screen bottom)
-      if(top + tipH > window.innerHeight - 8) top = r.top - tipH - 6;
-      sbTip.style.left = left + 'px';
-      sbTip.style.top  = top  + 'px';
-      sbTip.style.opacity = '1';
-    });
-    tab.addEventListener('mouseleave', ()=>{ sbTip.style.opacity = '0'; });
+  const _showTip = el=>{
+    sbTip.textContent = el.dataset.tip;
+    sbTip.style.opacity = '0';
+    sbTip.style.display = 'block';
+    const r = el.getBoundingClientRect();
+    const tipW = sbTip.offsetWidth, tipH = sbTip.offsetHeight;
+    let left = r.left + r.width / 2 - tipW / 2;
+    let top  = r.bottom + 6;
+    left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
+    if(top + tipH > window.innerHeight - 8) top = r.top - tipH - 6;
+    sbTip.style.left = left + 'px';
+    sbTip.style.top  = top  + 'px';
+    sbTip.style.opacity = '1';
+  };
+  document.addEventListener('mouseover', e=>{
+    const el = e.target.closest('[data-tip]');
+    if(el) _showTip(el);
+  });
+  document.addEventListener('mouseout', e=>{
+    if(e.target.closest('[data-tip]')) sbTip.style.opacity = '0';
   });
   document.getElementById('varsAddBtn')?.addEventListener('click', e=>{ e.stopPropagation(); showVarTypePicker('global'); });
   document.getElementById('varsAddLocalBtn')?.addEventListener('click', e=>{

@@ -746,8 +746,7 @@ function buildTopbarInner(p){
     </div>
     <div class="cactions-center">
       ${mplBtn}
-      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addtext" ${annDisabled}>✎</button>
-      <button class="cbtn shape-btn" data-pid="${p.id}" data-action="addshape" ${annDisabled}>▣</button>
+      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addannotation" data-tip="Add text/shape overlay" ${annDisabled}>✎</button>
     </div>
     <div class="cactions-right">
       <span class="ctop-coords" id="ctop_coords_${p.id}"></span>
@@ -862,8 +861,10 @@ function _plotSizeToPx(pid, plotSize){
   const wrap = document.getElementById(`cwrap_${pid}`); if(!wrap) return plotSize;
   const sx = ch.scales.x;
   const dataRange = sx.max - sx.min; if(!dataRange) return plotSize;
+  const canvasPx = sx.right - sx.left; if(!canvasPx) return plotSize;
   const cssScale = wrap.offsetWidth / ch.canvas.width;
-  return plotSize * (sx.right - sx.left) * cssScale / dataRange;
+  if(!cssScale || !isFinite(cssScale)) return plotSize;
+  return plotSize * canvasPx * cssScale / dataRange;
 }
 
 // Convert CSS pixels → plot-data units (x-axis) for a given plot
@@ -1188,7 +1189,7 @@ function _hexToRgba(hex, alpha){
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-function showShapePicker(pid, btnEl){
+function showAnnotationPicker(pid, btnEl){
   closeShapePicker(); closeAnnMenu(); closeShapeMenu();
   const p = gp(pid); if(!p || p.mplMode) return;
 
@@ -1199,6 +1200,7 @@ function showShapePicker(pid, btnEl){
   const btnsRow = document.createElement('div');
   btnsRow.className = 'shape-pick-btns';
   [
+    { type:'text',   icon:'✎', label:'Text'   },
     { type:'circle', icon:'○', label:'Circle' },
     { type:'square', icon:'□', label:'Square' },
     { type:'cross',  icon:'✕', label:'Cross'  },
@@ -1211,7 +1213,8 @@ function showShapePicker(pid, btnEl){
     btn.addEventListener('click', e=>{
       e.stopPropagation();
       closeShapePicker();
-      addShapeAnnotation(pid, type);
+      if(type === 'text') addTextAnnotation(pid);
+      else addShapeAnnotation(pid, type);
     });
     btnsRow.appendChild(btn);
   });
@@ -1223,13 +1226,15 @@ function showShapePicker(pid, btnEl){
 
   const delAll = document.createElement('button');
   delAll.className = 'shape-pick-del';
-  delAll.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>Delete All Shapes`;
+  delAll.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>Delete All Annotations`;
   delAll.addEventListener('click', e=>{
     e.stopPropagation();
     closeShapePicker();
     const p = gp(pid); if(!p) return;
     p.shapeAnnotations = [];
+    p.textAnnotations = [];
     renderShapeAnnotations(pid);
+    renderTextAnnotations(pid);
     snapshotForUndo();
   });
   menu.appendChild(delAll);
@@ -1274,7 +1279,8 @@ function addShapeAnnotation(pid, type){
     if(type !== 'arrow') sh.size = _pxToPlotSize(pid, defaultPx);
   }
   p.shapeAnnotations.push(sh);
-  renderShapeAnnotations(pid);
+  const wrap = document.getElementById(`cwrap_${pid}`);
+  if(wrap) _renderOneShape(sh, pid, wrap);
   snapshotForUndo();
 }
 
@@ -1317,8 +1323,11 @@ function _applyVisStyle(vis, sh, pid){
         linear-gradient(-45deg, transparent calc(50% - ${h}px), ${sh.color} calc(50% - ${h}px), ${sh.color} calc(50% + ${h}px), transparent calc(50% + ${h}px))`,
     ].join(';');
   } else if(sh.type==='star'){
-    const starFill = (sh.fill_alpha > 0) ? _hexToRgba(sh.fill_color || sh.color, sh.fill_alpha) : sh.color;
-    vis.style.cssText = `width:${s}px;height:${s}px;background:${starFill};clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)`;
+    const starFill = (sh.fill_alpha > 0) ? _hexToRgba(sh.fill_color || sh.color, sh.fill_alpha) : 'none';
+    const swSvg = s > 0 ? ((sh.stroke_width ?? 2) * 100 / s).toFixed(2) : '6.67';
+    const dash = st==='dashed' ? `stroke-dasharray="12 6"` : st==='dotted' ? `stroke-dasharray="3 6"` : '';
+    vis.style.cssText = `width:${s}px;height:${s}px`;
+    vis.innerHTML = `<svg width="${s}" height="${s}" viewBox="0 0 100 100" style="display:block" xmlns="http://www.w3.org/2000/svg"><polygon points="50,0 61,35 98,35 68,57 79,91 50,70 21,91 32,57 2,35 39,35" stroke="${sh.color}" stroke-width="${swSvg}" stroke-linejoin="round" fill="${starFill}" ${dash}/></svg>`;
   } else {
     vis.style.cssText = `width:${s}px;height:${s}px;border:${sw}px ${st} ${sh.color};background:${fill};box-sizing:border-box`;
   }
@@ -1735,17 +1744,26 @@ function showShapeMenu(sh, pid, triggerEl, anchorPt=null){
     lockWindowBtn.addEventListener('mousedown', e=>{ e.preventDefault(); setLock('window'); });
   }
 
-  // Position to the right of the anchor point (or trigger element), flip left if no room.
-  // anchorPt overrides triggerEl for arrows (midpoint of the line instead of the handle end).
-  const r = anchorPt ? { left: anchorPt.x, right: anchorPt.x, top: anchorPt.y } : triggerEl.getBoundingClientRect();
+  // For arrows (anchorPt = line midpoint): center the menu below the midpoint so it
+  // doesn't cover either endpoint handle. For other shapes: open right of trigger, flip left.
   menu.style.visibility='hidden'; menu.style.display='block';
   const mh=menu.offsetHeight||240, mw=menu.offsetWidth||200;
   menu.style.visibility='';
-  let left=r.right+8, top=r.top;
-  if(left+mw > window.innerWidth-8) left=r.left-mw-8;
-  if(top+mh  > window.innerHeight-8) top=window.innerHeight-mh-8;
-  menu.style.top  = Math.max(4,top)+'px';
-  menu.style.left = Math.max(4,left)+'px';
+  let left, top;
+  if(anchorPt){
+    left = anchorPt.x - mw/2;
+    top  = anchorPt.y + 10;
+    left = Math.max(8, Math.min(left, window.innerWidth - mw - 8));
+    if(top + mh > window.innerHeight - 8) top = anchorPt.y - mh - 10;
+  } else {
+    const r = triggerEl.getBoundingClientRect();
+    left = r.right + 8;
+    top  = r.top;
+    if(left + mw > window.innerWidth - 8) left = r.left - mw - 8;
+    if(top  + mh > window.innerHeight - 8) top  = window.innerHeight - mh - 8;
+  }
+  menu.style.top  = Math.max(4, top) +'px';
+  menu.style.left = Math.max(4, left)+'px';
 
   setTimeout(()=>{
     const outside=e=>{ if(!menu.contains(e.target)){ closeShapeMenu(); document.removeEventListener('mousedown',outside); } };
@@ -1789,14 +1807,9 @@ function handleAction(action, pid, triggerEl){
     syncActiveHighlight(); refreshCfg(); refreshSidebar();
     openTemplateModal(); return;
   }
-  if(action==='addtext'){
-    // Block annotations in matplotlib mode
+  if(action==='addannotation'){
     const p = gp(pid); if(p && p.mplMode) return;
-    addTextAnnotation(pid); return;
-  }
-  if(action==='addshape'){
-    const p = gp(pid); if(p && p.mplMode) return;
-    showShapePicker(pid, triggerEl);
+    showAnnotationPicker(pid, triggerEl);
     return;
   }
   if(action==='fullscreen') { toggleFullscreen(pid); return; }
