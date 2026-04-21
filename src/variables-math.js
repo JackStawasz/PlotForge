@@ -487,6 +487,29 @@ function partialEvalLatex(latex, ctx){
   return coeffStr + unknownLatex;
 }
 
+// ═══ INCOMPLETE EXPRESSION DETECTION ═════════════════════════════════════
+// Returns true when a LaTeX expression fragment is clearly unfinished:
+//   • a structural command (\frac, \sqrt, …) has an empty argument slot { }
+//   • a superscript or subscript has an empty argument slot ^{} / _{}
+//   • the expression ends with a dangling binary/relational operator
+function isIncompleteExpr(latex){
+  if(!latex || !latex.trim()) return false;
+  const s = latex.trim();
+
+  // Empty super/subscript:  x^{} or x_{}  (MathQuill outputs { } for unfilled slots)
+  if(/[\^_]\s*\{\s*\}/.test(s)) return true;
+
+  // Structural command with any empty brace argument
+  // The pattern: command present in string  AND  a bare {  } exists anywhere
+  if(/\\(?:frac|sqrt|binom|hat|bar|vec|tilde|dot|ddot|overline|underline|widehat|widetilde)\b/.test(s) && /\{\s*\}/.test(s)) return true;
+
+  // Trailing binary or relational operator (nothing written after it yet)
+  if(/[+\-\*\/=<>]\s*$/.test(s)) return true;
+  if(/\\(?:cdot|times|div|pm|mp|leq|geq|neq|approx|sim)\s*$/.test(s)) return true;
+
+  return false;
+}
+
 // ═══ CONSTANT EVALUATION ═════════════════════════════════════════════════
 // Evaluate a constant variable's expression and update its result display.
 // Tries fast JS evaluation first; falls back to the SymPy backend if needed.
@@ -519,12 +542,17 @@ function evaluateConstant(v){
   el.innerHTML = '<span class="var-eval-loading">···</span>';
   el.className = 'var-result';
 
-  // After 1 s of no valid result, treat as invalid and warn
+  // After 1 s of no valid result, warn — label as "incomplete expression" when
+  // the expression is clearly unfinished, otherwise "Invalid expression"
   v._invalidTimer = setTimeout(()=>{
     if(v._isNumeric) return;
     const elNow = document.getElementById(`vres_${v.id}`);
     if(elNow){ elNow.innerHTML = ''; elNow.className = 'var-result'; }
-    if(v._warning) v._warning.setInvalid('Invalid expression');
+    if(v._warning){
+      const msg = isIncompleteExpr((v.exprLatex || '').trim())
+        ? 'incomplete expression' : 'Invalid expression';
+      v._warning.setInvalid(msg);
+    }
   }, 1000);
 
   // Debounced backend call (300 ms) to avoid flooding on rapid typing

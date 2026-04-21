@@ -1515,6 +1515,14 @@ function buildEquationBody(item, v){
             v.exprLatex = v.fullLatex.slice(eqIdx + 1).trim();
           }
           validateEquationLatex(v.fullLatex, v);
+          // Incomplete-expression check: fires 1 s after typing stops.
+          // Only activates when no structural error is already shown.
+          clearTimeout(v._incompleteTimer);
+          v._incompleteTimer = setTimeout(()=>{
+            if(!v._warning || v._warning._invalidMsg !== null) return;
+            if(isIncompleteExpr((v.exprLatex || '').trim()))
+              v._warning.setInvalid('incomplete expression');
+          }, 1000);
           updateLatexDropdown(mf, mqWrap, mqWrap);
         }
       }
