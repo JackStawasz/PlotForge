@@ -470,7 +470,7 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
         const pinned = warnBtn.classList.toggle('var-warn-pinned');
         if(pinned){ _positionTip(); warnTip.style.display='block'; } else { warnTip.style.display='none'; }
       } else {
-        _showVarSettingsMenu(v, warnBtn);
+        _showVarSettingsMenu(v, warnBtn, varSubset);
       }
     });
     document.addEventListener('click', ()=>{ warnBtn.classList.remove('var-warn-pinned'); warnTip.style.display='none'; });
@@ -503,8 +503,6 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
       badge.className = `var-kind-badge var-kind-${v.kind}`;
       badge.textContent = 'List';
       headerTop.appendChild(badge);
-      _appendScopeBadge(headerTop, v);
-      _appendFolderBadge(headerTop, v, varSubset);
       if(v.pickleSource){
         const srcTag = document.createElement('span');
         srcTag.className = 'var-source-tag';
@@ -566,8 +564,6 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
       badge.textContent = v.kind === 'constant'
         ? 'Const' : v.kind.charAt(0).toUpperCase() + v.kind.slice(1);
       header.appendChild(badge);
-      _appendScopeBadge(header, v);
-      _appendFolderBadge(header, v, varSubset);
       if(v.pickleSource){
         const srcTag = document.createElement('span');
         srcTag.className = 'var-source-tag';
@@ -1044,26 +1040,194 @@ function _beginFolderRename(headerEl, labelEl, oldName, folderVars, collapseKey)
 }
 
 // ═══ VARIABLE SETTINGS MENU ══════════════════════════════════════════════
-function _showVarSettingsMenu(v, anchorEl){
+function _showVarSettingsMenu(v, anchorEl, allScopeVars = []){
   document.querySelectorAll('.var-settings-menu').forEach(m => m.remove());
+
   const menu = document.createElement('div');
   menu.className = 'var-settings-menu';
-  const msg = document.createElement('div');
-  msg.className = 'var-settings-msg';
-  msg.textContent = 'Variable settings coming soon…';
-  menu.appendChild(msg);
+
+  // ── Tab bar ───────────────────────────────────────────────────────────
+  const tabBar = document.createElement('div');
+  tabBar.className = 'var-stab-bar';
+
+  const TAB_NAMES = ['Move', 'Typeset', 'Dependencies'];
+  const panelEls  = {};
+  const tabBtns   = {};
+
+  TAB_NAMES.forEach((name, i) => {
+    const btn = document.createElement('button');
+    btn.className   = 'var-stab' + (i === 0 ? ' active' : '');
+    btn.textContent = name;
+
+    const panel = document.createElement('div');
+    panel.className = 'var-stab-panel' + (i === 0 ? ' active' : '');
+    panelEls[name] = panel;
+    tabBtns[name]  = btn;
+
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      tabBar.querySelectorAll('.var-stab').forEach(t => t.classList.remove('active'));
+      menu.querySelectorAll('.var-stab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      panel.classList.add('active');
+    });
+    tabBar.appendChild(btn);
+  });
+
+  menu.appendChild(tabBar);
+  TAB_NAMES.forEach(name => menu.appendChild(panelEls[name]));
+
+  // ── Move panel ────────────────────────────────────────────────────────
+  const movePanel = panelEls['Move'];
+
+  // Scope
+  const scopeSec = document.createElement('div');
+  scopeSec.className = 'var-smove-section';
+  const scopeLbl = document.createElement('div');
+  scopeLbl.className = 'var-smove-lbl';
+  scopeLbl.textContent = 'Scope';
+  scopeSec.appendChild(scopeLbl);
+
+  const scopeBtns = document.createElement('div');
+  scopeBtns.className = 'var-smove-btns';
+  const currentScope = v.scope ?? 'global';
+  const scopeOpts = [
+    { scope: 'global', label: 'Global' },
+    ...((typeof tabs !== 'undefined') ? tabs.map(t => ({ scope: t.id, label: t.name.slice(0, 8) + ' (local)' })) : []),
+  ];
+  scopeOpts.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'var-smove-btn' + (opt.scope === currentScope ? ' active' : '');
+    btn.textContent = opt.label;
+    btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if(opt.scope === currentScope) return;
+      v.scope = opt.scope;
+      renderVariables();
+      if(typeof snapshotForUndo === 'function') snapshotForUndo();
+      menu.remove();
+    });
+    scopeBtns.appendChild(btn);
+  });
+  scopeSec.appendChild(scopeBtns);
+  movePanel.appendChild(scopeSec);
+
+  const moveSep = document.createElement('div');
+  moveSep.className = 'var-smove-sep';
+  movePanel.appendChild(moveSep);
+
+  // Folder
+  const folderSec = document.createElement('div');
+  folderSec.className = 'var-smove-section';
+  const folderLbl = document.createElement('div');
+  folderLbl.className = 'var-smove-lbl';
+  folderLbl.textContent = 'Folder';
+  folderSec.appendChild(folderLbl);
+
+  const folderBtns = document.createElement('div');
+  folderBtns.className = 'var-smove-btns';
+  const currentFolder = v.folder ?? null;
+  const varScopeName  = String(v.scope ?? 'global');
+  const emptyPersisted = [..._persistedFolders]
+    .filter(k => { const s = k.indexOf('::'); return s >= 0 && k.slice(0, s) === varScopeName; })
+    .map(k => k.slice(k.indexOf('::') + 2));
+  const existingFolders = [...new Set([
+    ...allScopeVars.map(sv => sv.folder).filter(Boolean),
+    ...emptyPersisted,
+  ])].sort();
+
+  const addFolderBtn = (label, folderVal) => {
+    const btn = document.createElement('button');
+    btn.className = 'var-smove-btn' + (folderVal === currentFolder ? ' active' : '');
+    btn.textContent = label;
+    btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if(folderVal === currentFolder) return;
+      v.folder = folderVal;
+      renderVariables();
+      if(typeof snapshotForUndo === 'function') snapshotForUndo();
+      menu.remove();
+    });
+    folderBtns.appendChild(btn);
+  };
+
+  addFolderBtn('None', null);
+  existingFolders.forEach(f => addFolderBtn(f, f));
+
+  const newFolderBtn = document.createElement('button');
+  newFolderBtn.className = 'var-smove-btn var-smove-new';
+  newFolderBtn.textContent = '+ New';
+  newFolderBtn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+  newFolderBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    folderBtns.style.display = 'none';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.placeholder = 'Folder name…';
+    inp.className = 'var-smove-new-inp';
+    folderSec.appendChild(inp);
+    inp.focus();
+    const commit = () => {
+      const name = inp.value.trim();
+      if(name){ v.folder = name; renderVariables(); if(typeof snapshotForUndo === 'function') snapshotForUndo(); }
+      menu.remove();
+    };
+    inp.addEventListener('keydown', e => {
+      if(e.key === 'Enter') { e.stopPropagation(); commit(); }
+      if(e.key === 'Escape'){ e.stopPropagation(); menu.remove(); }
+    });
+    inp.addEventListener('blur', () => setTimeout(() => { if(document.body.contains(menu)) commit(); }, 120));
+  });
+  folderBtns.appendChild(newFolderBtn);
+
+  folderSec.appendChild(folderBtns);
+  movePanel.appendChild(folderSec);
+
+  // ── Typeset panel ─────────────────────────────────────────────────────
+  const typePanel = panelEls['Typeset'];
+
+  const latexDisplay = document.createElement('div');
+  latexDisplay.className  = 'var-stype-latex';
+  latexDisplay.textContent = v.fullLatex || v.nameLatex || v.name || '—';
+  typePanel.appendChild(latexDisplay);
+
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'var-stype-copy';
+  const _copyIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
+  copyBtn.innerHTML = _copyIcon + ' Copy LaTeX';
+  copyBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const text = v.fullLatex || v.nameLatex || v.name || '';
+    navigator.clipboard.writeText(text).then(() => {
+      copyBtn.textContent = '✓ Copied';
+      setTimeout(() => { copyBtn.innerHTML = _copyIcon + ' Copy LaTeX'; }, 1500);
+    }).catch(() => { copyBtn.textContent = 'Copy failed'; });
+  });
+  typePanel.appendChild(copyBtn);
+
+  // ── Dependencies panel ────────────────────────────────────────────────
+  const depsPanel = panelEls['Dependencies'];
+  const soonMsg = document.createElement('div');
+  soonMsg.className   = 'var-sdeps-soon';
+  soonMsg.textContent = 'Coming soon';
+  depsPanel.appendChild(soonMsg);
+
+  // ── Position ──────────────────────────────────────────────────────────
   document.body.appendChild(menu);
   const r = anchorEl.getBoundingClientRect();
   menu.style.top  = (r.bottom + 4) + 'px';
   menu.style.left = r.left + 'px';
-  requestAnimationFrame(()=>{
-    const mw = menu.offsetWidth;
-    if(r.left + mw > window.innerWidth - 8) menu.style.left = Math.max(8, r.right - mw) + 'px';
+  requestAnimationFrame(() => {
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    if(r.left + mw > window.innerWidth - 8)  menu.style.left = Math.max(8, r.right - mw) + 'px';
+    if(r.bottom + 4 + mh > window.innerHeight - 8) menu.style.top = Math.max(4, r.top - mh - 4) + 'px';
   });
-  const outside = e=>{
+
+  const outside = e => {
     if(!menu.contains(e.target)){ menu.remove(); document.removeEventListener('mousedown', outside); }
   };
-  setTimeout(()=>document.addEventListener('mousedown', outside), 0);
+  setTimeout(() => document.addEventListener('mousedown', outside), 0);
 }
 
 // ═══ SCOPE BADGE + MOVE MENU ═════════════════════════════════════════════
