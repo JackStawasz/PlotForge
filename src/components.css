@@ -1296,6 +1296,45 @@ tr:hover .lp-td{ background:rgba(255,255,255,.025); }
 [data-theme="light"] .list-popup{ background:var(--s0); }
 [data-theme="light"] .lp-th{ background:var(--s1); }
 
+/* ═══ DATASET POPUP ═══════════════════════════════════════════════════════ */
+.ds-popup{ width:min(840px,96vw) !important; max-height:85vh; }
+.ds-popup-body{
+  flex:1;overflow:hidden;display:flex;flex-direction:column;padding:0;
+}
+.ds-table-wrap{ flex:1;overflow:auto; }
+.ds-table-wrap::-webkit-scrollbar{ width:4px;height:4px; }
+.ds-table-wrap::-webkit-scrollbar-thumb{ background:var(--border2);border-radius:2px; }
+
+/* Editable column-header cell */
+.ds-th-edit{ padding:4px 8px !important;vertical-align:middle; }
+.ds-col-inp{
+  background:transparent;border:none;border-bottom:1px solid transparent;
+  font-family:var(--mono);font-size:.65rem;font-weight:600;letter-spacing:.04em;
+  color:var(--muted);text-align:right;padding:2px 0;outline:none;
+  width:100%;min-width:56px;
+}
+.ds-col-inp:focus{ border-bottom-color:var(--acc2);color:var(--acc2); }
+
+/* Editable data cell */
+.ds-cell-inp{
+  background:transparent;border:none;border-bottom:1px solid transparent;
+  font-family:var(--mono);font-size:.72rem;color:var(--text);
+  text-align:right;padding:2px 0;outline:none;width:100%;min-width:56px;
+}
+.ds-cell-inp:focus{ border-bottom-color:var(--acc2);color:var(--acc2); }
+.ds-cell-empty{ color:var(--border2) !important; }
+
+/* Add-column header button */
+.ds-th-add{ width:56px;text-align:center;vertical-align:middle;padding:4px 6px !important; }
+.ds-add-col-btn{
+  background:transparent;border:1px dashed var(--border2);border-radius:4px;
+  color:var(--muted);font-family:var(--mono);font-size:.6rem;
+  padding:2px 7px;cursor:pointer;white-space:nowrap;transition:all .1s;
+}
+.ds-add-col-btn:hover{ border-color:var(--acc2);color:var(--acc2); }
+
+[data-theme="light"] .ds-popup{ background:var(--s0); }
+[data-theme="light"] .ds-col-inp{ color:var(--muted); }
 
 /* ── ML Models tab ─────────────────────────────────────────────────────────── */
 .ml-fi-bar{

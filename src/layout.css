@@ -895,6 +895,17 @@ header{
 .var-kind-parameter{ background:color-mix(in srgb,var(--acc)  10%,transparent); color:var(--acc);  border:1px solid color-mix(in srgb,var(--acc)  30%,transparent); }
 .var-kind-equation  { background:rgba(167,139,250,.12); color:#a78bfa; border:1px solid rgba(167,139,250,.3); }
 .var-kind-list      { background:color-mix(in srgb,var(--acc4) 10%,transparent); color:var(--acc4); border:1px solid color-mix(in srgb,var(--acc4) 30%,transparent); }
+.var-kind-dataset   { background:rgba(56,189,248,.12); color:#38bdf8; border:1px solid rgba(56,189,248,.3); }
+
+/* dataset name plain-text input */
+.var-dataset-name-inp{
+  font-family:var(--mono);font-size:.8rem;color:var(--text);
+  background:transparent;border:none;border-bottom:1px solid var(--border2);
+  padding:3px 0;width:100%;outline:none;
+}
+.var-dataset-name-inp::placeholder{ color:var(--muted);font-style:italic; }
+.var-dataset-name-inp:focus{ border-bottom-color:var(--acc2); }
+[data-theme="light"] .var-dataset-name-inp{ color:var(--text); }
 
 /* name input (parameter / list sub-header) */
 .var-name-inp{

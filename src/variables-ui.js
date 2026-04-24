@@ -29,6 +29,11 @@ function addVariable(kind='constant', opts={}){
     _labels:       opts._labels       ? [...opts._labels] : [],
     scope,
     folder:        opts.folder        ?? null,
+    datasetCols:   opts.datasetCols
+      ? opts.datasetCols.map(c => ({ name: c.name, values: [...c.values] }))
+      : (kind === 'dataset'
+          ? [{ name: 'col1', values: [null, null, null] }, { name: 'col2', values: [null, null, null] }]
+          : undefined),
   };
   variables.push(v);
   renderVariables();
@@ -90,6 +95,7 @@ function showVarTypePicker(forceScope){
     { key:'constant', icon:'α',   label:'Constant', desc:'Number or expression' },
     { key:'equation', icon:'ƒ',   label:'Equation', desc:'Function of x'        },
     { key:'list',     icon:'[ ]', label:'List',     desc:'Fixed-length sequence' },
+    { key:'dataset',  icon:'⊞',   label:'Dataset',  desc:'Rows & columns'       },
   ];
   types.forEach(t=>{
     const row = document.createElement('button');
@@ -374,6 +380,16 @@ function checkAllWarnings(){
     } else {
       v._warning.clear();
     }
+    // Dataset-specific: warn about incomplete rows
+    if(v.kind === 'dataset' && v.datasetCols && v.datasetCols.length > 0){
+      const maxRows = Math.max(0, ...v.datasetCols.map(c => c.values.length));
+      const hasEmpty = maxRows > 0 && v.datasetCols.some(col =>
+        col.values.length < maxRows ||
+        col.values.some(val => val === null || val === undefined || val === '')
+      );
+      if(hasEmpty) v._warning.setInvalid('Dataset has rows with missing or empty values');
+      else v._warning.clearInvalid();
+    }
   }
 }
 
@@ -555,6 +571,33 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
       });
 
       buildListBody(inner, v, lenInp);
+
+    } else if(v.kind === 'dataset'){
+      const headerTop = document.createElement('div');
+      headerTop.className = 'var-item-header';
+      const badge = document.createElement('span');
+      badge.className = 'var-kind-badge var-kind-dataset';
+      badge.textContent = 'Dataset';
+      headerTop.appendChild(badge);
+      headerTop.appendChild(delBtn);
+      inner.appendChild(headerTop);
+
+      const nameInp = document.createElement('input');
+      nameInp.type        = 'text';
+      nameInp.className   = 'var-dataset-name-inp';
+      nameInp.placeholder = 'dataset name';
+      nameInp.value       = v.name || '';
+      nameInp.addEventListener('input', ()=>{
+        v.name = nameInp.value.trim();
+        checkAllWarnings();
+      });
+      nameInp.addEventListener('change', ()=>{
+        if(typeof snapshotForUndo === 'function') snapshotForUndo();
+      });
+      nameInp.addEventListener('click', e=>e.stopPropagation());
+      inner.appendChild(nameInp);
+
+      buildDatasetBody(inner, v);
 
     } else {
       const header = document.createElement('div');
@@ -1778,6 +1821,208 @@ function _renderListPopupPage(){
     }
   });
   document.getElementById('lp_done')?.addEventListener('click', _closeListPopup);
+}
+
+// ═══ DATASET POPUP MODAL ═════════════════════════════════════════════════
+let _datasetPopupVar  = null;
+let _datasetPopupPage = 0;
+const _DS_POP_PG      = 50;
+
+function _dsEsc(str){ return String(str ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+function _syncDatasetSummary(v){
+  const el = document.getElementById(`vdssummary_${v.id}`);
+  if(!el) return;
+  const maxRows = v.datasetCols.length > 0 ? Math.max(0, ...v.datasetCols.map(c => c.values.length)) : 0;
+  el.textContent = `${maxRows} rows × ${v.datasetCols.length} cols`;
+}
+
+function buildDatasetBody(inner, v){
+  const summaryRow = document.createElement('div');
+  summaryRow.className = 'var-list-summary';
+
+  const summaryText = document.createElement('span');
+  summaryText.className = 'var-list-summary-text';
+  summaryText.id = `vdssummary_${v.id}`;
+  const maxRows = v.datasetCols.length > 0 ? Math.max(0, ...v.datasetCols.map(c => c.values.length)) : 0;
+  summaryText.textContent = `${maxRows} rows × ${v.datasetCols.length} cols`;
+
+  const viewBtn = document.createElement('button');
+  viewBtn.className = 'var-list-view-btn';
+  viewBtn.textContent = 'View / Edit →';
+  viewBtn.addEventListener('click', e=>{ e.stopPropagation(); _openDatasetPopup(v); });
+
+  summaryRow.appendChild(summaryText);
+  summaryRow.appendChild(viewBtn);
+  inner.appendChild(summaryRow);
+}
+
+function _openDatasetPopup(v){
+  _datasetPopupVar  = v;
+  _datasetPopupPage = 0;
+
+  let overlay = document.getElementById('datasetPopupOverlay');
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id        = 'datasetPopupOverlay';
+    overlay.className = 'list-popup-overlay';
+    overlay.addEventListener('mousedown', e=>{ if(e.target === overlay) _closeDatasetPopup(); });
+    document.body.appendChild(overlay);
+  }
+
+  overlay.innerHTML = `
+    <div class="list-popup ds-popup" id="datasetPopupMain">
+      <div class="list-popup-header">
+        <div class="list-popup-title">
+          <span class="list-popup-varname">${_dsEsc(v.name) || `dataset ${v.id}`}</span>
+          <span class="list-popup-meta" id="dspopMeta"></span>
+        </div>
+        <button class="list-popup-close" id="dspopClose">&#10005;</button>
+      </div>
+      <div class="ds-popup-body" id="dspopBody"></div>
+      <div class="list-popup-footer" id="dspopFooter"></div>
+    </div>`;
+
+  overlay.style.display = 'flex';
+  document.getElementById('dspopClose')?.addEventListener('click', _closeDatasetPopup);
+  _renderDatasetPopupPage();
+}
+
+function _closeDatasetPopup(){
+  const overlay = document.getElementById('datasetPopupOverlay');
+  if(overlay) overlay.style.display = 'none';
+  if(_datasetPopupVar) _syncDatasetSummary(_datasetPopupVar);
+  if(typeof snapshotForUndo === 'function') snapshotForUndo();
+  if(typeof checkAllWarnings === 'function') checkAllWarnings();
+  _datasetPopupVar = null;
+}
+
+function _renderDatasetPopupPage(){
+  const v      = _datasetPopupVar;
+  const body   = document.getElementById('dspopBody');
+  const footer = document.getElementById('dspopFooter');
+  const meta   = document.getElementById('dspopMeta');
+  if(!v || !body || !footer) return;
+
+  const cols    = v.datasetCols;
+  const maxRows = cols.length > 0 ? Math.max(0, ...cols.map(c => c.values.length)) : 0;
+  if(meta) meta.textContent = `${maxRows} rows × ${cols.length} cols`;
+
+  const totalPages = Math.ceil(maxRows / _DS_POP_PG) || 1;
+  _datasetPopupPage = Math.max(0, Math.min(_datasetPopupPage, totalPages - 1));
+  const start = _datasetPopupPage * _DS_POP_PG;
+  const end   = Math.min(start + _DS_POP_PG, maxRows);
+
+  const headerCells = cols.map((col, ci) =>
+    `<th class="data-th ds-th-edit">
+       <input class="ds-col-inp" data-ci="${ci}" value="${_dsEsc(col.name)}" placeholder="col ${ci+1}">
+     </th>`
+  ).join('');
+
+  const bodyRows = [];
+  for(let r = start; r < end; r++){
+    const cells = cols.map((col, ci) => {
+      const val    = r < col.values.length ? col.values[r] : null;
+      const strVal = (val === null || val === undefined) ? '' : String(val);
+      return `<td class="data-td"><input class="ds-cell-inp${strVal===''?' ds-cell-empty':''}" data-row="${r}" data-ci="${ci}" value="${_dsEsc(strVal)}" placeholder="—"></td>`;
+    }).join('');
+    bodyRows.push(`<tr><td class="data-td data-row-num">${r + 1}</td>${cells}</tr>`);
+  }
+
+  body.innerHTML = `
+    <div class="data-table-wrap ds-table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th class="data-th data-th-idx">#</th>
+          ${headerCells}
+          <th class="data-th ds-th-add"><button class="ds-add-col-btn" id="dspopAddCol">+ col</button></th>
+        </tr></thead>
+        <tbody>${bodyRows.join('')}</tbody>
+      </table>
+    </div>`;
+
+  body.querySelectorAll('.ds-col-inp').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const ci = parseInt(inp.dataset.ci);
+      if(ci >= 0 && ci < cols.length) cols[ci].name = inp.value;
+    });
+    inp.addEventListener('click', e=>e.stopPropagation());
+  });
+
+  body.querySelectorAll('.ds-cell-inp').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const r  = parseInt(inp.dataset.row);
+      const ci = parseInt(inp.dataset.ci);
+      if(ci >= 0 && ci < cols.length){
+        while(cols[ci].values.length <= r) cols[ci].values.push(null);
+        const raw = inp.value.trim();
+        const num = Number(raw);
+        cols[ci].values[r] = raw === '' ? null : (!isNaN(num) ? num : raw);
+        inp.classList.toggle('ds-cell-empty', raw === '');
+      }
+      _syncDatasetSummary(v);
+      if(typeof checkAllWarnings === 'function') checkAllWarnings();
+    });
+    inp.addEventListener('click', e=>e.stopPropagation());
+  });
+
+  document.getElementById('dspopAddCol')?.addEventListener('click', ()=>{
+    cols.push({ name: `col${cols.length + 1}`, values: Array(maxRows).fill(null) });
+    _renderDatasetPopupPage();
+  });
+
+  const paginationHtml = totalPages > 1
+    ? `<button class="lp-btn" id="dspop_prev" ${_datasetPopupPage === 0 ? 'disabled' : ''}>&#8592; Prev</button>
+       <span class="lp-info">Rows ${start + 1}–${end} of ${maxRows}</span>
+       <button class="lp-btn" id="dspop_next" ${_datasetPopupPage >= totalPages - 1 ? 'disabled' : ''}>Next &#8594;</button>`
+    : `<span class="lp-info">${maxRows} rows · ${cols.length} col${cols.length !== 1 ? 's' : ''}</span>`;
+
+  const delColBtn = cols.length > 1
+    ? `<button class="lp-btn lp-del-btn" id="dspop_delCol">&#8722; Last col</button>` : '';
+
+  footer.innerHTML = `
+    <div class="lp-pagination">${paginationHtml}</div>
+    <div class="lp-actions">
+      <button class="lp-btn lp-add-btn"  id="dspop_addRow">+ Add row</button>
+      <button class="lp-btn lp-del-btn"  id="dspop_delRow" ${maxRows <= 0 ? 'disabled' : ''}>&#8722; Last row</button>
+      ${delColBtn}
+      <button class="lp-btn lp-done-btn" id="dspop_done">Done</button>
+    </div>`;
+
+  document.getElementById('dspop_prev')?.addEventListener('click', ()=>{ _datasetPopupPage--; _renderDatasetPopupPage(); });
+  document.getElementById('dspop_next')?.addEventListener('click', ()=>{ _datasetPopupPage++; _renderDatasetPopupPage(); });
+
+  document.getElementById('dspop_addRow')?.addEventListener('click', ()=>{
+    cols.forEach(col => col.values.push(null));
+    const newMax = Math.max(0, ...cols.map(c => c.values.length));
+    _datasetPopupPage = Math.floor(Math.max(0, newMax - 1) / _DS_POP_PG);
+    _renderDatasetPopupPage();
+    _syncDatasetSummary(v);
+    if(typeof checkAllWarnings === 'function') checkAllWarnings();
+  });
+
+  document.getElementById('dspop_delRow')?.addEventListener('click', ()=>{
+    const curMax = cols.length > 0 ? Math.max(0, ...cols.map(c => c.values.length)) : 0;
+    if(curMax > 0){
+      cols.forEach(col => { if(col.values.length >= curMax) col.values.pop(); });
+      const newMax = cols.length > 0 ? Math.max(0, ...cols.map(c => c.values.length)) : 0;
+      _datasetPopupPage = Math.min(_datasetPopupPage, Math.max(0, Math.ceil(newMax / _DS_POP_PG) - 1));
+      _renderDatasetPopupPage();
+      _syncDatasetSummary(v);
+      if(typeof checkAllWarnings === 'function') checkAllWarnings();
+    }
+  });
+
+  document.getElementById('dspop_delCol')?.addEventListener('click', ()=>{
+    if(cols.length > 1){
+      cols.pop();
+      _renderDatasetPopupPage();
+      _syncDatasetSummary(v);
+      if(typeof checkAllWarnings === 'function') checkAllWarnings();
+    }
+  });
+
+  document.getElementById('dspop_done')?.addEventListener('click', _closeDatasetPopup);
 }
 
 // Rebuild the edit-by-index footer for lists longer than the display threshold.

@@ -57,6 +57,9 @@ function snapshotForUndo(){
       _isNumeric: v._isNumeric || false,
       scope: v.scope ?? 'global',
       folder: v.folder ?? null,
+      datasetCols: v.kind === 'dataset' && v.datasetCols
+        ? v.datasetCols.map(c => ({ name: c.name, values: [...c.values] }))
+        : undefined,
     })),
     varIdCtr,
     tabs: tabs.map(t=>({ id:t.id, name:t.name })),
@@ -133,7 +136,14 @@ function restoreSnapshot(snap){
       const scope = rv.scope ?? 'global';
       // Sanitize: local vars whose tab no longer exists → promote to global
       const safeScope = (scope === 'global' || validTabIds.has(scope)) ? scope : 'global';
-      variables.push({ ...rv, scope: safeScope, folder: rv.folder ?? null });
+      variables.push({
+        ...rv, scope: safeScope, folder: rv.folder ?? null,
+        datasetCols: rv.datasetCols
+          ? rv.datasetCols.map(c => ({ name: c.name, values: [...c.values] }))
+          : (rv.kind === 'dataset'
+              ? [{ name: 'col1', values: [] }, { name: 'col2', values: [] }]
+              : undefined),
+      });
     }
     if(state.varIdCtr !== undefined) varIdCtr = state.varIdCtr;
     renderVariables();
