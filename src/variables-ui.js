@@ -1371,7 +1371,7 @@ function buildConstantBody(item, v){
           v.name      = parsed.name;
           v.nameLatex = parsed.nameLatex;
           v.exprLatex = parsed.exprLatex;
-          fixDecoratorCursor(_mf, prev);
+          fixDecoratorCursor(_mf, prev, mqWrap);
           updateMode(_mf);
           checkAllWarnings();
           updateLatexDropdown(_mf, mqWrap, mqWrap);

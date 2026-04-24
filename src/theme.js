@@ -195,15 +195,10 @@ function applySiteTheme(theme, syncPlots = true){
   const curDefault = getDefaultPresetId();
   if(_BUILTIN_DARK_LIGHT.has(curDefault)){
     const newDefault = (theme === 'light') ? 'light' : 'dark';
-    if(newDefault !== curDefault){
-      setDefaultPresetId(newDefault);
-      if(typeof renderPresetList === 'function') renderPresetList();
-    }
+    if(newDefault !== curDefault) setDefaultPresetId(newDefault);
   }
 
-  if(syncPlots && typeof plots !== 'undefined' && plots.length){
-    applyPreset(getActivePresetId(), null, true);
-  }
+  if(typeof renderPresetList === 'function') renderPresetList();
 }
 
 // Return view defaults for new plots from the DEFAULT preset

@@ -117,10 +117,20 @@ function navigateLatexDropdown(dir){
 
 // Insert the selected command into the MathField.
 // If MQ is in command-entry mode (e.g. user typed \si), cancel it first.
+// Delete the '\' and any partial command letters typed so far.
+// Works by backspacing within command-entry mode: each backspace removes one
+// letter from the command text, and the final backspace removes the '\' itself.
+function _cancelCommandEntry(mf, mqEl){
+  const cmdText = mqEl && mqEl.querySelector('.mq-command-text');
+  if(!cmdText) return;
+  const cmdLen = (cmdText.textContent || '').length;
+  for(let i = 0; i <= cmdLen; i++) mf.keystroke('Backspace');
+}
+
 function applyLatexCompletion(mf, mqEl, fullCmd){
   const inCommandMode = !!(mqEl && mqEl.querySelector('.mq-command-text'));
   if(inCommandMode){
-    mf.keystroke('Escape'); // cancel partial command; reverts to before the '\'
+    _cancelCommandEntry(mf, mqEl); // remove '\partial' before applying the command
   } else {
     // Strip any trailing partial \word from the stored latex
     const latex = mf.latex();
@@ -150,7 +160,12 @@ function applyLatexCompletion(mf, mqEl, fullCmd){
 
 // After each MQ edit, fix cursor position for decorator commands and auto-parens.
 // prevLatex: the latex string from the previous edit event.
-function fixDecoratorCursor(mf, prevLatex){
+// mqEl: the MathQuill wrapper element (used to detect command-entry mode).
+function fixDecoratorCursor(mf, prevLatex, mqEl){
+  // Never keystroke while MQ is in command-entry mode — any cursor movement
+  // will eject the cursor out of the command box (.mq-command-text).
+  if(mqEl && mqEl.querySelector('.mq-command-text')) return;
+
   const latex = mf.latex();
   // Decorator just created with empty box → move cursor inside
   if(/\\overline\{\}$|\\underline\{\}$|\\hat\{\}$|\\bar\{\}$|\\vec\{\}$|\\tilde\{\}$/.test(latex)){
@@ -207,17 +222,16 @@ function wrapMathFieldWithAC(mqEl, mf){
       if(e.key === 'Escape'){
         e.preventDefault();
         hideLatexDropdown();
-        mf.keystroke('Escape'); // also cancel MQ command-entry mode
+        _cancelCommandEntry(mf, mqEl); // delete '\partial' entirely
         return;
       }
     }
 
-    // Escape with dropdown closed: cancel command-entry mode if active
+    // Escape with dropdown closed: delete the partial command entry if active
     if(e.key === 'Escape' && !open){
-      const cmdText = mqEl.querySelector('.mq-command-text');
-      if(cmdText !== null){
+      if(mqEl.querySelector('.mq-command-text')){
         e.preventDefault();
-        mf.keystroke('Escape');
+        _cancelCommandEntry(mf, mqEl);
       }
     }
   }, true);

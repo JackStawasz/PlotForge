@@ -116,7 +116,7 @@ function addFromModal(){
     const el=document.getElementById(`mp_${pk}`); if(el) params[pk]=parseFloat(el.value);
   }
   selTpl=modalSelTpl;
-  const autoName=TEMPLATES[selTpl]?.equation||selTpl;
+  const autoName=TEMPLATES[selTpl]?.label||selTpl;
   const curve=activeCurve();
   if(curve&&!curve.template){
     curve.template=selTpl; curve.params=params;
@@ -513,7 +513,7 @@ function drawChart(p){
     if(curve.jsData.discrete){
       hasDiscrete = true;
       datasets.push({
-        label: curve.name || (curve.template ? (TEMPLATES[curve.template]?.equation||'Curve') : 'Curve'),
+        label: curve.name || (curve.template ? (TEMPLATES[curve.template]?.label||'Curve') : 'Curve'),
         type:'bar', data:curve.jsData.y,
         backgroundColor:hexAlpha(lc,.7), borderColor:lc, borderWidth:1,
       });
@@ -527,7 +527,7 @@ function drawChart(p){
       const strokeOnlyMarkers = new Set(['+', 'x']);
       const isStrokeOnly = strokeOnlyMarkers.has(mk);
       const ds = {
-        label: curve.name || (curve.template ? (TEMPLATES[curve.template]?.equation||'Curve') : 'Curve'),
+        label: curve.name || (curve.template ? (TEMPLATES[curve.template]?.label||'Curve') : 'Curve'),
         type:'line', data:curve.jsData.x.map((xv,i)=>({x:xv,y:curve.jsData.y[i]})),
         borderColor:lc, borderWidth:borderWidthFor(curve), borderDash:dashFor(curve.line_style),
         pointStyle: hasMarker ? chartPointStyle : false,

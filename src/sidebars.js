@@ -521,7 +521,7 @@ function refreshLineCurveSelector(){
     symWrap.innerHTML = makeCurveSymbolSVG(curve, 28, 10);
 
     const autoName = curve.template
-      ? (TEMPLATES[curve.template]?.equation || `Curve ${idx+1}`)
+      ? (TEMPLATES[curve.template]?.label || `Curve ${idx+1}`)
       : (curve.name || `${curve.listYName||'y'} vs ${curve.listXName||'x'}`);
     const nameInp = document.createElement('input');
     nameInp.type = 'text';
@@ -590,8 +590,10 @@ function refreshLineCurveSelector(){
       else if(activeCurveIdx > dragSrcIdx && activeCurveIdx <= destIdx) activeCurveIdx--;
       else if(activeCurveIdx < dragSrcIdx && activeCurveIdx >= destIdx) activeCurveIdx++;
       dragSrcIdx = null;
-      refreshLineCurveSelector(); refreshOverlayLegend(ap.id);
+      refreshLineCurveSelector();
       if(ap.mplMode){ clearTimeout(window._mplDebounce); window._mplDebounce=setTimeout(()=>convertToMpl(ap.id),350); }
+      else if(ap.curves.some(c=>c.jsData)){ destroyChart(ap.id); renderJS(ap.id, false); }
+      else { refreshOverlayLegend(ap.id); }
     });
 
     container.appendChild(pill);

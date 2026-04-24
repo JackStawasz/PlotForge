@@ -938,6 +938,14 @@ header{
 .mq-editable-field .mq-cursor{border-color:var(--acc2) !important;}
 .mq-editable-field *{color:var(--text);}
 .mq-editable-field .mq-fraction{color:var(--text);}
+/* Command-entry box (typed after '\') — override MathQuill's default blue */
+.mq-editable-field .mq-command-text{
+  background:rgba(90,255,206,.13) !important;
+  color:var(--acc2) !important;
+  border-radius:2px;
+  outline:1px solid rgba(90,255,206,.28);
+  padding:0 2px;
+}
 /* Fix overline/underline decorations to use text color */
 .mq-editable-field .mq-overline,
 .mq-editable-field .mq-overline *,
