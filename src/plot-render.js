@@ -608,11 +608,15 @@ function applyAndRender(pid, isNewTemplate=false){
 function evalVarCurve(varName, view){
   const v = (typeof variables !== 'undefined') ? variables.find(v=>v.name===varName&&v.kind==='equation') : null;
   if(!v||!v.exprLatex) return null;
+  // Use the first declared parameter as the independent plotting variable.
+  const params=(typeof extractEquationParams==='function')?extractEquationParams(v.fullLatex||''):['x'];
+  const indepVar=params[0]||'x';
   const N=600, xLo=view.x_min??-10, xHi=view.x_max??10;
   const xs=[];
   for(let i=0;i<N;i++) xs.push(xLo+(xHi-xLo)*i/(N-1));
   const baseCtx=(typeof buildVarContext==='function')?buildVarContext():{};
-  const ys=xs.map(xv=>evalLatexExpr(v.exprLatex, Object.assign({},baseCtx,{x:xv})));
+  delete baseCtx[indepVar]; // don't let a same-named constant shadow the sweep variable
+  const ys=xs.map(xv=>evalLatexExpr(v.exprLatex, Object.assign({},baseCtx,{[indepVar]:xv})));
   const yFinite=ys.filter(y=>y!==null&&isFinite(y));
   return {
     x:xs, y:ys, autoXMin:xLo, autoXMax:xHi,
@@ -653,8 +657,12 @@ function renderJS(pid, firstRender=false){
     const result = evalVarCurve(curve.varName, p.view);
     if(!result){ curve.jsData = {x:[],y:[],discrete:false}; continue; }
     const eqV = (typeof variables !== 'undefined') ? variables.find(v=>v.name===curve.varName&&v.kind==='equation') : null;
+    const _params=(typeof extractEquationParams==='function')?extractEquationParams(eqV?.fullLatex||''):['x'];
+    const _indepVar=_params[0]||'x';
     const evalFn = xv => {
-      const ctx = Object.assign({}, buildVarContext(), {x:xv});
+      const baseCtx = Object.assign({}, buildVarContext());
+      delete baseCtx[_indepVar];
+      const ctx = Object.assign({}, baseCtx, {[_indepVar]: xv});
       return evalLatexExpr(eqV?.exprLatex||'', ctx);
     };
     const sampled = adaptiveSample(result.x, result.y, evalFn);

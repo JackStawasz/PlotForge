@@ -237,6 +237,108 @@ function wrapMathFieldWithAC(mqEl, mf){
   }, true);
 }
 
+// ═══ EQUATION PARAMETER EXTRACTION ═══════════════════════════════════════
+// Parse parameter names from the LHS of a function definition latex string.
+// e.g. 'g\left(t\right)=3t'    → ['t']
+// e.g. 'g\left(x,t\right)=x+t' → ['x','t']
+function extractEquationParams(fullLatex){
+  if(!fullLatex) return ['x'];
+  const eqIdx = fullLatex.indexOf('=');
+  if(eqIdx < 0) return ['x'];
+  const lhs = fullLatex.slice(0, eqIdx).trim();
+  let paramStr = null;
+  const leftMatch = lhs.match(/\\left\((.*?)\\right\)/);
+  if(leftMatch){ paramStr = leftMatch[1]; }
+  else { const pm = lhs.match(/\(([^)]*)\)/); if(pm) paramStr = pm[1]; }
+  if(!paramStr || !paramStr.trim()) return ['x'];
+  const params = paramStr.split(',').map(p=>{
+    p = p.trim(); if(!p) return null;
+    if(/^[a-zA-Z]$/.test(p)) return p;
+    const subM = p.match(/^([a-zA-Z])_\{([^}]+)\}$/); if(subM) return subM[1]+'_'+subM[2];
+    const txtM = p.match(/^\\text\{([^}]+)\}$/);       if(txtM) return txtM[1];
+    return null;
+  }).filter(Boolean);
+  return params.length ? params : ['x'];
+}
+
+// Extract the content and end position of a \left(…\right) block.
+// `start` is the position immediately after the opening \left(.
+// Returns [argsStr, endPos] where endPos points past the closing \right).
+function _extractBalancedArgs(str, start){
+  let depth=1, i=start;
+  while(i<str.length){
+    if(str.startsWith('\\left(',i)||str.startsWith('\\left[',i)){depth++;i+=6;continue;}
+    if(str.startsWith('\\right)',i)){depth--;if(depth===0)return[str.slice(start,i),i+7];i+=7;continue;}
+    if(str.startsWith('\\right]',i)){depth--;if(depth===0)return[null,-1];i+=7;continue;}
+    if(str[i]==='{')depth++; else if(str[i]==='}')depth--;
+    i++;
+  }
+  return[null,-1];
+}
+
+// Split a latex argument string on top-level commas only.
+function _splitLatexArgs(str){
+  const args=[]; let depth=0, start=0, i=0;
+  while(i<str.length){
+    if(str.startsWith('\\left(',i)||str.startsWith('\\left[',i)){depth++;i+=6;continue;}
+    if(str.startsWith('\\right)',i)||str.startsWith('\\right]',i)){depth--;i+=7;continue;}
+    if(str[i]==='{'){depth++;i++;continue;} if(str[i]==='}'){depth--;i++;continue;}
+    if(str[i]===','&&depth===0){args.push(str.slice(start,i).trim());start=i+1;}
+    i++;
+  }
+  const last=str.slice(start).trim(); if(last) args.push(last);
+  return args;
+}
+
+// Recursion guard for function call evaluation.
+let _funcCallDepth = 0;
+
+// Preprocess a latex expression string, replacing calls to known equation variables
+// with their numeric result.  Example: if g(x,t)=x+3t and the expression contains
+// g\left(2,2\right), it is replaced with (8).
+// Only single-letter function names are matched (e.g. g, f, h) so that
+// something like t\left(2\right) is treated as implicit multiplication when t is
+// not an equation variable.
+function _resolveFunctionCalls(latex, ctx){
+  if(typeof variables==='undefined'||_funcCallDepth>=8) return latex;
+  const fnVars=variables.filter(v=>
+    v.kind==='equation'&&v.name&&v.exprLatex&&v.fullLatex&&/^[a-zA-Z]$/.test(v.name)
+  );
+  if(!fnVars.length) return latex;
+  _funcCallDepth++;
+  try{
+    let expr=latex;
+    for(let iter=0;iter<8;iter++){
+      let anyReplaced=false;
+      for(const fv of fnVars){
+        const params=extractEquationParams(fv.fullLatex);
+        const pat=new RegExp(`(?<![a-zA-Z\\\\])${escapeRegex(fv.name)}\\\\left\\(`,'g');
+        let m;
+        while((m=pat.exec(expr))!==null){
+          const[argsStr,endPos]=_extractBalancedArgs(expr,m.index+m[0].length);
+          if(argsStr===null){pat.lastIndex=m.index+1;continue;}
+          const args=_splitLatexArgs(argsStr);
+          if(args.length!==params.length){pat.lastIndex=m.index+1;continue;}
+          const evaledArgs=args.map(a=>evalLatexExpr(a,ctx));
+          if(evaledArgs.some(a=>a===null||!isFinite(a))){pat.lastIndex=m.index+1;continue;}
+          const fnCtx=Object.assign({},ctx);
+          params.forEach((p,i)=>{fnCtx[p]=evaledArgs[i];});
+          const fnResult=evalLatexExpr(fv.exprLatex,fnCtx);
+          if(fnResult===null||!isFinite(fnResult)){pat.lastIndex=m.index+1;continue;}
+          const repl=`(${fnResult})`;
+          expr=expr.slice(0,m.index)+repl+expr.slice(endPos);
+          pat.lastIndex=m.index+repl.length;
+          anyReplaced=true;
+        }
+      }
+      if(!anyReplaced) break;
+    }
+    return expr;
+  }finally{
+    _funcCallDepth--;
+  }
+}
+
 // ═══ LATEX PARSING ═══════════════════════════════════════════════════════
 // Parse "name = expr" from a full latex string.
 // Returns { name, nameLatex, exprLatex }
@@ -338,6 +440,12 @@ function evalLatexExpr(latex, ctx={}){
     return match;
   });
 
+  // Resolve calls to known equation variables before variable substitution.
+  // e.g. g\left(2,3\right) → (8) when g(x,t)=x+3t is defined.
+  // Unknown names (not equation variables) are left as-is and become
+  // implicit multiplication after LaTeX conversion.
+  expr = _resolveFunctionCalls(expr, ctx);
+
   // Substitute known variables (longest names first to avoid partial matches)
   const ctxNames = Object.keys(ctx).filter(n=>n).sort((a,b)=>b.length-a.length);
   for(const name of ctxNames){
@@ -347,7 +455,12 @@ function evalLatexExpr(latex, ctx={}){
       const pat = `${escapeRegex(base)}_(?:\\{${escapeRegex(sub)}\\}|${escapeRegex(sub)})(?![a-zA-Z0-9_])`;
       expr = expr.replace(new RegExp(pat, 'g'), `(${ctx[name]})`);
     } else {
-      expr = expr.replace(new RegExp(`(?<!\\\\)\\b${escapeRegex(name)}\\b`, 'g'), `(${ctx[name]})`);
+      // Use lookahead/lookbehind instead of \b so that digit-adjacent names work,
+      // e.g. '3t' with {t:5} → '3(5)' rather than failing to match.
+      // Lookbehind: not preceded by letter or backslash (prevents partial matches
+      // inside multi-char names like 'alpha', and skips LaTeX commands like '\theta').
+      // Lookahead: not followed by letter/digit/underscore (avoids partial matches).
+      expr = expr.replace(new RegExp(`(?<![a-zA-Z\\\\])${escapeRegex(name)}(?![a-zA-Z0-9_])`, 'g'), `(${ctx[name]})`);
     }
   }
 
