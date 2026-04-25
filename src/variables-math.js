@@ -791,6 +791,82 @@ function rebuildParamSlider(v){
   }
 }
 
+// ═══ LATEX → PYTHON CONVERSION ════════════════════════════════════════════
+// Convert a LaTeX expression string to a Python expression string.
+// Best-effort: handles powers, fractions, trig, absolute value, implicit mul.
+function latexToPython(latex){
+  if(!latex||!latex.trim()) return '';
+  let expr = latex.trim();
+
+  expr = expr.replace(/\\text\{([^}]+)\}/g, '$1');
+
+  // Subscripted identifiers: b_{0} → b_0
+  expr = expr
+    .replace(/([a-zA-Z])_\{([^}]+)\}/g, '$1_$2')
+    .replace(/([a-zA-Z])_([a-zA-Z0-9])/g, '$1_$2');
+
+  // LaTeX commands → Python
+  expr = expr
+    .replace(/\\pi/g,             'math.pi')
+    .replace(/\\e(?![a-zA-Z])/g, 'math.e')
+    .replace(/\\infty/g,          'math.inf')
+    .replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '(($1)/($2))')
+    .replace(/\\sqrt\{([^{}]*)\}/g,'math.sqrt($1)')
+    .replace(/\\sin/g,    'math.sin')
+    .replace(/\\cos/g,    'math.cos')
+    .replace(/\\tan/g,    'math.tan')
+    .replace(/\\arcsin/g, 'math.asin')
+    .replace(/\\arccos/g, 'math.acos')
+    .replace(/\\arctan/g, 'math.atan')
+    .replace(/\\sinh/g,   'math.sinh')
+    .replace(/\\cosh/g,   'math.cosh')
+    .replace(/\\tanh/g,   'math.tanh')
+    .replace(/\\ln/g,     'math.log')
+    .replace(/\\log/g,    'math.log10')
+    .replace(/\\exp/g,    'math.exp')
+    .replace(/\\left\(/g, '(').replace(/\\right\)/g,')')
+    .replace(/\\left\[/g, '[').replace(/\\right\]/g,']')
+    .replace(/\\left\|/g, 'abs(').replace(/\\right\|/g,')')
+    .replace(/\^\{([^{}]*)\}/g,  '**($1)')
+    .replace(/\^(\w)/g,          '**$1')
+    .replace(/\\cdot/g,'*').replace(/\\times/g,'*')
+    .replace(/\{/g,'(').replace(/\}/g,')')
+    .replace(/\\[a-zA-Z]+/g,'');
+
+  // Simplify **(<digit>) → **<digit>
+  expr = expr.replace(/\*\*\((\w+)\)/g, '**$1');
+
+  // Insert explicit * for implicit multiplication
+  expr = expr
+    .replace(/\)\s*\(/g,          ')*(')
+    .replace(/(\d)\s*\(/g,        '$1*(')
+    .replace(/\)\s*(\d)/g,        ')*$1')
+    .replace(/(\d)\s*([a-zA-Z])/g,'$1*$2');
+
+  return expr.trim();
+}
+
+// Generate a one-line Python code snippet for the given variable.
+function varToPython(v){
+  const name = v.name || '_';
+  switch(v.kind){
+    case 'equation':{
+      const params = (typeof extractEquationParams==='function')
+        ? extractEquationParams(v.fullLatex||'') : ['x'];
+      return `${name} = lambda ${params.join(', ')}: ${latexToPython(v.exprLatex||'')}`;
+    }
+    case 'constant':
+      if(v._isNumeric) return `${name} = ${v.value}`;
+      return `${name} = ${latexToPython(v.exprLatex||'')}`;
+    case 'parameter':
+      return `${name} = ${v.value}`;
+    case 'list':
+      return `${name} = [${(v.listItems||[]).join(', ')}]`;
+    default:
+      return '';
+  }
+}
+
 // ═══ EQUATION VALIDATION ═════════════════════════════════════════════════
 // Validate a user-typed equation latex and update the variable's warning state.
 function validateEquationLatex(latex, v){

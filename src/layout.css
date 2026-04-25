@@ -858,6 +858,13 @@ header{
   cursor:pointer;transition:color .12s,border-color .12s;
 }
 .var-stype-copy:hover{ color:var(--fg);border-color:var(--border); }
+.var-stype-label{
+  font-family:var(--mono,monospace);font-size:.62rem;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:3px;
+}
+.var-stype-sep{
+  height:1px;background:var(--border);margin:8px 0 6px;
+}
 /* Dependencies panel */
 .var-sdeps-soon{
   color:var(--muted);font-size:.75rem;text-align:center;

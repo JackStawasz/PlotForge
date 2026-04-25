@@ -1229,6 +1229,13 @@ function _showVarSettingsMenu(v, anchorEl, allScopeVars = []){
 
   // ── Typeset panel ─────────────────────────────────────────────────────
   const typePanel = panelEls['Typeset'];
+  const _copyIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
+
+  // LaTeX row
+  const latexLbl = document.createElement('div');
+  latexLbl.className = 'var-stype-label';
+  latexLbl.textContent = 'LaTeX';
+  typePanel.appendChild(latexLbl);
 
   const latexDisplay = document.createElement('div');
   latexDisplay.className  = 'var-stype-latex';
@@ -1237,7 +1244,6 @@ function _showVarSettingsMenu(v, anchorEl, allScopeVars = []){
 
   const copyBtn = document.createElement('button');
   copyBtn.className = 'var-stype-copy';
-  const _copyIcon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
   copyBtn.innerHTML = _copyIcon + ' Copy LaTeX';
   copyBtn.addEventListener('click', e => {
     e.stopPropagation();
@@ -1248,6 +1254,36 @@ function _showVarSettingsMenu(v, anchorEl, allScopeVars = []){
     }).catch(() => { copyBtn.textContent = 'Copy failed'; });
   });
   typePanel.appendChild(copyBtn);
+
+  // Python row (constant, equation, parameter, list)
+  const pyCode = (typeof varToPython === 'function') ? varToPython(v) : '';
+  if(pyCode){
+    const sep = document.createElement('div');
+    sep.className = 'var-stype-sep';
+    typePanel.appendChild(sep);
+
+    const pyLbl = document.createElement('div');
+    pyLbl.className = 'var-stype-label';
+    pyLbl.textContent = 'Python';
+    typePanel.appendChild(pyLbl);
+
+    const pyDisplay = document.createElement('div');
+    pyDisplay.className = 'var-stype-latex';
+    pyDisplay.textContent = pyCode;
+    typePanel.appendChild(pyDisplay);
+
+    const pyCopyBtn = document.createElement('button');
+    pyCopyBtn.className = 'var-stype-copy';
+    pyCopyBtn.innerHTML = _copyIcon + ' Copy Python';
+    pyCopyBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(pyCode).then(() => {
+        pyCopyBtn.textContent = '✓ Copied';
+        setTimeout(() => { pyCopyBtn.innerHTML = _copyIcon + ' Copy Python'; }, 1500);
+      }).catch(() => { pyCopyBtn.textContent = 'Copy failed'; });
+    });
+    typePanel.appendChild(pyCopyBtn);
+  }
 
   // ── Dependencies panel ────────────────────────────────────────────────
   const depsPanel = panelEls['Dependencies'];
