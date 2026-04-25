@@ -449,3 +449,156 @@ function revertToJS(pid){
   // Defer panel refresh until after renderJS's internal setTimeout completes
   setTimeout(()=>{ refreshCfg(); refreshSidebar(); syncActiveHighlight(); }, 20);
 }
+
+// ═══ DOWNLOAD MODAL ═══════════════════════════════════════════════════════
+
+let _dlPid = null;
+let _dlImageB64 = null;
+
+function _buildDownloadModal(){
+  if(document.getElementById('dl-modal')) return;
+  const el = document.createElement('div');
+  el.id = 'dl-modal'; el.className = 'dl-modal-backdrop';
+  el.innerHTML = `
+    <div class="dl-modal">
+      <div class="dl-modal-header">
+        <span class="dl-modal-title">Download Plot</span>
+        <button class="dl-modal-close" id="dl-close">✕</button>
+      </div>
+      <div class="dl-preview-wrap">
+        <div class="dl-spin-wrap show" id="dl-spin">
+          <div class="spinner"></div>
+          <div class="spin-lbl">rendering…</div>
+        </div>
+        <img class="dl-preview-img" id="dl-preview-img" alt="plot preview">
+      </div>
+      <div class="dl-footer">
+        <span class="dl-fmt-label">Format</span>
+        <select class="dl-fmt-select" id="dl-fmt">
+          <option value="pdf">PDF</option>
+          <option value="png">PNG</option>
+          <option value="jpg">JPG</option>
+        </select>
+        <button class="cbtn dl-download-btn" id="dl-download-btn" disabled>⤓ Download</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  document.getElementById('dl-close').addEventListener('click', _closeDownloadModal);
+  el.addEventListener('click', e=>{ if(e.target===el) _closeDownloadModal(); });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') _closeDownloadModal(); });
+  document.getElementById('dl-download-btn').addEventListener('click', _doDownload);
+}
+
+function _closeDownloadModal(){
+  const el = document.getElementById('dl-modal'); if(!el) return;
+  el.classList.remove('open');
+  _dlPid = null; _dlImageB64 = null;
+  const spin = document.getElementById('dl-spin');
+  const img  = document.getElementById('dl-preview-img');
+  const btn  = document.getElementById('dl-download-btn');
+  if(spin) spin.classList.add('show');
+  if(img){ img.classList.remove('ready'); img.src=''; }
+  if(btn) btn.disabled = true;
+}
+
+async function showDownloadModal(pid){
+  _buildDownloadModal();
+  _dlPid = pid;
+  document.getElementById('dl-modal').classList.add('open');
+  const p = gp(pid); if(!p){ _closeDownloadModal(); return; }
+
+  const curvesPayload = p.curves
+    .filter(c=>c.jsData && c.jsData.x && c.jsData.x.length)
+    .map(c=>({
+      x: c.jsData.x, y: c.jsData.y,
+      is_discrete: c.jsData.discrete || false,
+      line_color: c.line_color, line_width: c.line_width,
+      line_style: c.line_style, line_connection: c.line_connection || 'linear',
+      marker: c.marker, marker_size: c.marker_size,
+      fill_under: c.fill_under, fill_alpha: c.fill_alpha,
+      label: c.name || (c.template ? (TEMPLATES[c.template]?.equation || c.template) : 'List curve'),
+    }));
+
+  try{
+    const r = await fetch(`${API}/plot`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        curves: curvesPayload,
+        view: {...p.view, bg_color:p.view.bg_color||'#12121c', surface_color:p.view.surface_color||'#12121c'},
+        labels: p.labels,
+        text_annotations: p.textAnnotations||[],
+      }),
+    });
+    const data = await r.json();
+    if(data.error) throw new Error(data.error);
+    _dlImageB64 = data.image;
+    const spin = document.getElementById('dl-spin');
+    const img  = document.getElementById('dl-preview-img');
+    const btn  = document.getElementById('dl-download-btn');
+    if(img){ img.src=`data:image/png;base64,${data.image}`; img.classList.add('ready'); }
+    if(spin) spin.classList.remove('show');
+    if(btn) btn.disabled = false;
+  }catch(e){
+    console.error('download render error:', e.message);
+    _closeDownloadModal();
+  }
+}
+
+async function _doDownload(){
+  if(!_dlPid || !_dlImageB64) return;
+  const p = gp(_dlPid); if(!p) return;
+  const fmt  = document.getElementById('dl-fmt')?.value || 'pdf';
+  const title = (p.labels?.title||'').trim();
+  const base  = title ? title.replace(/[^a-z0-9_\-]/gi,'_') : 'plot';
+
+  if(fmt==='png'){
+    _triggerDownload(`data:image/png;base64,${_dlImageB64}`, `${base}.png`);
+  } else if(fmt==='jpg'){
+    const img = new Image();
+    img.onload = ()=>{
+      const c = document.createElement('canvas');
+      c.width=img.naturalWidth; c.height=img.naturalHeight;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = p.view?.bg_color||'#12121c';
+      ctx.fillRect(0,0,c.width,c.height);
+      ctx.drawImage(img,0,0);
+      _triggerDownload(c.toDataURL('image/jpeg',0.95), `${base}.jpg`);
+    };
+    img.src = `data:image/png;base64,${_dlImageB64}`;
+  } else {
+    const curvesPayload = p.curves
+      .filter(c=>c.jsData && c.jsData.x && c.jsData.x.length)
+      .map(c=>({
+        x: c.jsData.x, y: c.jsData.y,
+        is_discrete: c.jsData.discrete || false,
+        line_color: c.line_color, line_width: c.line_width,
+        line_style: c.line_style, line_connection: c.line_connection || 'linear',
+        marker: c.marker, marker_size: c.marker_size,
+        fill_under: c.fill_under, fill_alpha: c.fill_alpha,
+        label: c.name || (c.template ? (TEMPLATES[c.template]?.equation || c.template) : 'List curve'),
+      }));
+    try{
+      const r = await fetch(`${API}/plot/pdf`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          curves: curvesPayload,
+          view: {...p.view, bg_color:p.view.bg_color||'#12121c', surface_color:p.view.surface_color||'#12121c'},
+          labels: p.labels,
+          text_annotations: p.textAnnotations||[],
+        }),
+      });
+      if(!r.ok) throw new Error(await r.text());
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      _triggerDownload(url, `${base}.pdf`);
+      URL.revokeObjectURL(url);
+    }catch(e){ console.error('PDF download error:', e.message); }
+  }
+}
+
+function _triggerDownload(url, filename){
+  const a = Object.assign(document.createElement('a'),{href:url, download:filename});
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}

@@ -167,7 +167,10 @@
         <div>
           <div class="slbl-row">
             <span class="slbl">Viewport Domain</span>
-            <button class="home-btn" id="domainHomeBtn" title="Reset to default view">&#8634; reset view</button>
+            <div style="display:flex;gap:5px">
+              <button class="home-btn" id="viewLockBtn">🔒 lock</button>
+              <button class="home-btn" id="domainHomeBtn" title="Reset to default view">&#8634; reset</button>
+            </div>
           </div>
           <div class="cfg-sec">
             <div class="crow-range">
@@ -184,13 +187,15 @@
                 <input type="text" inputmode="decimal" id="c_yx" placeholder="max"/>
               </div>
             </div>
-            <div class="trow">
-              <label>Log scale X</label>
-              <label class="tog"><input type="checkbox" id="c_x_log"><span class="tslider"></span></label>
-            </div>
-            <div class="trow">
-              <label>Log scale Y</label>
-              <label class="tog"><input type="checkbox" id="c_y_log"><span class="tslider"></span></label>
+            <div class="trow-pair">
+              <div class="trow">
+                <label>Log X</label>
+                <label class="tog"><input type="checkbox" id="c_x_log"><span class="tslider"></span></label>
+              </div>
+              <div class="trow">
+                <label>Log Y</label>
+                <label class="tog"><input type="checkbox" id="c_y_log"><span class="tslider"></span></label>
+              </div>
             </div>
           </div>
         </div>

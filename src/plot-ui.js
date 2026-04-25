@@ -783,12 +783,7 @@ function buildCard(p){
 }
 
 function buildTopbarInner(p){
-  const cc = p.curves.filter(c=>c.template).length, canMpl = true;
   const inFs = !!document.querySelector('.plot-card.plot-fs');
-  const mplBtn = p.mplMode
-    ? `<button class="cbtn revert-btn" data-pid="${p.id}" data-action="revert">⟲</button>`
-    : `<button class="cbtn mpl-btn${!canMpl?' mpl-disabled':''}" data-pid="${p.id}" data-action="mpl" ${!canMpl?'disabled':''}>▨</button>`;
-  const annDisabled = p.mplMode ? 'disabled style="opacity:.3;pointer-events:none"' : '';
   const dupDelDisabled = inFs ? 'disabled style="opacity:.3;pointer-events:none;cursor:not-allowed"' : '';
   return `
     <div class="ctitle-left">
@@ -797,12 +792,11 @@ function buildTopbarInner(p){
       <button class="cbtn addcurve-btn" data-pid="${p.id}" data-action="addcurve">⊕ add curve</button>
     </div>
     <div class="cactions-center">
-      ${mplBtn}
-      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addannotation" data-tip="Add text/shape overlay" ${annDisabled}>✎</button>
     </div>
     <div class="cactions-right">
       <span class="ctop-coords" id="ctop_coords_${p.id}"></span>
-      <button class="cbtn pdf-btn" data-pid="${p.id}" data-action="savepdf">⤓ PDF</button>
+      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addannotation" data-tip="✎ Add text/shape overlay">✎</button>
+      <button class="cbtn dl-topbar-btn" data-pid="${p.id}" data-action="download" data-tip="⤓ Save as image">⤓</button>
       <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" ${dupDelDisabled}>⧉</button>
       <button class="cbtn fs-btn" data-pid="${p.id}" data-action="fullscreen">⛶</button>
       <button class="cbtn del-btn" data-pid="${p.id}" data-action="del" ${dupDelDisabled}>🗑</button>
@@ -1877,9 +1871,7 @@ function handleAction(action, pid, triggerEl){
     // Allow zero plots — don't auto-create a new one
     renderDOM(); snapshotForUndo(); return;
   }
-  if(action==='mpl')     { convertToMpl(pid);  return; }
-  if(action==='revert')  { revertToJS(pid);    return; }
-  if(action==='savepdf') { savePlotPdf(pid);   return; }
+  if(action==='download') { showDownloadModal(pid); return; }
 }
 
 let _fullscreenPid = null;
