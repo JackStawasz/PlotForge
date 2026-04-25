@@ -1558,6 +1558,7 @@ function buildEquationBody(item, v){
             v.exprLatex = v.fullLatex.slice(eqIdx + 1).trim();
           }
           validateEquationLatex(v.fullLatex, v);
+          checkAllWarnings();
           // Incomplete-expression check: fires 1 s after typing stops.
           // Only activates when no structural error is already shown.
           clearTimeout(v._incompleteTimer);

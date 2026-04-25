@@ -199,6 +199,11 @@
   color:var(--acc);font-size:.73rem;padding:4px 10px;
 }
 .cbtn.addcurve-btn:hover{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:var(--acc);color:var(--acc);}
+.cbtn.addtpl-btn{
+  border-color:color-mix(in srgb,var(--acc4) 45%,transparent);
+  color:var(--acc4);font-size:.73rem;padding:4px 10px;
+}
+.cbtn.addtpl-btn:hover{background:color-mix(in srgb,var(--acc4) 12%,transparent);border-color:var(--acc4);color:var(--acc4);}
 .cactions-center{
   display:flex;gap:7px;align-items:center;justify-content:center;
 }
@@ -1448,3 +1453,87 @@ tr:hover .lp-td{ background:rgba(255,255,255,.025); }
 }
 .ml-progress-pct{ color:var(--acc2);font-weight:600; }
 .ml-progress-eta{ color:var(--muted); }
+
+/* ═══ ADD CURVE MODAL ════════════════════════════════════════════════ */
+.ac-modal-backdrop{
+  position:fixed;inset:0;z-index:900;
+  background:rgba(4,4,12,.78);backdrop-filter:blur(4px);
+  display:none;align-items:center;justify-content:center;padding:24px;
+}
+.ac-modal-backdrop.open{display:flex;}
+[data-theme="light"] .ac-modal-backdrop{background:rgba(200,210,230,.72);}
+.ac-modal{
+  background:var(--s1);border:1px solid var(--border2);border-radius:14px;
+  width:min(94vw,520px);display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 24px 80px rgba(0,0,0,.6);
+}
+.ac-modal-header{
+  display:flex;align-items:center;gap:14px;padding:16px 20px;
+  border-bottom:1px solid var(--border);flex-shrink:0;background:var(--s0);
+}
+.ac-modal-title{
+  font-family:var(--serif);font-size:1.2rem;font-weight:700;
+}
+.ac-modal-title em{color:var(--acc);font-style:italic;}
+.ac-modal-close{
+  margin-left:auto;background:transparent;border:1px solid var(--border2);
+  border-radius:5px;color:var(--muted);font-size:.85rem;cursor:pointer;
+  padding:5px 9px;transition:all .12s;font-family:var(--mono);
+}
+.ac-modal-close:hover{border-color:var(--acc3);color:var(--acc3);}
+.ac-tabs{
+  display:flex;border-bottom:1px solid var(--border);background:var(--s0);flex-shrink:0;
+}
+.ac-tab{
+  flex:1;padding:10px 16px;font-family:var(--mono);font-size:.75rem;font-weight:600;
+  color:var(--muted);cursor:pointer;border:none;background:transparent;
+  border-bottom:2px solid transparent;transition:all .12s;letter-spacing:.04em;
+}
+.ac-tab.active{color:var(--acc2);border-bottom-color:var(--acc2);}
+.ac-modal-body{
+  flex:1;min-height:180px;padding:16px;overflow-y:auto;
+  display:flex;flex-direction:column;
+}
+.ac-var-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;
+}
+.ac-var-card{
+  background:var(--s2);border:1px solid var(--border2);border-radius:8px;
+  padding:10px 12px;cursor:pointer;transition:all .14s;
+}
+.ac-var-card:hover{border-color:var(--acc2);}
+.ac-var-card.selected{
+  border-color:var(--acc2);background:color-mix(in srgb,var(--acc2) 10%,transparent);
+}
+.ac-var-name{
+  font-family:var(--mono);font-size:.82rem;font-weight:700;color:var(--acc2);
+}
+.ac-var-expr{
+  font-family:var(--mono);font-size:.66rem;color:var(--muted);
+  margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.ac-list-wrap{display:flex;flex-direction:column;gap:10px;}
+.ac-empty,.ac-placeholder{
+  font-family:var(--mono);font-size:.75rem;color:var(--muted);
+  text-align:center;padding:36px 20px;line-height:1.7;
+  display:flex;align-items:center;justify-content:center;flex:1;
+}
+.ac-modal-footer{
+  display:flex;align-items:center;gap:10px;padding:12px 16px;
+  border-top:1px solid var(--border);background:var(--s0);flex-shrink:0;
+}
+.ac-sel-info{
+  font-family:var(--mono);font-size:.7rem;color:var(--muted);
+  flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.ac-add-btn{
+  font-family:var(--mono);font-size:.73rem;font-weight:600;
+  padding:7px 16px;border-radius:6px;cursor:pointer;
+  border:1px solid color-mix(in srgb,var(--acc) 60%,transparent);
+  background:color-mix(in srgb,var(--acc) 10%,transparent);color:var(--acc);
+  transition:all .12s;flex-shrink:0;
+}
+.ac-add-btn:hover:not(:disabled){
+  background:color-mix(in srgb,var(--acc) 20%,transparent);border-color:var(--acc);
+}
+.ac-add-btn:disabled{opacity:.3;cursor:not-allowed;}
