@@ -738,6 +738,10 @@
 .dlbl{font-size:.64rem;color:var(--muted);text-align:center;margin-top:1px}
 .trow{display:flex;align-items:center;justify-content:space-between}
 .trow>label{font-size:.72rem;color:var(--muted)}
+.trow-pair{display:flex;gap:10px}
+.trow-pair>.trow{flex:1}
+.home-btn.locked{border-color:color-mix(in srgb,var(--acc2) 60%,transparent);color:var(--acc2);background:color-mix(in srgb,var(--acc2) 8%,transparent)}
+.home-btn.locked:hover{border-color:var(--acc2);color:var(--acc2);background:color-mix(in srgb,var(--acc2) 14%,transparent)}
 .tog{position:relative;display:inline-block;width:30px;height:17px}
 .tog input{opacity:0;width:0;height:0}
 .tslider{position:absolute;inset:0;border-radius:17px;background:var(--s2);border:1px solid var(--border2);cursor:pointer;transition:background .18s;}

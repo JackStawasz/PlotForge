@@ -761,6 +761,12 @@ function syncCfgDomain(){
   const dom=getEffectiveDomain(activePid), focused=document.activeElement?.id;
   const set=(id,val)=>{ const el=document.getElementById(id); if(el&&el.id!==focused) el.value=fmtDomain(val); };
   set('c_xn',dom.xMin); set('c_xx',dom.xMax); set('c_yn',dom.yMin); set('c_yx',dom.yMax);
+  const lockBtn=document.getElementById('viewLockBtn');
+  if(lockBtn){
+    const locked=p.view.locked??false;
+    lockBtn.classList.toggle('locked',locked);
+    lockBtn.textContent=locked?'🔓 unlock':'🔒 lock';
+  }
 }
 
 function resetDomainToDefault(){
@@ -959,6 +965,11 @@ function initCfgPanel(){
   document.getElementById('cfgTabPlot')?.addEventListener('click', ()=>setCfgTab('plot'));
   document.getElementById('cfgTabLine')?.addEventListener('click', ()=>{ setCfgTab('line'); refreshLineCurveSelector(); });
   document.getElementById('domainHomeBtn')?.addEventListener('click', resetDomainToDefault);
+  document.getElementById('viewLockBtn')?.addEventListener('click', ()=>{
+    const p=activePid!==null?gp(activePid):null; if(!p) return;
+    p.view.locked=!(p.view.locked??false);
+    syncCfgDomain();
+  });
 
   [['c_xn','x','min'],['c_xx','x','max'],['c_yn','y','min'],['c_yx','y','max']].forEach(([id,axis,mm])=>{
     const el = document.getElementById(id); if(!el) return;

@@ -179,7 +179,7 @@ function defView(){
         show_legend:true, title_size:13, label_size:10, legend_size:9 };
   return {
     x_min:null, x_max:null, y_min:null, y_max:null,
-    x_log:false, y_log:false,
+    x_log:false, y_log:false, locked:false,
     legend_x_frac: 0.98,
     legend_y_frac: 0.02,
     legend_text_color: '#e8e8f0',

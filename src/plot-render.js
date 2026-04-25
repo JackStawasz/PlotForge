@@ -951,6 +951,7 @@ function wireInteraction(p){
     // Only zoom when this plot is the active (selected) one.
     // If it isn't, let the event bubble so the plot list scrolls normally.
     if(p.id !== activePid) return;
+    if(p.view?.locked) return;
     e.preventDefault();
     const ch = chartInstances[p.id]; if(!ch) return;
     const {dataX, dataY} = pixelToData(ch, e.clientX, e.clientY);
@@ -981,6 +982,7 @@ function wireInteraction(p){
   }, {passive:false});
   wrap.addEventListener('mousedown', e=>{
     if(e.button!==0) return;
+    if(p.view?.locked) return;
     if(e.target.closest('.overlay-legend')) return;
     startPan(e, p);
   });
