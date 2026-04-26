@@ -147,7 +147,6 @@ function applyLatexCompletion(mf, mqEl, fullCmd){
   ]);
   if(decorators.has(fullCmd)){
     mf.write(fullCmd + '{}');
-    mf.keystroke('Left');
   } else if(fullCmd === '\\text'){
     mf.cmd('\\text');
   } else {
@@ -173,7 +172,8 @@ function fixDecoratorCursor(mf, prevLatex, mqEl){
     return;
   }
   // MathQuill auto-inserts \left(\right) on '(' — only correct on fresh insertion
-  if(/\\left\(\\right\)$/.test(latex) && !/\\left\(\\right\)$/.test(prevLatex || '')){
+  const grew = latex.length > (prevLatex||'').length;
+  if(/\\left\(\\right\)$/.test(latex) && grew){
     mf.keystroke('Left');
   }
 }

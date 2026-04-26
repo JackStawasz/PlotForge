@@ -400,6 +400,22 @@ function reEvalAllConstants(){
   }
 }
 
+// ── Reactive curve re-render ──────────────────────────────────────────────
+// Re-renders every plot that has at least one equation-variable curve.
+// Immediate: used for slider/live-value updates.
+// Debounced: used for keyboard edits to avoid redrawing on every keystroke.
+function _rerenderVarCurves(){
+  if(typeof plots === 'undefined' || typeof renderJS !== 'function') return;
+  for(const p of plots){
+    if(p.curves.some(c => c.varName)) renderJS(p.id);
+  }
+}
+let _rerenderVarTimer = null;
+function _scheduleRerenderVarCurves(){
+  clearTimeout(_rerenderVarTimer);
+  _rerenderVarTimer = setTimeout(_rerenderVarCurves, 150);
+}
+
 // ═══ RENDER VARIABLES LIST ═══════════════════════════════════════════════
 function renderVariables(){
   // Clear body-level warning tooltips from the previous render
@@ -1453,6 +1469,7 @@ function buildConstantBody(item, v){
           fixDecoratorCursor(_mf, prev, mqWrap);
           updateMode(_mf);
           checkAllWarnings();
+          _scheduleRerenderVarCurves();
           updateLatexDropdown(_mf, mqWrap, mqWrap);
         }
       }
@@ -1474,6 +1491,7 @@ function buildConstantBody(item, v){
         v.exprLatex = formatParamVal(v.value);
       }
       reEvalAllConstants();
+      _rerenderVarCurves();
     });
 
     minInp.addEventListener('change', ()=>{
@@ -1542,6 +1560,7 @@ function buildParameterBody(item, v){
               reEvalAllConstants();
             }
           }
+          _scheduleRerenderVarCurves();
           updateLatexDropdown(_mf, mqWrap, mqWrap);
         }
       }
@@ -1555,6 +1574,7 @@ function buildParameterBody(item, v){
       v.value = parseFloat(slider.value);
       if(_mf) _mf.latex(`${v.name || 'p'}=${formatParamVal(v.value)}`);
       reEvalAllConstants();
+      _rerenderVarCurves();
     });
 
     minInp.addEventListener('change', ()=>{
@@ -1595,6 +1615,7 @@ function buildEquationBody(item, v){
           }
           validateEquationLatex(v.fullLatex, v);
           checkAllWarnings();
+          _scheduleRerenderVarCurves();
           // Incomplete-expression check: fires 1 s after typing stops.
           // Only activates when no structural error is already shown.
           clearTimeout(v._incompleteTimer);

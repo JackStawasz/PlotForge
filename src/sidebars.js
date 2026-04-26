@@ -135,6 +135,12 @@ function setSbTab(tab){
   document.getElementById('sbTabVars')?.classList.toggle('sidebar-tab-active', tab==='vars');
   const pf = document.getElementById('sbPaneFiles'); if(pf) pf.style.display = tab==='files' ? 'flex' : 'none';
   const pv = document.getElementById('sbPaneVars');  if(pv) pv.style.display  = tab==='vars'  ? 'flex' : 'none';
+  const shown = tab === 'files' ? pf : pv;
+  if(shown && typeof MQ !== 'undefined' && MQ) requestAnimationFrame(()=>{
+    shown.querySelectorAll('[id^="vmq_"]').forEach(el=>{
+      try{ MQ.MathField(el).reflow(); }catch(e){}
+    });
+  });
 }
 
 // ═══ FILES TAB ═══════════════════════════════════════════════════════════
