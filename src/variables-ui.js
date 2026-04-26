@@ -110,6 +110,21 @@ function showVarTypePicker(forceScope){
     picker.appendChild(row);
   });
 
+  // Template row
+  const tplRow = document.createElement('button');
+  tplRow.style.cssText = 'display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:none;padding:9px 14px;cursor:pointer;transition:background .08s;text-align:left;';
+  tplRow.innerHTML = `<span style="font-size:1.05rem;width:22px;text-align:center;flex-shrink:0;color:var(--acc2);opacity:.85">▨</span>`
+    + `<span><span style="color:var(--text);font-size:.8rem;display:block">Template</span>`
+    + `<span style="color:var(--muted);font-size:.68rem">Constants & functions</span></span>`;
+  tplRow.addEventListener('mouseenter', ()=>{ tplRow.style.background='rgba(90,255,206,.07)'; });
+  tplRow.addEventListener('mouseleave', ()=>{ tplRow.style.background='transparent'; });
+  tplRow.addEventListener('mousedown', e=>{ e.preventDefault(); e.stopPropagation(); });
+  tplRow.addEventListener('click', e=>{
+    e.stopPropagation(); hideVarTypePicker();
+    if(typeof openTemplateModal === 'function') openTemplateModal('variable', pickerScope);
+  });
+  picker.appendChild(tplRow);
+
   // Separator
   const sep = document.createElement('div');
   sep.style.cssText = 'height:1px;background:var(--border2);margin:3px 0;';
@@ -2221,11 +2236,11 @@ function rebuildListCells(v, cellsWrap){
 
 // ═══ TEMPLATE → VARIABLES SYNC ═══════════════════════════════════════════
 // Called when a template is applied; syncs its parameters to the variables panel.
-function syncTemplateParamsToVars(tplKey, params){
+function syncTemplateParamsToVars(tplKey, params, overrideScope){
   if(!TEMPLATES || !TEMPLATES[tplKey]) return;
   const tpl        = TEMPLATES[tplKey];
   const tplParams  = tpl.params;
-  const localScope = (typeof activeTabId !== 'undefined' && activeTabId != null) ? activeTabId : 'global';
+  const localScope = overrideScope ?? ((typeof activeTabId !== 'undefined' && activeTabId != null) ? activeTabId : 'global');
   const folderName = tpl.label;
 
   for(const [pk, pd] of Object.entries(tplParams)){
@@ -2252,7 +2267,7 @@ function syncTemplateParamsToVars(tplKey, params){
   // Add formula variable (equation kind) once per template+scope
   const existingFormula = variables.find(v=>v.fromTemplate && v.templateKey===tplKey && v.paramKey==='_formula' && v.scope===localScope);
   if(!existingFormula){
-    const eqLatex = tpl.equation;
+    const eqLatex = tpl.latexEq || tpl.equation;
     addVariable('equation', {
       name: 'f',
       exprLatex: eqLatex,

@@ -790,7 +790,6 @@ function buildTopbarInner(p){
       <span class="plot-drag-handle" title="Drag to reorder">⠿</span>
       <span class="ctitle-text" data-pid="${p.id}" data-action="rename" title="Click to rename">${p.name || `Plot ${p.plotNumber}`}</span>
       <button class="cbtn addcurve-btn" data-pid="${p.id}" data-action="addcurve">⊕ add curve</button>
-      <button class="cbtn addtpl-btn" data-pid="${p.id}" data-action="addtemplate">▨ template</button>
     </div>
     <div class="cactions-center">
     </div>
@@ -1853,11 +1852,6 @@ function handleAction(action, pid, triggerEl){
     activePid = pid; activeCurveIdx = 0;
     syncActiveHighlight(); refreshCfg(); refreshSidebar();
     openAddCurveModal(); return;
-  }
-  if(action==='addtemplate'){
-    activePid = pid; activeCurveIdx = 0;
-    syncActiveHighlight(); refreshCfg(); refreshSidebar();
-    openTemplateModal(); return;
   }
   if(action==='addannotation'){
     const p = gp(pid); if(p && p.mplMode) return;
