@@ -1467,10 +1467,12 @@ function buildConstantBody(item, v){
           v.nameLatex = parsed.nameLatex;
           v.exprLatex = parsed.exprLatex;
           fixDecoratorCursor(_mf, prev, mqWrap);
-          updateMode(_mf);
           checkAllWarnings();
           _scheduleRerenderVarCurves();
           updateLatexDropdown(_mf, mqWrap, mqWrap);
+          // Defer updateMode so MQ.StaticMath calls inside evaluateConstant
+          // don't steal focus mid-edit and corrupt cursor/command-mode state.
+          requestAnimationFrame(()=> updateMode(_mf));
         }
       }
     });

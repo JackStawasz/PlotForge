@@ -64,6 +64,34 @@
   font-size:.72rem;color:var(--text);cursor:default;
 }
 
+/* Math font select — gear panel */
+.gear-font-select{
+  background:var(--s2);border:1px solid var(--border2);border-radius:5px;
+  color:var(--text);font-family:var(--mono);font-size:.68rem;
+  padding:2px 5px;cursor:pointer;
+  transition:border-color .12s;
+}
+.gear-font-select:focus{ outline:none;border-color:var(--acc2); }
+
+/* ─── Math font overrides on .mq-math-mode ─── */
+[data-math-font="latin-modern"] .mq-math-mode,
+[data-math-font="latin-modern"] .mq-math-mode var,
+[data-math-font="latin-modern"] .mq-math-mode .mq-var{
+  font-family:'Latin Modern Math',serif !important;
+}
+[data-math-font="stix-two"] .mq-math-mode,
+[data-math-font="stix-two"] .mq-math-mode var,
+[data-math-font="stix-two"] .mq-math-mode .mq-var{
+  font-family:'STIX Two Math','Times New Roman',serif !important;
+}
+[data-math-font="katex"] .mq-math-mode{
+  font-family:'KaTeX_Main','Times New Roman',serif !important;
+}
+[data-math-font="katex"] .mq-math-mode var,
+[data-math-font="katex"] .mq-math-mode .mq-var{
+  font-family:'KaTeX_Math','Times New Roman',serif !important;
+}
+
 /* Pill toggle — used in the gear panel for site theme */
 .theme-pill-toggle{
   position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0;cursor:pointer;

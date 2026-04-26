@@ -2030,6 +2030,10 @@ function wireAllCfgInputs(){
     if(typeof applySiteTheme === 'function') applySiteTheme(this.checked ? 'light' : 'dark', true);
   });
 
+  document.getElementById('siteMathFontSelect')?.addEventListener('change', function(){
+    if(typeof applyMathFont === 'function') applyMathFont(this.value);
+  });
+
   // Escape: exit plot fullscreen. If browser is also in F11 fullscreen,
   // first Escape exits plot-fs; browser handles its own Escape separately.
   document.addEventListener('keydown', e=>{

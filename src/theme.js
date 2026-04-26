@@ -216,7 +216,20 @@ function defViewThemeOverrides(){
   return variant ? { ...variant } : { ...PLOT_THEMES.dark };
 }
 
+// ═══ MATH FONT ═══════════════════════════════════════════════════════════
+function getMathFont(){
+  return localStorage.getItem('pf-math-font') || 'latin-modern';
+}
+
+function applyMathFont(font){
+  localStorage.setItem('pf-math-font', font);
+  document.documentElement.dataset.mathFont = font;
+  const sel = document.getElementById('siteMathFontSelect');
+  if(sel) sel.value = font;
+}
+
 // ═══ INIT ════════════════════════════════════════════════════════════════
 function initTheme(){
   applySiteTheme(getSiteTheme(), false);
+  applyMathFont(getMathFont());
 }

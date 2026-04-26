@@ -4,8 +4,15 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PlotForge</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,600;1,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;1,9..144,300&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,600;1,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;1,9..144,300&family=STIX+Two+Math&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mathquill@0.10.1/build/mathquill.css">
+<style>
+@font-face{
+  font-family:'Latin Modern Math';
+  src:url('https://cdn.jsdelivr.net/gh/vincentdoerig/latex-css@1.8.0/fonts/LatinModernMath-Regular.woff2') format('woff2');
+  font-weight:normal;font-style:normal;font-display:swap;
+}
+</style>
 <link rel="stylesheet" href="layout.css"/>
 <link rel="stylesheet" href="components.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -38,6 +45,14 @@
             <input type="checkbox" id="siteThemeToggle"/>
             <span class="theme-pill-track"><span class="theme-pill-thumb"></span></span>
           </label>
+        </div>
+        <div class="gear-setting-row">
+          <label class="gear-setting-label" for="siteMathFontSelect">Math font</label>
+          <select class="gear-font-select" id="siteMathFontSelect">
+            <option value="latin-modern">Latin Modern</option>
+            <option value="stix-two">STIX Two</option>
+            <option value="katex">KaTeX</option>
+          </select>
         </div>
       </div>
     </div>
