@@ -1,35 +1,25 @@
 import re
-import numpy as np
 from flask import Blueprint, jsonify, request
 from sympy.parsing.latex import parse_latex
-from sympy import (Symbol, latex as sym_latex, N, simplify,
-                   E, pi as SPI, oo, Integer, Rational)
+from sympy import Symbol, latex as sym_latex, N, E, pi as SPI, oo
 
 evaluate_bp = Blueprint('evaluate', __name__)
 
 CONST_SUBS = [(Symbol('pi'), SPI), (Symbol('e'), E)]
 
-GREEK_POOL = [
-    ('\\alpha','alpha'), ('\\beta','beta'), ('\\gamma','gamma'),
-    ('\\delta','delta'), ('\\varepsilon','varepsilon'), ('\\zeta','zeta'),
-    ('\\eta','eta'), ('\\vartheta','vartheta'), ('\\iota','iota'),
-    ('\\kappa','kappa'), ('\\lambda','lambda'), ('\\mu','mu'),
-    ('\\nu','nu'), ('\\xi','xi'), ('\\varpi','varpi'),
-    ('\\varrho','varrho'), ('\\varsigma','varsigma'), ('\\tau','tau'),
-    ('\\upsilon','upsilon'), ('\\varphi','varphi'),
-    ('\\chi','chi'), ('\\psi','psi'), ('\\omega','omega'),
-]
-
-POOL = [
-    ('\\alpha','_pA'), ('\\beta','_pB'), ('\\gamma','_pC'),
-    ('\\delta','_pD'), ('\\varepsilon','_pE'), ('\\zeta','_pF'),
-    ('\\eta','_pG'), ('\\vartheta','_pH'), ('\\iota','_pI'),
-    ('\\kappa','_pJ'), ('\\lambda','_pK'), ('\\mu','_pL'),
-    ('\\nu','_pM'), ('\\xi','_pN'), ('\\varpi','_pO'),
-    ('\\varrho','_pP'), ('\\varsigma','_pQ'), ('\\tau','_pR'),
-    ('\\upsilon','_pS'), ('\\varphi','_pT'),
-    ('\\chi','_pU'), ('\\psi','_pV'), ('\\omega','_pW'),
-]
+# Maps JavaScript-parsed variable names to their LaTeX command form.
+# JS strips the backslash when extracting names, so 'alpha' → '\alpha' etc.
+GREEK_TO_LATEX = {
+    'alpha': '\\alpha', 'beta': '\\beta', 'gamma': '\\gamma',
+    'delta': '\\delta', 'varepsilon': '\\varepsilon', 'zeta': '\\zeta',
+    'eta': '\\eta', 'vartheta': '\\vartheta', 'iota': '\\iota',
+    'kappa': '\\kappa', 'lambda': '\\lambda', 'mu': '\\mu',
+    'nu': '\\nu', 'xi': '\\xi', 'varpi': '\\varpi',
+    'varrho': '\\varrho', 'varsigma': '\\varsigma', 'tau': '\\tau',
+    'upsilon': '\\upsilon', 'varphi': '\\varphi',
+    'chi': '\\chi', 'psi': '\\psi', 'omega': '\\omega',
+    'hbar': '\\hbar', 'ell': '\\ell',
+}
 
 
 def _fmt_number(expr):
@@ -48,48 +38,46 @@ def _fmt_number(expr):
     return {'value': v, 'latex': f'{v:.10g}'}
 
 
+def _substitute_vars(expr_latex, ctx_syms):
+    """Replace variable names in a LaTeX expression with their numeric values.
+
+    Variable name conventions match what JavaScript sends:
+      - single char: 'x' → matches bare x in LaTeX
+      - subscripted: 'b_0' → matches b_{0} or b_0 in LaTeX
+      - text name: 'myVar' → matches \\text{myVar} in LaTeX
+      - Greek: 'alpha' → matches \\alpha in LaTeX
+    Longest names are substituted first to avoid partial matches.
+    """
+    processed = expr_latex
+    for nm, val in sorted(ctx_syms.items(), key=lambda x: -len(x[0])):
+        val_str = f'({val})'
+
+        if nm in GREEK_TO_LATEX:
+            lat_cmd = re.escape(GREEK_TO_LATEX[nm])
+            processed = re.sub(lat_cmd + r'(?![a-zA-Z])', val_str, processed)
+
+        processed = re.sub(r'\\text\{' + re.escape(nm) + r'\}', val_str, processed)
+
+        if '_' in nm:
+            base, sub = nm.split('_', 1)
+            pat = (r'(?<![a-zA-Z\\])' + re.escape(base) +
+                   r'_(?:\{' + re.escape(sub) + r'\}|' + re.escape(sub) + r')(?![a-zA-Z0-9_])')
+            processed = re.sub(pat, val_str, processed)
+        elif len(nm) == 1:
+            processed = re.sub(
+                r'(?<![a-zA-Z\\])' + re.escape(nm) + r'(?![a-zA-Z_])',
+                val_str, processed)
+
+    return processed
+
+
 def _eval_one(expr_latex, ctx_syms):
     if not expr_latex or not expr_latex.strip():
         return {'value': None, 'latex': '', 'is_numeric': False, 'error': 'empty'}
 
-    from sympy import (expand, factor, cancel, Poly, degree,
-                       Symbol as Sym, latex as sym_latex)
-    from sympy.abc import x as _x
+    from sympy import expand, cancel, Poly
 
-    all_names = list(ctx_syms.keys())
-    text_names_in_expr = re.findall(r'\\text\{([^}]+)\}', expr_latex)
-    for tn in text_names_in_expr:
-        if tn not in all_names:
-            all_names.append(tn)
-
-    name_enc = {}
-    pool_idx = 0
-    for nm in sorted(all_names, key=len, reverse=True):
-        if pool_idx >= len(POOL):
-            break
-        name_enc[nm] = POOL[pool_idx]
-        pool_idx += 1
-
-    processed = expr_latex
-
-    def _sub_text(m):
-        nm = m.group(1)
-        if nm in name_enc:
-            return name_enc[nm][0]
-        return re.sub(r'[^a-zA-Z0-9]', '', nm) or 'z'
-    processed = re.sub(r'\\text\{([^}]+)\}', _sub_text, processed)
-
-    for nm, (lat_ph, _) in sorted(name_enc.items(), key=lambda x: -len(x[0])):
-        if '_' in nm:
-            base, sub = nm.split('_', 1)
-            pat = r'(?<![a-zA-Z\\])' + re.escape(base) + r'_(?:\{' + re.escape(sub) + r'\}|' + re.escape(sub) + r')(?![a-zA-Z0-9_])'
-            _repl = lat_ph
-            processed = re.sub(pat, lambda m, r=_repl: r, processed)
-
-    for nm, (lat_ph, _) in sorted(name_enc.items(), key=lambda x: -len(x[0])):
-        if '_' not in nm and len(nm) == 1:
-            _repl = lat_ph
-            processed = re.sub(r'(?<![a-zA-Z\\])' + re.escape(nm) + r'(?![a-zA-Z_])', lambda m, r=_repl: r, processed)
+    processed = _substitute_vars(expr_latex, ctx_syms)
 
     try:
         expr = parse_latex(processed)
@@ -98,23 +86,14 @@ def _eval_one(expr_latex, ctx_syms):
 
     expr = expr.subs(CONST_SUBS)
 
-    for nm, val in ctx_syms.items():
-        if nm in name_enc:
-            ph_sym = Sym(name_enc[nm][1])
-            expr = expr.subs(ph_sym, val)
-
-    from sympy import sympify as sp_sympify
     try:
         expr = cancel(expr)
     except Exception:
         pass
     try:
-        expr = sp_sympify(str(expand(expr)))
+        expr = expand(expr)
     except Exception:
-        try:
-            expr = expand(expr)
-        except Exception:
-            pass
+        pass
 
     free = expr.free_symbols
     if not free:
@@ -133,17 +112,6 @@ def _eval_one(expr_latex, ctx_syms):
         pass
     if result_latex is None:
         result_latex = sym_latex(expr)
-
-    for nm, (lat_ph, sym_ph) in name_enc.items():
-        if '_' in nm:
-            base, sub = nm.split('_', 1)
-            display_latex = f'{base}_{{{sub}}}'
-        elif len(nm) > 1:
-            display_latex = f'\\text{{{nm}}}'
-        else:
-            display_latex = nm
-        ph_escaped = re.escape(lat_ph)
-        result_latex = re.sub(ph_escaped + r'(?![a-zA-Z])', display_latex, result_latex)
 
     return {'value': None, 'latex': result_latex, 'is_numeric': False, 'error': None}
 

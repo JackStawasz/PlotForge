@@ -19,17 +19,18 @@ const LATEX_COMMANDS = [
   '\\tau','\\upsilon','\\phi','\\varphi','\\chi','\\psi','\\omega',
   '\\Gamma','\\Delta','\\Theta','\\Lambda','\\Xi','\\Pi','\\Sigma',
   '\\Upsilon','\\Phi','\\Psi','\\Omega',
+  '\\hbar','\\ell','\\dagger',
   '\\sin','\\cos','\\tan','\\cot','\\sec','\\csc',
-  '\\arcsin','\\arccos','\\arctan',
+  '\\arcsin','\\arccos','\\arctan','\\arctanh',
   '\\sinh','\\cosh','\\tanh',
-  '\\log','\\ln','\\exp','\\sqrt','\\frac','\\cdot','\\times','\\div',
+  '\\log','\\ln','\\exp','\\sqrt','\\frac','\\cdot','\\times','\\div','\\otimes','\\oplus',
   '\\pm','\\mp','\\leq','\\geq','\\neq','\\approx','\\equiv','\\sim',
   '\\infty','\\partial','\\nabla','\\sum','\\prod','\\int','\\oint',
   '\\lim','\\max','\\min','\\sup','\\inf',
   '\\rightarrow','\\leftarrow','\\Rightarrow','\\Leftarrow',
   '\\leftrightarrow','\\Leftrightarrow',
   '\\uparrow','\\downarrow','\\updownarrow',
-  '\\forall','\\exists','\\in','\\notin','\\subset','\\supset',
+  '\\forall','\\exists','\\in','\\notin','\\subset','\\supset','\\subseteq','\\supseteq',
   '\\cup','\\cap','\\emptyset','\\mathbb','\\mathrm','\\mathbf',
   '\\hat','\\bar','\\vec','\\tilde','\\dot','\\ddot',
   '\\text',
@@ -167,7 +168,7 @@ function fixDecoratorCursor(mf, prevLatex, mqEl){
 
   const latex = mf.latex();
   // Decorator just created with empty box → move cursor inside
-  if(/\\overline\{\}$|\\underline\{\}$|\\hat\{\}$|\\bar\{\}$|\\vec\{\}$|\\tilde\{\}$/.test(latex)){
+  if(/\\overline\{\}$|\\underline\{\}$|\\hat\{\}$|\\bar\{\}$|\\vec\{\}$|\\tilde\{\}$|\\dot\{\}$|\\ddot\{\}$/.test(latex)){
     mf.keystroke('Left');
     return;
   }
@@ -476,6 +477,7 @@ function evalLatexExpr(latex, ctx={}){
     .replace(/\\tan/g,       'Math.tan')
     .replace(/\\arcsin/g,    'Math.asin')
     .replace(/\\arccos/g,    'Math.acos')
+    .replace(/\\arctanh/g,   'Math.atanh')
     .replace(/\\arctan/g,    'Math.atan')
     .replace(/\\sinh/g,      'Math.sinh')
     .replace(/\\cosh/g,      'Math.cosh')
@@ -489,6 +491,8 @@ function evalLatexExpr(latex, ctx={}){
     .replace(/\^\{([^}]*)\}/g, '**($1)')
     .replace(/\^(\w)/g,      '**$1')
     .replace(/\_\{[^}]*\}/g, '').replace(/\_\w/g,'')
+    .replace(/\\hbar/g,      'hbar')
+    .replace(/\\ell/g,       'ell')
     .replace(/\\cdot/g,'*').replace(/\\times/g,'*')
     .replace(/\{/g,'(').replace(/\}/g,')')
     .replace(/\\[a-zA-Z]+/g, ''); // strip remaining unknown commands
@@ -815,10 +819,11 @@ function latexToPython(latex){
     .replace(/\\sin/g,    'math.sin')
     .replace(/\\cos/g,    'math.cos')
     .replace(/\\tan/g,    'math.tan')
-    .replace(/\\arcsin/g, 'math.asin')
-    .replace(/\\arccos/g, 'math.acos')
-    .replace(/\\arctan/g, 'math.atan')
-    .replace(/\\sinh/g,   'math.sinh')
+    .replace(/\\arcsin/g,  'math.asin')
+    .replace(/\\arccos/g,  'math.acos')
+    .replace(/\\arctanh/g, 'math.atanh')
+    .replace(/\\arctan/g,  'math.atan')
+    .replace(/\\sinh/g,    'math.sinh')
     .replace(/\\cosh/g,   'math.cosh')
     .replace(/\\tanh/g,   'math.tanh')
     .replace(/\\ln/g,     'math.log')
@@ -829,6 +834,8 @@ function latexToPython(latex){
     .replace(/\\left\|/g, 'abs(').replace(/\\right\|/g,')')
     .replace(/\^\{([^{}]*)\}/g,  '**($1)')
     .replace(/\^(\w)/g,          '**$1')
+    .replace(/\\hbar/g, 'hbar')
+    .replace(/\\ell/g,  'ell')
     .replace(/\\cdot/g,'*').replace(/\\times/g,'*')
     .replace(/\{/g,'(').replace(/\}/g,')')
     .replace(/\\[a-zA-Z]+/g,'');
