@@ -351,7 +351,7 @@ function _buildFunctionSubNav(container){
 function _buildConstantsGrid(){
   const grid=document.getElementById('tplModalGrid'); if(!grid) return;
   grid.innerHTML='';
-  grid.style.gridTemplateColumns='repeat(5,1fr)';
+  grid.style.gridTemplateColumns='repeat(auto-fill,minmax(190px,1fr))';
 
   for(const group of FUNDAMENTAL_CONSTANTS){
     const hdr=document.createElement('div');
@@ -364,24 +364,18 @@ function _buildConstantsGrid(){
       card.className='const-card';
       card.dataset.tip=`Create variable: ${cd.varName}`;
 
-      // Row 1: symbol = value unit
-      const row1=document.createElement('div'); row1.className='const-card-row1';
-      const symSpan=document.createElement('span'); symSpan.className='const-card-sym-mq';
-      const eqSign=document.createElement('span'); eqSign.className='const-card-eq'; eqSign.textContent='=';
-      const valSpan=document.createElement('span'); valSpan.className='const-card-val'; valSpan.textContent=_fmtConstVal(cd.value);
-      row1.appendChild(symSpan);
-      row1.appendChild(eqSign);
-      row1.appendChild(valSpan);
-      if(cd.unit){
-        const unitSpan=document.createElement('span'); unitSpan.className='const-card-unit'; unitSpan.textContent=cd.unit;
-        row1.appendChild(unitSpan);
-      }
+      const symSpan=document.createElement('span');
+      symSpan.className='const-card-sym-mq';
+      const nameEl=document.createElement('div');  nameEl.className='const-card-name'; nameEl.textContent=cd.displayName;
+      const valEl =document.createElement('div');  valEl.className ='const-card-val';  valEl.textContent=_fmtConstVal(cd.value);
+      const unitEl=document.createElement('div');  unitEl.className='const-card-unit'; unitEl.textContent=cd.unit;
 
-      // Row 2: full name
-      const row2=document.createElement('div'); row2.className='const-card-row2'; row2.textContent=cd.displayName;
-
-      card.appendChild(row1);
-      card.appendChild(row2);
+      const symWrap=document.createElement('div'); symWrap.className='const-card-sym';
+      symWrap.appendChild(symSpan);
+      card.appendChild(symWrap);
+      card.appendChild(nameEl);
+      card.appendChild(valEl);
+      if(cd.unit) card.appendChild(unitEl);
 
       card.addEventListener('click',()=>_createConstantVariable(cd));
       grid.appendChild(card);
