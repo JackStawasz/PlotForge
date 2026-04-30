@@ -1238,10 +1238,14 @@ function renderTextAnnotations(pid){
 }
 
 // ═══ SHAPE ANNOTATIONS ═══════════════════════════════════════════════════
-let _shapePickerEl = null;
-let _shapeMenuEl   = null;
+let _shapePickerEl      = null;
+let _shapePickerOutside = null;
+let _shapeMenuEl        = null;
 
-function closeShapePicker(){ if(_shapePickerEl){ _shapePickerEl.remove(); _shapePickerEl=null; } }
+function closeShapePicker(){
+  if(_shapePickerEl){ _shapePickerEl.remove(); _shapePickerEl=null; }
+  if(_shapePickerOutside){ document.removeEventListener('mousedown', _shapePickerOutside); _shapePickerOutside=null; }
+}
 function closeShapeMenu(){   if(_shapeMenuEl){  _shapeMenuEl.remove();  _shapeMenuEl=null;  } }
 
 function _hexToRgba(hex, alpha){
@@ -1306,8 +1310,9 @@ function showAnnotationPicker(pid, btnEl){
   menu.style.left = Math.max(8, r.left + r.width/2 - mw/2)+'px';
 
   const outside = e=>{
-    if(!menu.contains(e.target) && e.target!==btnEl){ closeShapePicker(); document.removeEventListener('mousedown', outside); }
+    if(!menu.contains(e.target) && e.target!==btnEl) closeShapePicker();
   };
+  _shapePickerOutside = outside;
   setTimeout(()=>document.addEventListener('mousedown', outside), 0);
 }
 
@@ -1481,24 +1486,24 @@ function _renderArrow(sh, pid, wrap){
   const h1el = mkHandle(x1,y1,'start');
   const h2el = mkHandle(x2,y2,'end');
 
-  // Shared hover-show / hover-hide logic with a settle timer
-  let hoverTimer=null, arrowDragging=false;
-  const showH = ()=>{ clearTimeout(hoverTimer); h1el.style.opacity='1'; h2el.style.opacity='1'; };
-  const hideH = ()=>{ hoverTimer=setTimeout(()=>{ if(!arrowDragging){ h1el.style.opacity='0'; h2el.style.opacity='0'; } }, 160); };
-  [hitEl, h1el, h2el].forEach(el=>{ el.addEventListener('mouseenter', showH); el.addEventListener('mouseleave', hideH); });
-
-  // Hamburger on start handle
+  // Hamburger at arrow midpoint
   const hbg=document.createElement('button');
-  hbg.className='shape-hamburger'; hbg.innerHTML='&#8942;'; hbg.style.opacity='0';
+  hbg.className='shape-hamburger'; hbg.innerHTML='&#8942;';
   const _arrowMidPt = ()=>{
     const wr = wrap.getBoundingClientRect();
     return { x: wr.left + (sh.x_frac + sh.x2_frac) / 2 * wr.width,
              y: wr.top  + (sh.y_frac + sh.y2_frac) / 2 * wr.height };
   };
   hbg.addEventListener('mousedown', e=>{ e.stopPropagation(); e.preventDefault(); showShapeMenu(sh,pid,hbg,_arrowMidPt()); });
-  h1el.appendChild(hbg);
-  h1el.addEventListener('mouseenter', ()=>hbg.style.opacity='1');
-  h1el.addEventListener('mouseleave', ()=>hbg.style.opacity='0');
+  const midEl = mkEl('shape-arr-mid',
+    `position:absolute;left:${(x1+x2)/2}px;top:${(y1+y2)/2}px;transform:translate(-50%,-50%);z-index:24;opacity:0;transition:opacity .12s;cursor:pointer`);
+  midEl.appendChild(hbg);
+
+  // Shared hover-show / hover-hide logic with a settle timer
+  let hoverTimer=null, arrowDragging=false;
+  const showH = ()=>{ clearTimeout(hoverTimer); h1el.style.opacity='1'; h2el.style.opacity='1'; midEl.style.opacity='1'; };
+  const hideH = ()=>{ hoverTimer=setTimeout(()=>{ if(!arrowDragging){ h1el.style.opacity='0'; h2el.style.opacity='0'; midEl.style.opacity='0'; } }, 160); };
+  [hitEl, h1el, h2el, midEl].forEach(el=>{ el.addEventListener('mouseenter', showH); el.addEventListener('mouseleave', hideH); });
 
   // Hitbox drag — moves both endpoints together
   {
@@ -1573,6 +1578,7 @@ function _renderArrow(sh, pid, wrap){
   wrap.appendChild(hitEl);
   wrap.appendChild(h1el);
   wrap.appendChild(h2el);
+  wrap.appendChild(midEl);
 }
 
 function showShapeMenu(sh, pid, triggerEl, anchorPt=null){

@@ -2276,8 +2276,6 @@ function syncTemplateParamsToVars(tplKey, params, overrideScope){
       silent: true, scope: localScope, folder: folderName,
     });
   }
-
-  setSbTab('files');
 }
 
 // ═══ PICKLE IMPORT ═══════════════════════════════════════════════════════
