@@ -201,6 +201,8 @@ function selectModalTemplate(key){
       addBtn.innerHTML='<span>&#8853;</span> Add to Plot';
     }
   }
+  // Variable context: create immediately on selection (no extra confirm click needed)
+  if(_templateModalContext==='variable') addFromModal();
 }
 
 function addFromModal(){
@@ -309,10 +311,7 @@ function _setVarPage(page){
       if(addBtn) addBtn.innerHTML='<span>⊕</span> Create Variable';
     }
     if(search) search.style.visibility='';
-    // Build template category sub-nav below the page items
-    if(divider) divider.style.display='';
-    if(subNav)  _buildFunctionSubNav(subNav);
-    // Rebuild grid with template cards
+    // Rebuild grid with template cards (inline category headers, no left-nav sub-filter)
     if(grid){ _buildTemplateGrid(grid); grid.style.display=''; }
     setModalCat('all');
     setTimeout(()=>document.getElementById('tplSearchInp')?.focus(), 50);
@@ -352,7 +351,7 @@ function _buildFunctionSubNav(container){
 function _buildConstantsGrid(){
   const grid=document.getElementById('tplModalGrid'); if(!grid) return;
   grid.innerHTML='';
-  grid.style.gridTemplateColumns='repeat(auto-fill,minmax(190px,1fr))';
+  grid.style.gridTemplateColumns='repeat(5,1fr)';
 
   for(const group of FUNDAMENTAL_CONSTANTS){
     const hdr=document.createElement('div');
@@ -363,20 +362,26 @@ function _buildConstantsGrid(){
     for(const cd of group.items){
       const card=document.createElement('div');
       card.className='const-card';
-      card.title=`Click to create variable: ${cd.varName}`;
+      card.dataset.tip=`Create variable: ${cd.varName}`;
 
-      const symSpan=document.createElement('span');
-      symSpan.className='const-card-sym-mq';
-      const nameEl=document.createElement('div');  nameEl.className='const-card-name'; nameEl.textContent=cd.displayName;
-      const valEl =document.createElement('div');  valEl.className ='const-card-val';  valEl.textContent=_fmtConstVal(cd.value);
-      const unitEl=document.createElement('div');  unitEl.className='const-card-unit'; unitEl.textContent=cd.unit;
+      // Row 1: symbol = value unit
+      const row1=document.createElement('div'); row1.className='const-card-row1';
+      const symSpan=document.createElement('span'); symSpan.className='const-card-sym-mq';
+      const eqSign=document.createElement('span'); eqSign.className='const-card-eq'; eqSign.textContent='=';
+      const valSpan=document.createElement('span'); valSpan.className='const-card-val'; valSpan.textContent=_fmtConstVal(cd.value);
+      row1.appendChild(symSpan);
+      row1.appendChild(eqSign);
+      row1.appendChild(valSpan);
+      if(cd.unit){
+        const unitSpan=document.createElement('span'); unitSpan.className='const-card-unit'; unitSpan.textContent=cd.unit;
+        row1.appendChild(unitSpan);
+      }
 
-      const symWrap=document.createElement('div'); symWrap.className='const-card-sym';
-      symWrap.appendChild(symSpan);
-      card.appendChild(symWrap);
-      card.appendChild(nameEl);
-      card.appendChild(valEl);
-      if(cd.unit) card.appendChild(unitEl);
+      // Row 2: full name
+      const row2=document.createElement('div'); row2.className='const-card-row2'; row2.textContent=cd.displayName;
+
+      card.appendChild(row1);
+      card.appendChild(row2);
 
       card.addEventListener('click',()=>_createConstantVariable(cd));
       grid.appendChild(card);
@@ -598,10 +603,6 @@ function buildAddCurveModal(){
         <button class="ac-tab" data-mode="dataset">⊞&nbsp; Dataset</button>
       </div>
       <div class="ac-modal-body" id="ac-body"></div>
-      <div class="ac-modal-footer">
-        <span class="ac-sel-info" id="ac-sel-info">Select an equation variable above</span>
-        <button class="ac-add-btn" id="ac-add-btn" disabled>⊕ Add to Plot</button>
-      </div>
     </div>`;
   document.body.appendChild(el);
   document.getElementById('ac-close').addEventListener('click', closeAddCurveModal);
@@ -610,7 +611,6 @@ function buildAddCurveModal(){
   el.querySelectorAll('.ac-tab').forEach(tab=>{
     tab.addEventListener('click', ()=>_setAcMode(tab.dataset.mode));
   });
-  document.getElementById('ac-add-btn').addEventListener('click', _onAcAdd);
 }
 
 function _setAcMode(mode){
@@ -667,7 +667,10 @@ function refreshAcBody(){
         const card=document.createElement('button');
         card.className='lvl-var-card'+(_acListYName===v.name?' lvl-selected-y':'')+(!sameLen?' lvl-disabled':'');
         card.textContent=`${v.name} [${v.listItems.length}]`;
-        if(sameLen) card.addEventListener('click',()=>{ _acListYName=(_acListYName===v.name)?null:v.name; refreshAcBody(); });
+        if(sameLen) card.addEventListener('click',()=>{
+          if(_acListYName===v.name){ _acListYName=null; refreshAcBody(); }
+          else { _acListYName=v.name; _addFromAcList(); }
+        });
         yRow.appendChild(card);
       });
       wrap.appendChild(yRow);
@@ -694,7 +697,7 @@ function refreshAcBody(){
     const card=document.createElement('div');
     card.className='ac-var-card'+(v.name===_acSelVarName?' selected':'');
     card.innerHTML=`<div class="ac-var-name">${v.name}</div><div class="ac-var-expr">= ${v.exprLatex}</div>`;
-    card.addEventListener('click',()=>{ _acSelVarName=(_acSelVarName===v.name)?null:v.name; refreshAcBody(); });
+    card.addEventListener('click',()=>{ _acSelVarName=v.name; addFromEquationVar(); });
     grid.appendChild(card);
   });
   body.innerHTML=''; body.appendChild(grid);
