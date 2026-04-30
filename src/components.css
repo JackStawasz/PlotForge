@@ -363,13 +363,13 @@
 
 /* Resize handles for sidebars */
 .resize-handle{
-  position:absolute;top:0;bottom:0;width:5px;
+  position:absolute;top:0;bottom:0;width:12px;
   cursor:col-resize;z-index:50;
   background:transparent;transition:background .15s;
 }
 .resize-handle:hover,.resize-handle:active{background:color-mix(in srgb,var(--acc2) 20%,transparent);}
-.resize-handle-right{right:-3px;}
-.resize-handle-left{left:-3px;}
+.resize-handle-right{right:-6px;}
+.resize-handle-left{left:-6px;}
 
 /* ── Text Annotation ── */
 .text-annotation{

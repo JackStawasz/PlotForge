@@ -10,7 +10,8 @@ function initLeftSidebar(){
   sbTip.id = '_sbTabTip';
   document.body.appendChild(sbTip);
   const _showTip = el=>{
-    sbTip.textContent = el.dataset.tip;
+    if(el.dataset.tipHtml) sbTip.innerHTML = el.dataset.tipHtml;
+    else sbTip.textContent = el.dataset.tip;
     sbTip.style.opacity = '0';
     sbTip.style.display = 'block';
     const r = el.getBoundingClientRect();
@@ -24,11 +25,11 @@ function initLeftSidebar(){
     sbTip.style.opacity = '1';
   };
   document.addEventListener('mouseover', e=>{
-    const el = e.target.closest('[data-tip]');
+    const el = e.target.closest('[data-tip],[data-tip-html]');
     if(el) _showTip(el);
   });
   document.addEventListener('mouseout', e=>{
-    if(e.target.closest('[data-tip]')) sbTip.style.opacity = '0';
+    if(e.target.closest('[data-tip],[data-tip-html]')) sbTip.style.opacity = '0';
   });
   document.getElementById('varsAddBtn')?.addEventListener('click', e=>{ e.stopPropagation(); showVarTypePicker('global'); });
   document.getElementById('varsAddLocalBtn')?.addEventListener('click', e=>{
@@ -772,6 +773,7 @@ function syncCfgDomain(){
     const locked=p.view.locked??false;
     lockBtn.classList.toggle('locked',locked);
     lockBtn.textContent=locked?'🔓 unlock':'🔒 lock';
+    lockBtn.dataset.tip=locked?'Unlock viewport domain':'Lock viewport to current range';
   }
 }
 

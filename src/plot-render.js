@@ -1422,7 +1422,8 @@ function wireInteraction(p){
   wrap.addEventListener('mousemove', e=>{
     const ch = chartInstances[p.id]; if(!ch) return;
     const {dataX,dataY} = pixelToData(ch, e.clientX, e.clientY);
-    const txt = `x=${sigFig(dataX,4)}&nbsp;y=${sigFig(dataY,4)}`;
+    const _fc = v => isFinite(v) ? v.toPrecision(4) : '—';
+    const txt = `x=${_fc(dataX)}&nbsp;y=${_fc(dataY)}`;
     const tcel = document.getElementById(`ctop_coords_${p.id}`);
     if(tcel){
       tcel.innerHTML = txt;

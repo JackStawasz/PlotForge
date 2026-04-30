@@ -29,8 +29,8 @@
     <div class="hright">
       <!-- View switcher -->
       <div class="view-switcher">
-        <button class="hdr-view-btn hdr-view-active" id="hdrViewPlots">Plots</button>
-        <button class="hdr-view-btn" id="hdrViewStats">Stats</button>
+        <button class="hdr-view-btn hdr-view-active" id="hdrViewPlots" data-tip="Show plots view">Plots</button>
+        <button class="hdr-view-btn" id="hdrViewStats" data-tip="Show summary statistics">Stats</button>
       </div>
       <div class="undo-redo-group">
         <button class="undo-redo-btn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
@@ -162,8 +162,8 @@
     <div id="cfgContent" style="display:none;flex-direction:column;gap:0">
 
       <div class="cfg-tabs">
-        <button class="cfg-tab cfg-tab-active" id="cfgTabPlot">Plot Settings</button>
-        <button class="cfg-tab" id="cfgTabLine">Line Settings</button>
+        <button class="cfg-tab cfg-tab-active" id="cfgTabPlot" data-tip="Adjust axes, grid, colors, and plot appearance">Plot Settings</button>
+        <button class="cfg-tab" id="cfgTabLine" data-tip="Style, color, and expression for the active curve">Line Settings</button>
       </div>
 
       <!-- PLOT SETTINGS PANE -->
@@ -172,7 +172,7 @@
         <div>
           <div class="slbl-row">
             <span class="slbl">Plot Preset</span>
-            <button class="preset-new-btn" id="presetNewBtn" title="Save current plot settings as a new preset">+ New</button>
+            <button class="preset-new-btn" id="presetNewBtn" data-tip="Save current plot settings as a new preset">+ New</button>
           </div>
           <div class="preset-list" id="presetList"></div>
         </div>
@@ -183,8 +183,8 @@
           <div class="slbl-row">
             <span class="slbl">Viewport Domain</span>
             <div style="display:flex;gap:5px">
-              <button class="home-btn" id="viewLockBtn">🔒 lock</button>
-              <button class="home-btn" id="domainHomeBtn" title="Reset to default view">&#8634; reset</button>
+              <button class="home-btn" id="viewLockBtn" data-tip="Lock viewport to current range">🔒 lock</button>
+              <button class="home-btn" id="domainHomeBtn" data-tip="Reset viewport to default">&#8634; reset</button>
             </div>
           </div>
           <div class="cfg-sec">

@@ -102,6 +102,21 @@ function renderDOM(){
 }
 
 // ═══ PLOT TABS ═══════════════════════════════════════════════════════════
+function buildTabTip(t){
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const tabPlots = plots.filter(p => p.tabId === t.id);
+  if(!tabPlots.length) return esc(t.name);
+  const listed = tabPlots.slice(0, 5);
+  const rows = listed.map(p => {
+    const name = p.name || `Plot ${p.plotNumber}`;
+    const n = p.curves.filter(c => c.template || c.jsData).length;
+    const label = `${n} curve${n !== 1 ? 's' : ''}`;
+    return `<div class="tip-row"><span class="tip-name">${esc(name)}</span><span class="tip-count">${label}</span></div>`;
+  });
+  if(tabPlots.length > 5) rows.push('<div class="tip-row"><span class="tip-name">...</span></div>');
+  return `${esc(t.name)}<div class="tip-rows">${rows.join('')}</div>`;
+}
+
 function renderTabBar(){
   const bar = document.getElementById('plotTabs'); if(!bar) return;
   bar.innerHTML = '';
@@ -109,7 +124,7 @@ function renderTabBar(){
     const el = document.createElement('button');
     el.className = 'plot-tab' + (t.id===activeTabId ? ' plot-tab-active' : '');
     el.dataset.tid = t.id;
-    el.title = t.name;
+    el.dataset.tipHtml = buildTabTip(t);
     el.addEventListener('click', ()=>{ if(!_tabDrag.active) switchTab(t.id); });
     el.addEventListener('pointerdown', e=>{
       if(e.button !== 0 || e.target.closest('.plot-tab-del') || e.target.closest('.plot-tab-rename-input')) return;
@@ -131,7 +146,6 @@ function renderTabBar(){
     const delBtn = document.createElement('button');
     delBtn.className = 'plot-tab-del';
     delBtn.textContent = '×';
-    delBtn.title = `Delete "${t.name}"`;
     delBtn.addEventListener('click', e=>{ e.stopPropagation(); deleteTab(t.id); });
     el.appendChild(delBtn);
 
@@ -787,8 +801,8 @@ function buildTopbarInner(p){
   const dupDelDisabled = inFs ? 'disabled style="opacity:.3;pointer-events:none;cursor:not-allowed"' : '';
   return `
     <div class="ctitle-left">
-      <span class="plot-drag-handle" title="Drag to reorder">⠿</span>
-      <span class="ctitle-text" data-pid="${p.id}" data-action="rename" title="Click to rename">${p.name || `Plot ${p.plotNumber}`}</span>
+      <span class="plot-drag-handle" data-tip="Drag to reorder">⠿</span>
+      <span class="ctitle-text" data-pid="${p.id}" data-action="rename" data-tip="Click to rename">${p.name || `Plot ${p.plotNumber}`}</span>
       <button class="cbtn addcurve-btn" data-pid="${p.id}" data-action="addcurve">⊕ add curve</button>
     </div>
     <div class="cactions-center">
@@ -797,9 +811,9 @@ function buildTopbarInner(p){
       <span class="ctop-coords" id="ctop_coords_${p.id}"></span>
       <button class="cbtn text-btn" data-pid="${p.id}" data-action="addannotation" data-tip="✎ Add text/shape overlay">✎</button>
       <button class="cbtn dl-topbar-btn" data-pid="${p.id}" data-action="download" data-tip="⤓ Save as image">⤓</button>
-      <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" ${dupDelDisabled}>⧉</button>
-      <button class="cbtn fs-btn" data-pid="${p.id}" data-action="fullscreen">⛶</button>
-      <button class="cbtn del-btn" data-pid="${p.id}" data-action="del" ${dupDelDisabled}>🗑</button>
+      <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" data-tip="⧉ Duplicate plot" ${dupDelDisabled}>⧉</button>
+      <button class="cbtn fs-btn" data-pid="${p.id}" data-action="fullscreen" data-tip="⛶ Toggle full screen">⛶</button>
+      <button class="cbtn del-btn" data-pid="${p.id}" data-action="del" data-tip="🗑 Delete plot" ${dupDelDisabled}>🗑</button>
     </div>`;
 }
 
