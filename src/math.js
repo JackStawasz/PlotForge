@@ -74,6 +74,14 @@ function evalTemplate(tkey, params, view){
     case 'ceiling':{ x=linspace(xLo,xHi,800); y=x.map(v=>(p.a||1)*Math.ceil(v)); break; }
     case 'floor':{ x=linspace(xLo,xHi,800); y=x.map(v=>(p.a||1)*Math.floor(v)); break; }
     case 'absolute':{ x=linspace(xLo,xHi,N); y=x.map(v=>(p.a||1)*Math.abs(v+(p.h||0))); break; }
+    case 'n_choose_x':{
+      discrete = true;
+      const n=Math.max(1,Math.round(p.n??10)), a=p.a??1;
+      x=[]; y=[];
+      for(let k=0;k<=n;k++){ x.push(k); y.push(a*binomCoeff(n,k)); }
+      break;
+    }
+    case 'relu':{ x=linspace(xLo,xHi,N); y=x.map(v=>(p.a??1)*Math.max(0,v+(p.h??0))); break; }
     case 'legendre':{
       const ell = Math.max(0, Math.round(p.ell ?? 3));
       const a   = p.a ?? 1;
@@ -137,6 +145,32 @@ function evalTemplate(tkey, params, view){
         let hm1=1, hc=2*v;
         for(let k=1; k<n; k++){ const hn=2*v*hc - 2*k*hm1; hm1=hc; hc=hn; }
         return A * hc;
+      });
+      break;
+    }
+    case 'laguerre':{
+      // Laguerre L_n via recurrence: L_0=1, L_1=1-x, L_n=((2n-1-x)L_{n-1} - (n-1)L_{n-2})/n
+      x = linspace(xLo, xHi, N);
+      const a=p.a??1, n=Math.max(0, Math.round(p.n??3));
+      y = x.map(v => {
+        if(n===0) return a;
+        if(n===1) return a*(1-v);
+        let lp=1, lc=1-v;
+        for(let k=1; k<n; k++){ const ln=((2*k+1-v)*lc - k*lp)/(k+1); lp=lc; lc=ln; }
+        return a*lc;
+      });
+      break;
+    }
+    case 'chebyshev':{
+      // Chebyshev T_n (1st kind) via recurrence: T_0=1, T_1=x, T_n=2x·T_{n-1} - T_{n-2}
+      x = linspace(xLo, xHi, N);
+      const a=p.a??1, n=Math.max(0, Math.round(p.n??3));
+      y = x.map(v => {
+        if(n===0) return a;
+        if(n===1) return a*v;
+        let tp=1, tc=v;
+        for(let k=1; k<n; k++){ const tn=2*v*tc - tp; tp=tc; tc=tn; }
+        return a*tc;
       });
       break;
     }

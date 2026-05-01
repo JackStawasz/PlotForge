@@ -185,6 +185,23 @@ def generate_xy(tkey, params, view):
         x=_xrange(view,xd,600); n=max(0,int(round(p.get("n",3)))); A=p.get("A",1)
         coeffs=[0]*n+[1]
         y=A*hermval(x,coeffs)
+    elif tkey == "n_choose_x":
+        from scipy.special import comb as _comb
+        n=max(1,int(round(p.get("n",10)))); a=p.get("a",1)
+        x=np.arange(0,n+1,dtype=float); y=a*_comb(n,x.astype(int),exact=False)
+    elif tkey == "relu":
+        x=_xrange(view,xd); h=p.get("h",0.0)
+        y=p.get("a",1)*np.maximum(0.0, x+h)
+    elif tkey == "laguerre":
+        from numpy.polynomial.laguerre import lagval
+        x=_xrange(view,xd,600); n=max(0,int(round(p.get("n",3)))); a=p.get("a",1)
+        coeffs=[0]*n+[1]
+        y=a*lagval(x,coeffs)
+    elif tkey == "chebyshev":
+        from numpy.polynomial.chebyshev import chebval
+        x=_xrange(view,xd,600); n=max(0,int(round(p.get("n",3)))); a=p.get("a",1)
+        coeffs=[0]*n+[1]
+        y=a*chebval(x,coeffs)
     else:
         raise ValueError(f"Unknown template '{tkey}'")
     return x, y

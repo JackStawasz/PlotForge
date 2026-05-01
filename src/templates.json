@@ -345,6 +345,24 @@
       "a": { "label": "Scale (a)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
     }
   },
+  "n_choose_x": {
+    "category": "other",
+    "label": "n Choose x", "equation": "C(n, x)", "x_default": [0, 20],
+    "latexEq": "\\binom{n}{x}",
+    "params": {
+      "n": { "label": "n (top)",   "default": 10,  "min": 1,    "max": 50,  "step": 1   },
+      "a": { "label": "Scale (a)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
+    }
+  },
+  "relu": {
+    "category": "other",
+    "label": "ReLU", "equation": "a · max(0, x + h)", "x_default": [-5, 5],
+    "latexEq": "a\\max\\left(0,\\,x+h\\right)",
+    "params": {
+      "a": { "label": "Scale (a)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
+      "h": { "label": "Shift (h)", "default": 0.0, "min": -5.0, "max": 5.0, "step": 0.1 }
+    }
+  },
   "ceiling": {
     "category": "other",
     "label": "Ceiling", "equation": "a · ⌈x⌉", "x_default": [-5, 5],
@@ -440,6 +458,24 @@
     "params": {
       "n": { "label": "Degree (n)", "default": 3, "min": 0, "max": 10, "step": 1 },
       "A": { "label": "Scale (A)",  "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
+    }
+  },
+  "laguerre": {
+    "category": "advanced",
+    "label": "Laguerre L_n", "equation": "a · L_n(x)", "x_default": [-2, 10],
+    "latexEq": "aL_{n}\\left(x\\right)",
+    "params": {
+      "n": { "label": "Degree (n)", "default": 3,   "min":  0,   "max": 10,  "step": 1   },
+      "a": { "label": "Scale (a)",  "default": 1.0, "min": -5.0, "max":  5.0, "step": 0.1 }
+    }
+  },
+  "chebyshev": {
+    "category": "advanced",
+    "label": "Chebyshev T_n", "equation": "a · T_n(x)", "x_default": [-1, 1],
+    "latexEq": "aT_{n}\\left(x\\right)",
+    "params": {
+      "n": { "label": "Degree (n)", "default": 3,   "min":  0,   "max": 10,  "step": 1   },
+      "a": { "label": "Scale (a)",  "default": 1.0, "min": -5.0, "max":  5.0, "step": 0.1 }
     }
   }
 }
