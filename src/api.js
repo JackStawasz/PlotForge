@@ -211,9 +211,31 @@ function updateUndoRedoBtns(){
 
 // Download the current workspace as a .plotforge file.
 // Uses buildWorkspaceState() directly — does NOT touch the undo stack.
-function saveWorkspace(){
+async function saveWorkspace(){
   const json = JSON.stringify(buildWorkspaceState(), null, 2);
   const blob = new Blob([json], { type: 'application/json' });
+
+  // Try to use File System Access API for native save dialog
+  if(window.showSaveFilePicker){
+    try{
+      const handle = await window.showSaveFilePicker({
+        suggestedName: 'workspace.plotforge',
+        types: [{
+          description: 'PlotForge Workspace',
+          accept: { 'application/json': ['.plotforge'] }
+        }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    }catch(err){
+      if(err.name !== 'AbortError') console.error('Save error:', err);
+      // Fall through to legacy download if cancelled or error
+    }
+  }
+
+  // Fallback: traditional download
   const url  = URL.createObjectURL(blob);
   const a    = Object.assign(document.createElement('a'), {
     href:     url,
