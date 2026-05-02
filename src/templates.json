@@ -213,7 +213,7 @@
   "gaussian": {
     "category": "bell",
     "label": "Gaussian", "equation": "A·exp(−(x−μ)²/(2σ²))", "x_default": [-5, 5],
-    "latexEq": "Ae^{-\\frac{\\left(x-\\mu\\right)^{2}}{2\\sigma^{2}}}",
+    "latexEq": "p\\left(x\\right)=Ae^{-\\frac{\\left(x-\\mu\\right)^{2}}{2\\sigma^{2}}}",
     "params": {
       "A":   { "label": "Amplitude (A)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.10 },
       "mu":  { "label": "Mean (μ)",      "default": 0.0, "min": -5.0, "max": 5.0, "step": 0.25 },
@@ -223,7 +223,7 @@
   "lorentzian": {
     "category": "bell",
     "label": "Lorentzian", "equation": "A·γ²/((x−x₀)²+γ²)", "x_default": [-5, 5],
-    "latexEq": "\\frac{A\\gamma^{2}}{\\left(x-x_{0}\\right)^{2}+\\gamma^{2}}",
+    "latexEq": "L\\left(x\\right)=\\frac{A\\gamma^{2}}{\\left(x-x_{0}\\right)^{2}+\\gamma^{2}}",
     "params": {
       "A":     { "label": "Amplitude (A)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.10 },
       "x0":    { "label": "Center (x₀)",  "default": 0.0, "min": -5.0, "max": 5.0, "step": 0.25 },
@@ -233,7 +233,7 @@
   "binomial": {
     "category": "bell",
     "label": "Binomial PMF", "equation": "C(n,k)·p^k·(1−p)^(n−k)", "x_default": [0, 30],
-    "latexEq": "\\binom{n}{k}p^{k}\\left(1-p\\right)^{n-k}",
+    "latexEq": "\\text{PMF}\\left(x\\right)=\\binom{n}{k}p^{k}\\left(1-p\\right)^{n-k}",
     "params": {
       "n": { "label": "Trials (n)", "default": 20,  "min":  5,    "max": 50,   "step": 1    },
       "p": { "label": "Prob (p)",   "default": 0.5, "min":  0.05, "max":  0.95, "step": 0.05 }
@@ -242,7 +242,7 @@
   "poisson": {
     "category": "bell",
     "label": "Poisson PMF", "equation": "λ^k·e^(−λ)/k!", "x_default": [0, 20],
-    "latexEq": "\\frac{\\lambda^{k}e^{-\\lambda}}{k!}",
+    "latexEq": "\\text{Poisson}\\left(x\\right)=\\frac{\\lambda^{k}e^{-\\lambda}}{k!}",
     "params": {
       "lam": { "label": "λ (rate)", "default": 4.0, "min": 0.5, "max": 15.0, "step": 0.5 }
     }
@@ -250,7 +250,7 @@
   "laplace": {
     "category": "bell",
     "label": "Laplace", "equation": "A/(2b)·exp(−|x−μ|/b)", "x_default": [-6, 6],
-    "latexEq": "\\frac{A}{2b}e^{-\\frac{\\left|x-\\mu\\right|}{b}}",
+    "latexEq": "\\text{Laplace}\\left(x\\right)=\\frac{A}{2b}e^{-\\frac{\\left|x-\\mu\\right|}{b}}",
     "params": {
       "A":  { "label": "Scale (A)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.10 },
       "mu": { "label": "Mean (μ)",  "default": 0.0, "min": -5.0, "max": 5.0, "step": 0.25 },
@@ -260,7 +260,7 @@
   "linear": {
     "category": "lines",
     "label": "Linear", "equation": "m·x + b", "x_default": [-10, 10],
-    "latexEq": "mx+b",
+    "latexEq": "y\\left(x\\right)=mx+b",
     "params": {
       "m": { "label": "Slope (m)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.5 },
       "b": { "label": "Intercept (b)", "default": 0.0, "min": -5.0, "max": 5.0, "step": 0.5 }
@@ -283,7 +283,7 @@
   "poly_custom": {
     "category": "general",
     "label": "Polynomial", "equation": "Σ aₙ·xⁿ", "x_default": [-5, 5],
-    "latexEq": "a_{0}+a_{1}x+a_{2}x^{2}+a_{3}x^{3}+\\cdots",
+    "latexEq": "P\\left(x\\right)=a_{0}+a_{1}x+a_{2}x^{2}+a_{3}x^{3}+\\cdots",
     "params": {
       "degree": { "label": "Degree", "default": 4,   "min": 1,    "max": 10,  "step": 1    },
       "a0":  { "label": "a₀",  "default": 0.0, "min": -5.0, "max": 5.0, "step": 0.25 },
@@ -302,7 +302,7 @@
   "logarithmic": {
     "category": "general",
     "label": "Logarithmic", "equation": "a·log_b(x) + c", "x_default": [0.01, 10],
-    "latexEq": "a\\log_{b}\\left(x\\right)+c",
+    "latexEq": "L\\left(x\\right)=a\\log_{b}\\left(x\\right)+c",
     "params": {
       "a": { "label": "Scale (a)",  "default": 1.0,   "min":  -5.0, "max":  5.0, "step": 0.1 },
       "b": { "label": "Base (b)",   "default": 2.718,  "min":   1.01, "max": 10.0, "step": 0.1 },
@@ -312,7 +312,7 @@
   "exponential": {
     "category": "general",
     "label": "Exponential", "equation": "a·b^(s·x)", "x_default": [-3, 3],
-    "latexEq": "a\\cdot b^{sx}",
+    "latexEq": "\\text{exp}\\left(x\\right)=a\\cdot b^{sx}",
     "params": {
       "a": { "label": "Amplitude (a)", "default": 1.0,  "min": -5.0,  "max":  5.0, "step": 0.1 },
       "b": { "label": "Base (b)",      "default": 2.718, "min":  1.01, "max": 10.0, "step": 0.1 },
@@ -322,7 +322,7 @@
   "nth_root": {
     "category": "general",
     "label": "Nth Root", "equation": "a · x^(1/n)", "x_default": [0, 5],
-    "latexEq": "ax^{1/n}",
+    "latexEq": "R\\left(x\\right)=a\\sqrt[n]{x}",
     "params": {
       "a": { "label": "Scale (a)", "default": 1.0, "min": -5.0, "max":  5.0, "step": 0.1 },
       "n": { "label": "Root (n)",  "default": 2.0, "min":  1.0, "max": 10.0, "step": 0.5 }
@@ -331,7 +331,7 @@
   "reciprocal": {
     "category": "other",
     "label": "Reciprocal", "equation": "a / (x + h)", "x_default": [-5, 5],
-    "latexEq": "\\frac{a}{x+h}",
+    "latexEq": "R\\left(x\\right)=\\frac{a}{x+h}",
     "params": {
       "a": { "label": "Scale (a)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "h": { "label": "Shift (h)", "default": 0.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -347,8 +347,8 @@
   },
   "n_choose_x": {
     "category": "other",
-    "label": "n Choose x", "equation": "C(n, x)", "x_default": [0, 20],
-    "latexEq": "\\binom{n}{x}",
+    "label": "n Choose x", "equation": "a · C(n, x)", "x_default": [0, 20],
+    "latexEq": "C\\left(x\\right)=a\\cdot\\binom{n}{x}",
     "params": {
       "n": { "label": "n (top)",   "default": 10,  "min": 1,    "max": 50,  "step": 1   },
       "a": { "label": "Scale (a)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -357,7 +357,7 @@
   "relu": {
     "category": "other",
     "label": "ReLU", "equation": "a · max(0, x + h)", "x_default": [-5, 5],
-    "latexEq": "a\\max\\left(0,\\,x+h\\right)",
+    "latexEq": "\\text{ReLU}\\left(x\\right)=a\\max\\left(0,\\,x+h\\right)",
     "params": {
       "a": { "label": "Scale (a)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "h": { "label": "Shift (h)", "default": 0.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -366,7 +366,7 @@
   "ceiling": {
     "category": "other",
     "label": "Ceiling", "equation": "a · ⌈x⌉", "x_default": [-5, 5],
-    "latexEq": "a\\lceil x\\rceil",
+    "latexEq": "\\text{ceiling}\\left(x\\right)=a\\lceil x\\rceil",
     "params": {
       "a": { "label": "Scale (a)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
     }
@@ -374,7 +374,7 @@
   "floor": {
     "category": "other",
     "label": "Floor", "equation": "a · ⌊x⌋", "x_default": [-5, 5],
-    "latexEq": "a\\lfloor x\\rfloor",
+    "latexEq": "\\text{floor}\\left(x\\right)=a\\lfloor x\\rfloor",
     "params": {
       "a": { "label": "Scale (a)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
     }
@@ -382,7 +382,7 @@
   "absolute": {
     "category": "other",
     "label": "Absolute Value", "equation": "a · |x + h|", "x_default": [-5, 5],
-    "latexEq": "a\\left|x+h\\right|",
+    "latexEq": "\\text{abs}\\left(x\\right)=a\\left|x+h\\right|",
     "params": {
       "a": { "label": "Scale (a)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "h": { "label": "Shift (h)", "default": 0.0, "min": -5.0, "max": 5.0, "step": 0.1 }
