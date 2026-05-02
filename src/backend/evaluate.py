@@ -7,6 +7,33 @@ evaluate_bp = Blueprint('evaluate', __name__)
 
 CONST_SUBS = [(Symbol('pi'), SPI), (Symbol('e'), E)]
 
+# Maps \text{name} operator names to SymPy-recognised \operatorname{name} equivalents.
+# SymPy's parse_latex understands many functions via \operatorname{} that it would
+# not accept via \text{}.  Names not listed here fall back to the bare identifier.
+_TEXT_TO_SYMPY = {
+    'erf':     'erf',     'erfc':    'erfc',
+    'arcsinh': 'arcsinh', 'arccosh': 'arccosh', 'arctanh': 'arctanh',
+    'arccsc':  'arccsc',  'arccsch': 'arccsch',
+    'arcsec':  'arcsec',  'arcsech': 'arcsech',
+    'arccot':  'arccot',  'arccoth': 'arccoth',
+    'csch':    'csch',    'sech':    'sech',    'coth':    'coth',
+    'sinc':    'sinc',
+    'airy':    'airyai',  'Bi':      'airybi',
+    'bessel':  'besselj',
+    'fresnelC':'fresnelc', 'fresnelS':'fresnels',
+    'legendre':'legendre', 'hermite': 'hermite',
+    'laguerre':'laguerre', 'chebyshev':'chebyshevt',
+}
+
+def _preprocess_text_fns(latex: str) -> str:
+    """Replace \\text{name} with \\operatorname{sympy_name} for known operators,
+    or strip \\text{} to the bare name for unknown ones."""
+    def _repl(m):
+        name = m.group(1)
+        sympy_name = _TEXT_TO_SYMPY.get(name, name)
+        return r'\operatorname{' + sympy_name + '}'
+    return re.sub(r'\\text\{([^}]+)\}', _repl, latex)
+
 # Maps JavaScript-parsed variable names to their LaTeX command form.
 # JS strips the backslash when extracting names, so 'alpha' → '\alpha' etc.
 GREEK_TO_LATEX = {
@@ -78,6 +105,7 @@ def _eval_one(expr_latex, ctx_syms):
     from sympy import expand, cancel, Poly
 
     processed = _substitute_vars(expr_latex, ctx_syms)
+    processed = _preprocess_text_fns(processed)
 
     try:
         expr = parse_latex(processed)

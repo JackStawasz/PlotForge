@@ -2,7 +2,7 @@
   "sin": {
     "category": "trig", "subfolder": "Sine Family",
     "label": "Sine", "equation": "A·sin(f·x + φ)", "x_default": [0, 6.283],
-    "latexEq": "A\\sin\\left(fx+\\varphi\\right)",
+    "latexEq": "\\sin\\left(x\\right)=A\\cdot\\sin\\left(fx+\\varphi\\right)",
     "params": {
       "A":   { "label": "Amplitude (A)", "default": 1.0, "min": -5.0, "max":  5.0, "step": 0.10 },
       "f":   { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max":  5.0, "step": 0.10 },
@@ -12,7 +12,7 @@
   "arcsin": {
     "category": "trig", "subfolder": "Sine Family",
     "label": "Arcsine", "equation": "A·arcsin(x)", "x_default": [-1, 1],
-    "latexEq": "A\\arcsin\\left(x\\right)",
+    "latexEq": "\\arcsin\\left(x\\right)=A\\cdot\\arcsin\\left(x\\right)",
     "params": {
       "A": { "label": "Scale (A)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
     }
@@ -20,7 +20,7 @@
   "sinh": {
     "category": "trig", "subfolder": "Sine Family",
     "label": "Sinh", "equation": "A·sinh(f·x)", "x_default": [-3, 3],
-    "latexEq": "A\\sinh\\left(fx\\right)",
+    "latexEq": "\\sinh\\left(x\\right)=A\\cdot\\sinh\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -29,7 +29,7 @@
   "arcsinh": {
     "category": "trig", "subfolder": "Sine Family",
     "label": "Arcsinh", "equation": "A·arcsinh(f·x)", "x_default": [-5, 5],
-    "latexEq": "A\\operatorname{arcsinh}\\left(fx\\right)",
+    "latexEq": "\\text{arcsinh}\\left(x\\right)=A\\cdot\\text{arcsinh}\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -38,7 +38,7 @@
   "cos": {
     "category": "trig", "subfolder": "Cosine Family",
     "label": "Cosine", "equation": "A·cos(f·x + φ)", "x_default": [0, 6.283],
-    "latexEq": "A\\cos\\left(fx+\\varphi\\right)",
+    "latexEq": "\\cos\\left(x\\right)=A\\cdot\\cos\\left(fx+\\varphi\\right)",
     "params": {
       "A":   { "label": "Amplitude (A)", "default": 1.0, "min": -5.0, "max":  5.0, "step": 0.10 },
       "f":   { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max":  5.0, "step": 0.10 },
@@ -48,7 +48,7 @@
   "arccos": {
     "category": "trig", "subfolder": "Cosine Family",
     "label": "Arccosine", "equation": "A·arccos(x)", "x_default": [-1, 1],
-    "latexEq": "A\\arccos\\left(x\\right)",
+    "latexEq": "\\arccos\\left(x\\right)=A\\cdot\\arccos\\left(x\\right)",
     "params": {
       "A": { "label": "Scale (A)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
     }
@@ -56,7 +56,7 @@
   "cosh": {
     "category": "trig", "subfolder": "Cosine Family",
     "label": "Cosh", "equation": "A·cosh(f·x)", "x_default": [-3, 3],
-    "latexEq": "A\\cosh\\left(fx\\right)",
+    "latexEq": "\\cosh\\left(x\\right)=A\\cdot\\cosh\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -65,7 +65,7 @@
   "arccosh": {
     "category": "trig", "subfolder": "Cosine Family",
     "label": "Arccosh", "equation": "A·arccosh(f·x)", "x_default": [1.001, 5],
-    "latexEq": "A\\operatorname{arccosh}\\left(fx\\right)",
+    "latexEq": "\\text{arccosh}\\left(x\\right)=A\\cdot\\text{arccosh}\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min":  0.1, "max": 5.0, "step": 0.1 }
@@ -74,7 +74,7 @@
   "tan": {
     "category": "trig", "subfolder": "Tangent Family",
     "label": "Tangent", "equation": "A·tan(f·x)", "x_default": [-1.5, 1.5],
-    "latexEq": "A\\tan\\left(fx\\right)",
+    "latexEq": "\\tan\\left(x\\right)=A\\cdot\\tan\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -83,7 +83,7 @@
   "arctan": {
     "category": "trig", "subfolder": "Tangent Family",
     "label": "Arctangent", "equation": "A·arctan(f·x)", "x_default": [-5, 5],
-    "latexEq": "A\\arctan\\left(fx\\right)",
+    "latexEq": "\\arctan\\left(x\\right)=A\\cdot\\arctan\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -92,7 +92,7 @@
   "tanh": {
     "category": "trig", "subfolder": "Tangent Family",
     "label": "Tanh", "equation": "A·tanh(f·x)", "x_default": [-4, 4],
-    "latexEq": "A\\tanh\\left(fx\\right)",
+    "latexEq": "\\tanh\\left(x\\right)=A\\cdot\\tanh\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -101,7 +101,7 @@
   "arctanh": {
     "category": "trig", "subfolder": "Tangent Family",
     "label": "Arctanh", "equation": "A·arctanh(f·x)", "x_default": [-0.99, 0.99],
-    "latexEq": "A\\operatorname{arctanh}\\left(fx\\right)",
+    "latexEq": "\\text{arctanh}\\left(x\\right)=A\\cdot\\text{arctanh}\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min":  0.1, "max": 5.0, "step": 0.1 }
@@ -110,7 +110,7 @@
   "csc": {
     "category": "trig", "subfolder": "Cosecant Family",
     "label": "Cosecant", "equation": "A·csc(f·x)", "x_default": [0.1, 3.04],
-    "latexEq": "A\\csc\\left(fx\\right)",
+    "latexEq": "\\csc\\left(x\\right)=A\\cdot\\csc\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -119,7 +119,7 @@
   "arccsc": {
     "category": "trig", "subfolder": "Cosecant Family",
     "label": "Arccosecant", "equation": "A·arccsc(x)", "x_default": [-5, 5],
-    "latexEq": "A\\operatorname{arccsc}\\left(x\\right)",
+    "latexEq": "\\text{arccsc}\\left(x\\right)=A\\cdot\\text{arccsc}\\left(x\\right)",
     "params": {
       "A": { "label": "Scale (A)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
     }
@@ -127,7 +127,7 @@
   "csch": {
     "category": "trig", "subfolder": "Cosecant Family",
     "label": "Csch", "equation": "A·csch(f·x)", "x_default": [-4, 4],
-    "latexEq": "A\\operatorname{csch}\\left(fx\\right)",
+    "latexEq": "\\text{csch}\\left(x\\right)=A\\cdot\\text{csch}\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -136,7 +136,7 @@
   "arccsch": {
     "category": "trig", "subfolder": "Cosecant Family",
     "label": "Arccsch", "equation": "A·arccsch(x)", "x_default": [-5, 5],
-    "latexEq": "A\\operatorname{arccsch}\\left(x\\right)",
+    "latexEq": "\\text{arccsch}\\left(x\\right)=A\\cdot\\text{arccsch}\\left(x\\right)",
     "params": {
       "A": { "label": "Scale (A)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
     }
@@ -144,7 +144,7 @@
   "sec": {
     "category": "trig", "subfolder": "Secant Family",
     "label": "Secant", "equation": "A·sec(f·x)", "x_default": [-1.4, 1.4],
-    "latexEq": "A\\sec\\left(fx\\right)",
+    "latexEq": "\\sec\\left(x\\right)=A\\cdot\\sec\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -153,7 +153,7 @@
   "arcsec": {
     "category": "trig", "subfolder": "Secant Family",
     "label": "Arcsecant", "equation": "A·arcsec(x)", "x_default": [-5, 5],
-    "latexEq": "A\\operatorname{arcsec}\\left(x\\right)",
+    "latexEq": "\\text{arcsec}\\left(x\\right)=A\\cdot\\text{arcsec}\\left(x\\right)",
     "params": {
       "A": { "label": "Scale (A)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
     }
@@ -161,7 +161,7 @@
   "sech": {
     "category": "trig", "subfolder": "Secant Family",
     "label": "Sech", "equation": "A·sech(f·x)", "x_default": [-5, 5],
-    "latexEq": "A\\operatorname{sech}\\left(fx\\right)",
+    "latexEq": "\\text{sech}\\left(x\\right)=A\\cdot\\text{sech}\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -170,7 +170,7 @@
   "arcsech": {
     "category": "trig", "subfolder": "Secant Family",
     "label": "Arcsech", "equation": "A·arcsech(x)", "x_default": [0.001, 0.999],
-    "latexEq": "A\\operatorname{arcsech}\\left(x\\right)",
+    "latexEq": "\\text{arcsech}\\left(x\\right)=A\\cdot\\text{arcsech}\\left(x\\right)",
     "params": {
       "A": { "label": "Scale (A)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
     }
@@ -178,7 +178,7 @@
   "cot": {
     "category": "trig", "subfolder": "Cotangent Family",
     "label": "Cotangent", "equation": "A·cot(f·x)", "x_default": [0.1, 3.04],
-    "latexEq": "A\\cot\\left(fx\\right)",
+    "latexEq": "\\cot\\left(x\\right)=A\\cdot\\cot\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -187,7 +187,7 @@
   "arccot": {
     "category": "trig", "subfolder": "Cotangent Family",
     "label": "Arccotangent", "equation": "A·arccot(f·x)", "x_default": [-5, 5],
-    "latexEq": "A\\operatorname{arccot}\\left(fx\\right)",
+    "latexEq": "\\text{arccot}\\left(x\\right)=A\\cdot\\text{arccot}\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -196,7 +196,7 @@
   "coth": {
     "category": "trig", "subfolder": "Cotangent Family",
     "label": "Coth", "equation": "A·coth(f·x)", "x_default": [-4, 4],
-    "latexEq": "A\\operatorname{coth}\\left(fx\\right)",
+    "latexEq": "\\text{coth}\\left(x\\right)=A\\cdot\\text{coth}\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -205,7 +205,7 @@
   "arccoth": {
     "category": "trig", "subfolder": "Cotangent Family",
     "label": "Arccoth", "equation": "A·arccoth(x)", "x_default": [-5, 5],
-    "latexEq": "A\\operatorname{arccoth}\\left(x\\right)",
+    "latexEq": "\\text{arccoth}\\left(x\\right)=A\\cdot\\text{arccoth}\\left(x\\right)",
     "params": {
       "A": { "label": "Scale (A)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
     }
@@ -340,7 +340,7 @@
   "factorial": {
     "category": "other",
     "label": "Factorial", "equation": "a · Γ(x+1)", "x_default": [0, 6],
-    "latexEq": "a\\Gamma\\left(x+1\\right)",
+    "latexEq": "\\Gamma\\left(x\\right)=a\\cdot\\Gamma\\left(x+1\\right)",
     "params": {
       "a": { "label": "Scale (a)", "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
     }
@@ -391,7 +391,7 @@
   "legendre": {
     "category": "advanced",
     "label": "Legendre Polynomial", "equation": "P_ℓ(x)", "x_default": [-1, 1],
-    "latexEq": "aP_{\\ell}\\left(x\\right)",
+    "latexEq": "P_{\\ell}\\left(x\\right)=a\\cdot\\text{legendre}\\left(x\\right)",
     "params": {
       "ell": { "label": "Degree (ℓ)", "default": 3,   "min":  0,   "max": 10,  "step": 1   },
       "a":   { "label": "Scale (a)",  "default": 1.0, "min": -5.0, "max":  5.0, "step": 0.1 }
@@ -400,7 +400,7 @@
   "sinc": {
     "category": "advanced",
     "label": "Sinc", "equation": "A·sinc(f·x)", "x_default": [-4, 4],
-    "latexEq": "A\\operatorname{sinc}\\left(fx\\right)",
+    "latexEq": "\\text{sinc}\\left(x\\right)=A\\cdot\\text{sinc}\\left(fx\\right)",
     "params": {
       "A": { "label": "Amplitude (A)", "default": 1.0, "min": -5.0, "max":  5.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min":  0.1, "max": 10.0, "step": 0.1 }
@@ -409,7 +409,7 @@
   "bessel": {
     "category": "advanced",
     "label": "Bessel J_n", "equation": "A·J_n(x)", "x_default": [0, 20],
-    "latexEq": "AJ_{n}\\left(x\\right)",
+    "latexEq": "J_{n}\\left(x\\right)=A\\cdot\\text{bessel}\\left(x\\right)",
     "params": {
       "n": { "label": "Order (n)", "default": 0,   "min":  0,   "max": 10,  "step": 1   },
       "A": { "label": "Scale (A)", "default": 1.0, "min": -5.0, "max":  5.0, "step": 0.1 }
@@ -418,7 +418,7 @@
   "fresnel_c": {
     "category": "advanced",
     "label": "Fresnel C(x)", "equation": "A·C(f·x)", "x_default": [-4, 4],
-    "latexEq": "AC\\left(fx\\right)",
+    "latexEq": "C\\left(x\\right)=A\\cdot\\text{fresnelC}\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -3.0, "max": 3.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min":  0.1, "max": 5.0, "step": 0.1 }
@@ -427,7 +427,7 @@
   "fresnel_s": {
     "category": "advanced",
     "label": "Fresnel S(x)", "equation": "A·S(f·x)", "x_default": [-4, 4],
-    "latexEq": "AS\\left(fx\\right)",
+    "latexEq": "S\\left(x\\right)=A\\cdot\\text{fresnelS}\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",     "default": 1.0, "min": -3.0, "max": 3.0, "step": 0.1 },
       "f": { "label": "Frequency (f)", "default": 1.0, "min":  0.1, "max": 5.0, "step": 0.1 }
@@ -436,7 +436,7 @@
   "erf": {
     "category": "advanced",
     "label": "Error Function", "equation": "A·erf(f·x)", "x_default": [-3, 3],
-    "latexEq": "A\\operatorname{erf}\\left(fx\\right)",
+    "latexEq": "\\text{erf}\\left(x\\right)=A\\cdot\\text{erf}\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",  "default": 1.0, "min": -3.0, "max":  3.0, "step": 0.1 },
       "f": { "label": "Width (f)", "default": 1.0, "min":  0.1, "max": 10.0, "step": 0.1 }
@@ -445,7 +445,7 @@
   "airy": {
     "category": "advanced",
     "label": "Airy Ai(x)", "equation": "A·Ai(f·x)", "x_default": [-8, 3],
-    "latexEq": "A\\operatorname{Ai}\\left(fx\\right)",
+    "latexEq": "\\text{Ai}\\left(x\\right)=A\\cdot\\text{airy}\\left(fx\\right)",
     "params": {
       "A": { "label": "Scale (A)",   "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 },
       "f": { "label": "Stretch (f)", "default": 1.0, "min":  0.1, "max": 5.0, "step": 0.1 }
@@ -454,7 +454,7 @@
   "hermite_h": {
     "category": "advanced",
     "label": "Hermite H_n", "equation": "A\\cdot H_n\\left(x\\right)", "x_default": [-3, 3],
-    "latexEq": "AH_{n}\\left(x\\right)",
+    "latexEq": "H_{n}\\left(x\\right)=A\\cdot\\text{hermite}\\left(x\\right)",
     "params": {
       "n": { "label": "Degree (n)", "default": 3, "min": 0, "max": 10, "step": 1 },
       "A": { "label": "Scale (A)",  "default": 1.0, "min": -5.0, "max": 5.0, "step": 0.1 }
@@ -463,7 +463,7 @@
   "laguerre": {
     "category": "advanced",
     "label": "Laguerre L_n", "equation": "a · L_n(x)", "x_default": [-2, 10],
-    "latexEq": "aL_{n}\\left(x\\right)",
+    "latexEq": "L_{n}\\left(x\\right)=a\\cdot\\text{laguerre}\\left(x\\right)",
     "params": {
       "n": { "label": "Degree (n)", "default": 3,   "min":  0,   "max": 10,  "step": 1   },
       "a": { "label": "Scale (a)",  "default": 1.0, "min": -5.0, "max":  5.0, "step": 0.1 }
@@ -472,7 +472,7 @@
   "chebyshev": {
     "category": "advanced",
     "label": "Chebyshev T_n", "equation": "a · T_n(x)", "x_default": [-1, 1],
-    "latexEq": "aT_{n}\\left(x\\right)",
+    "latexEq": "T_{n}\\left(x\\right)=a\\cdot\\text{chebyshev}\\left(x\\right)",
     "params": {
       "n": { "label": "Degree (n)", "default": 3,   "min":  0,   "max": 10,  "step": 1   },
       "a": { "label": "Scale (a)",  "default": 1.0, "min": -5.0, "max":  5.0, "step": 0.1 }

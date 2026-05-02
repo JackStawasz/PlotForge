@@ -223,14 +223,16 @@ function addFromModal(){
   if(!modalSelTpl||activePid===null) return;
   const p=activePlot(); if(!p) return;
   const params={};
-  for(const pk of Object.keys(TEMPLATES[modalSelTpl].params)){
-    const el=document.getElementById(`mp_${pk}`); if(el) params[pk]=parseFloat(el.value);
+  for(const [pk,pd] of Object.entries(TEMPLATES[modalSelTpl].params)){
+    const el=document.getElementById(`mp_${pk}`);
+    const v = el ? parseFloat(el.value) : NaN;
+    params[pk] = isFinite(v) ? v : pd.default;
   }
   selTpl=modalSelTpl;
   const autoName=TEMPLATES[selTpl]?.label||selTpl;
   const curve=activeCurve();
   if(curve&&!curve.template){
-    curve.template=selTpl; curve.params=params;
+    curve.template=selTpl; curve.params=params; curve.varName=null;
     if(!curve.name) curve.name=autoName;
     p.view.x_min=null;p.view.x_max=null;p.view.y_min=null;p.view.y_max=null;
     renderJS(p.id,true); refreshOverlayLegend(p.id); refreshLineCurveSelector();
@@ -900,12 +902,17 @@ function renderJS(pid, firstRender=false){
   // Template-based curves: evaluate and store jsData
   for(const curve of p.curves){
     if(!curve.template) continue;
-    const result = evalTemplate(curve.template, curve.params, p.view); if(!result) continue;
+    let result;
+    try{ result = evalTemplate(curve.template, curve.params, p.view); }
+    catch(e){ console.warn('evalTemplate error for', curve.template, e); continue; }
+    if(!result) continue;
     let sampled = result;
     if(!result.discrete){
       const evalFn = x => {
-        const tiny = evalTemplate(curve.template, curve.params, {x_min:x, x_max:x+1e-10});
-        return tiny ? tiny.y[0] : null;
+        try{
+          const tiny = evalTemplate(curve.template, curve.params, {x_min:x, x_max:x+1e-10});
+          return tiny ? tiny.y[0] : null;
+        }catch(e){ return null; }
       };
       sampled = adaptiveSample(result.x, result.y, evalFn);
     }

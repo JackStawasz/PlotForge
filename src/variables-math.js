@@ -38,6 +38,47 @@ const LATEX_COMMANDS = [
   '\\overline','\\underline','\\overbrace','\\underbrace',
 ];
 
+// ─── Special \text{} function registry ───────────────────────────────────
+// Maps operator names (written as \text{name} in LaTeX) to their JS implementations.
+// `arity`: expected argument count.  `fn`: receives numeric args, returns a number.
+// Multi-arg functions take (degree/order, x) — always integers for the first arg.
+// The helper functions (besselJ, erfApprox, airyAi, …) live in math.js and are
+// guaranteed to be loaded before this file.
+const TEXT_FN_REGISTRY = {
+  // Inverse hyperbolic
+  arcsinh:{ arity:1, fn: v      => Math.asinh(v) },
+  arccosh:{ arity:1, fn: v      => Math.acosh(v) },
+  arctanh:{ arity:1, fn: v      => Math.atanh(v) },
+  // Reciprocal-trig inverses
+  arccsc: { arity:1, fn: v      => Math.asin(1/v) },
+  arccsch:{ arity:1, fn: v      => Math.asinh(1/v) },
+  arcsec: { arity:1, fn: v      => Math.acos(1/v) },
+  arcsech:{ arity:1, fn: v      => Math.acosh(1/v) },
+  arccot: { arity:1, fn: v      => Math.PI/2 - Math.atan(v) },
+  arccoth:{ arity:1, fn: v      => Math.atanh(1/v) },
+  // Reciprocal hyperbolic
+  csch:   { arity:1, fn: v      => 1/Math.sinh(v) },
+  sech:   { arity:1, fn: v      => 1/Math.cosh(v) },
+  coth:   { arity:1, fn: v      => 1/Math.tanh(v) },
+  // Normalised sinc: sin(πx)/(πx)
+  sinc:   { arity:1, fn: v      => { const a=Math.PI*v; return Math.abs(a)<1e-10?1:Math.sin(a)/a; } },
+  // Error function family
+  erf:    { arity:1, fn: v      => erfApprox(v) },
+  erfc:   { arity:1, fn: v      => 1-erfApprox(v) },
+  // Airy Ai(x)  — keyword \text{airy}, displayed as \text{Ai} in templates
+  airy:     { arity:1, fn: v      => airyAi(v) },
+  // Fresnel integrals — full-name keywords
+  fresnelC: { arity:1, fn: v      => fresnelC(v) },
+  fresnelS: { arity:1, fn: v      => fresnelS(v) },
+  // Bessel J_n(x): two args (n, x)
+  bessel:   { arity:2, fn: (n,v)  => besselJ(Math.round(n), v) },
+  // Orthogonal polynomials: two args (degree, x) — helpers defined in math.js
+  legendre: { arity:2, fn: (n,v)  => legendreP(Math.round(n), v) },
+  hermite:  { arity:2, fn: (n,v)  => hermiteH(Math.round(n), v) },
+  laguerre: { arity:2, fn: (n,v)  => laguerreL(Math.round(n), v) },
+  chebyshev:{ arity:2, fn: (n,v)  => chebyshevT(Math.round(n), v) },
+};
+
 // ─── Dropdown singleton ───────────────────────────────────────────────────
 let _latexDropdown    = null;
 let _latexDropdownMF  = null;
@@ -291,6 +332,47 @@ function _splitLatexArgs(str){
   return args;
 }
 
+// Resolve \text{name}\left(...\right) calls to built-in special functions from
+// TEXT_FN_REGISTRY.  Runs after context variable substitution so that arguments
+// that reference variables are already simplified to numbers.
+// Calls evalLatexExpr recursively on each argument — a depth guard prevents
+// runaway recursion if an argument somehow contains another \text{} call.
+let _textFnCallDepth = 0;
+function _resolveTextFnCalls(expr, ctx){
+  if(_textFnCallDepth >= 4) return expr;
+  _textFnCallDepth++;
+  try{
+    let result = expr;
+    for(let iter=0; iter<8; iter++){
+      let anyReplaced = false;
+      const pat = /\\text\{([^}]+)\}\\left\(/g;
+      let m;
+      while((m = pat.exec(result)) !== null){
+        const name  = m[1];
+        const entry = TEXT_FN_REGISTRY[name];
+        if(!entry){ pat.lastIndex = m.index+1; continue; }
+        const [argsStr, endPos] = _extractBalancedArgs(result, m.index+m[0].length);
+        if(argsStr===null){ pat.lastIndex = m.index+1; continue; }
+        const rawArgs = _splitLatexArgs(argsStr);
+        if(rawArgs.length !== entry.arity){ pat.lastIndex = m.index+1; continue; }
+        const evaledArgs = rawArgs.map(a => evalLatexExpr(a, ctx));
+        if(evaledArgs.some(a => a===null || !isFinite(a))){ pat.lastIndex = m.index+1; continue; }
+        let fnResult;
+        try{ fnResult = entry.fn(...evaledArgs); }catch(e){ pat.lastIndex = m.index+1; continue; }
+        if(fnResult===null || !isFinite(fnResult)){ pat.lastIndex = m.index+1; continue; }
+        const repl = `(${fnResult})`;
+        result = result.slice(0, m.index) + repl + result.slice(endPos);
+        pat.lastIndex = m.index + repl.length;
+        anyReplaced = true;
+      }
+      if(!anyReplaced) break;
+    }
+    return result;
+  }finally{
+    _textFnCallDepth--;
+  }
+}
+
 // Recursion guard for function call evaluation.
 let _funcCallDepth = 0;
 
@@ -435,11 +517,16 @@ function evalLatexExpr(latex, ctx={}){
   if(!latex || !latex.trim()) return null;
   let expr = latex;
 
-  // Resolve \text{name} from context first
-  expr = expr.replace(/\\text\{([^}]+)\}/g, (match, name) => {
+  // Resolve bare \text{name} scalar variables from context.
+  // The negative lookahead skips occurrences followed by \left( — those are
+  // function calls handled by _resolveTextFnCalls below.
+  expr = expr.replace(/\\text\{([^}]+)\}(?!\\left\()/g, (match, name) => {
     if(name in ctx) return `(${ctx[name]})`;
     return match;
   });
+
+  // Dispatch \text{name}\left(...\right) to built-in special functions.
+  expr = _resolveTextFnCalls(expr, ctx);
 
   // Resolve calls to known equation variables before variable substitution.
   // e.g. g\left(2,3\right) → (8) when g(x,t)=x+3t is defined.
@@ -520,8 +607,8 @@ function partialEvalLatex(latex, ctx){
   if(!latex || !latex.trim()) return null;
   let expr = latex;
 
-  // Resolve \text{name} from context
-  expr = expr.replace(/\\text\{([^}]+)\}/g, (match, name) => {
+  // Resolve bare \text{name} scalar variables from context (skip function calls).
+  expr = expr.replace(/\\text\{([^}]+)\}(?!\\left\()/g, (match, name) => {
     if(name in ctx) return `(${ctx[name]})`;
     return match;
   });
@@ -802,7 +889,22 @@ function latexToPython(latex){
   if(!latex||!latex.trim()) return '';
   let expr = latex.trim();
 
-  expr = expr.replace(/\\text\{([^}]+)\}/g, '$1');
+  // Map known \text{name} operators to Python equivalents; fall back to bare name.
+  const _PY_FN = {
+    erf:'math.erf', erfc:'math.erfc',
+    arcsinh:'math.asinh', arccosh:'math.acosh', arctanh:'math.atanh',
+    arccsc:'math.asin',   arccsch:'math.asinh',
+    arcsec:'math.acos',   arcsech:'math.acosh',
+    arccot:'math.atan',   arccoth:'math.atanh',
+    csch:'np.csch', sech:'np.sech', coth:'np.coth',
+    sinc:'np.sinc',
+    airy:'scipy.special.airy',
+    bessel:'scipy.special.jv',
+    fresnelC:'scipy.special.fresnel_c', fresnelS:'scipy.special.fresnel_s',
+    legendre:'scipy.special.legendre', hermite:'scipy.special.hermite',
+    laguerre:'scipy.special.laguerre', chebyshev:'scipy.special.chebyt',
+  };
+  expr = expr.replace(/\\text\{([^}]+)\}/g, (_, name) => _PY_FN[name] || name);
 
   // Subscripted identifiers: b_{0} → b_0
   expr = expr

@@ -86,16 +86,7 @@ function evalTemplate(tkey, params, view){
       const ell = Math.max(0, Math.round(p.ell ?? 3));
       const a   = p.a ?? 1;
       x = linspace(Math.max(-1, xLo), Math.min(1, xHi), 600);
-      y = x.map(v => {
-        if(ell === 0) return a * 1;
-        if(ell === 1) return a * v;
-        let pp = 1, pc = v;
-        for(let n = 1; n < ell; n++){
-          const pn = ((2*n+1)*v*pc - n*pp) / (n+1);
-          pp = pc; pc = pn;
-        }
-        return a * pc;
-      });
+      y = x.map(v => a * legendreP(ell, v));
       break;
     }
     case 'sinc':{
@@ -136,42 +127,21 @@ function evalTemplate(tkey, params, view){
       break;
     }
     case 'hermite_h':{
-      // Physicist's Hermite H_n via recurrence: H_0=1, H_1=2x, H_n=2x·H_{n-1} - 2(n-1)·H_{n-2}
       x = linspace(xLo, xHi, N);
       const A=p.A??1, n=Math.max(0, Math.round(p.n??3));
-      y = x.map(v => {
-        if(n===0) return A;
-        if(n===1) return A * 2*v;
-        let hm1=1, hc=2*v;
-        for(let k=1; k<n; k++){ const hn=2*v*hc - 2*k*hm1; hm1=hc; hc=hn; }
-        return A * hc;
-      });
+      y = x.map(v => A * hermiteH(n, v));
       break;
     }
     case 'laguerre':{
-      // Laguerre L_n via recurrence: L_0=1, L_1=1-x, L_n=((2n-1-x)L_{n-1} - (n-1)L_{n-2})/n
       x = linspace(xLo, xHi, N);
       const a=p.a??1, n=Math.max(0, Math.round(p.n??3));
-      y = x.map(v => {
-        if(n===0) return a;
-        if(n===1) return a*(1-v);
-        let lp=1, lc=1-v;
-        for(let k=1; k<n; k++){ const ln=((2*k+1-v)*lc - k*lp)/(k+1); lp=lc; lc=ln; }
-        return a*lc;
-      });
+      y = x.map(v => a * laguerreL(n, v));
       break;
     }
     case 'chebyshev':{
-      // Chebyshev T_n (1st kind) via recurrence: T_0=1, T_1=x, T_n=2x·T_{n-1} - T_{n-2}
       x = linspace(xLo, xHi, N);
       const a=p.a??1, n=Math.max(0, Math.round(p.n??3));
-      y = x.map(v => {
-        if(n===0) return a;
-        if(n===1) return a*v;
-        let tp=1, tc=v;
-        for(let k=1; k<n; k++){ const tn=2*v*tc - tp; tp=tc; tc=tn; }
-        return a*tc;
-      });
+      y = x.map(v => a * chebyshevT(n, v));
       break;
     }
     default: return null;
@@ -290,6 +260,40 @@ function airyAi(x){
   return c1*f - c2*g;
 }
 
+
+// ─── Orthogonal polynomial helpers (also used by TEXT_FN_REGISTRY) ───────
+
+// Legendre P_ell(x) — recurrence: P_0=1, P_1=x, P_n=((2n+1)xP_{n-1}-nP_{n-2})/(n+1)
+function legendreP(ell, x){
+  if(ell===0) return 1; if(ell===1) return x;
+  let pp=1, pc=x;
+  for(let n=1;n<ell;n++){const pn=((2*n+1)*x*pc-n*pp)/(n+1);pp=pc;pc=pn;}
+  return pc;
+}
+
+// Physicist's Hermite H_n(x) — recurrence: H_0=1, H_1=2x, H_n=2xH_{n-1}-2(n-1)H_{n-2}
+function hermiteH(n, x){
+  if(n===0) return 1; if(n===1) return 2*x;
+  let hm1=1, hc=2*x;
+  for(let k=1;k<n;k++){const hn=2*x*hc-2*k*hm1;hm1=hc;hc=hn;}
+  return hc;
+}
+
+// Laguerre L_n(x) — recurrence: L_0=1, L_1=1-x, L_n=((2n-1-x)L_{n-1}-(n-1)L_{n-2})/n
+function laguerreL(n, x){
+  if(n===0) return 1; if(n===1) return 1-x;
+  let lp=1, lc=1-x;
+  for(let k=1;k<n;k++){const ln=((2*k+1-x)*lc-k*lp)/(k+1);lp=lc;lc=ln;}
+  return lc;
+}
+
+// Chebyshev T_n(x) first kind — recurrence: T_0=1, T_1=x, T_n=2xT_{n-1}-T_{n-2}
+function chebyshevT(n, x){
+  if(n===0) return 1; if(n===1) return x;
+  let tp=1, tc=x;
+  for(let k=1;k<n;k++){const tn=2*x*tc-tp;tp=tc;tc=tn;}
+  return tc;
+}
 
 // Insert null sentinels only at true asymptote discontinuities (sign-flip
 // jumps above a large threshold). Does NOT clip finite peaks.

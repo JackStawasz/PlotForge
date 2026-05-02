@@ -2271,7 +2271,7 @@ function syncTemplateParamsToVars(tplKey, params, overrideScope){
     addVariable('equation', {
       name: 'f',
       exprLatex: eqLatex,
-      fullLatex: `f\\left(x\\right)=${eqLatex}`,
+      fullLatex: eqLatex,
       fromTemplate: true, templateKey: tplKey, paramKey: '_formula',
       silent: true, scope: localScope, folder: folderName,
     });
