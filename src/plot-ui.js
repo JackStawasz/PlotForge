@@ -809,11 +809,11 @@ function buildTopbarInner(p){
     </div>
     <div class="cactions-right">
       <span class="ctop-coords" id="ctop_coords_${p.id}"></span>
-      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addannotation" data-tip="✎ Add text/shape overlay">✎</button>
-      <button class="cbtn dl-topbar-btn" data-pid="${p.id}" data-action="download" data-tip="⤓ Save as image">⤓</button>
-      <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" data-tip="⧉ Duplicate plot" ${dupDelDisabled}>⧉</button>
-      <button class="cbtn fs-btn" data-pid="${p.id}" data-action="fullscreen" data-tip="⛶ Toggle full screen">⛶</button>
-      <button class="cbtn del-btn" data-pid="${p.id}" data-action="del" data-tip="🗑 Delete plot" ${dupDelDisabled}>🗑</button>
+      <button class="cbtn text-btn" data-pid="${p.id}" data-action="addannotation">✎</button>
+      <button class="cbtn dl-topbar-btn" data-pid="${p.id}" data-action="download">⤓</button>
+      <button class="cbtn dup-btn" data-pid="${p.id}" data-action="dup" ${dupDelDisabled}>⧉</button>
+      <button class="cbtn fs-btn" data-pid="${p.id}" data-action="fullscreen">⛶</button>
+      <button class="cbtn del-btn" data-pid="${p.id}" data-action="del" ${dupDelDisabled}>🗑</button>
     </div>`;
 }
 
