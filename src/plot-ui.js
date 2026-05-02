@@ -2087,4 +2087,11 @@ function wireAllCfgInputs(){
   document.getElementById('undoBtn')?.addEventListener('click', performUndo);
   document.getElementById('redoBtn')?.addEventListener('click', performRedo);
   updateUndoRedoBtns();
+
+  document.getElementById('saveWorkspaceBtn')?.addEventListener('click', ()=>{
+    saveWorkspace();
+    // Close the gear panel after saving
+    document.getElementById('gearPanel')?.classList.remove('open');
+    document.getElementById('gearBtn')?.classList.remove('open');
+  });
 }

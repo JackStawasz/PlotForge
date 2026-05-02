@@ -148,7 +148,14 @@ function setSbTab(tab){
 let uploadedFiles = [];
 
 function handleFilesDrop(fileList){
-  for(const f of fileList){
+  const files = Array.from(fileList);
+
+  // Workspace files take priority — route to load confirmation, ignore any other
+  // files dropped at the same time to avoid partial side-effects.
+  const workspaceFile = files.find(f => f.name.toLowerCase().endsWith('.plotforge'));
+  if(workspaceFile){ _showWorkspaceConfirm(workspaceFile); return; }
+
+  for(const f of files){
     const ext = f.name.split('.').pop().toLowerCase();
     const isImportable = ext === 'pkl' || ext === 'json' || ext === 'csv';
     const existingIdx = uploadedFiles.findIndex(u => u.name === f.name);
@@ -167,6 +174,51 @@ function handleFilesDrop(fileList){
     else if(isImportable && typeof importDataFile === 'function') importDataFile(f, null, isOverwrite);
   }
   renderFilesList();
+}
+
+// ─── Workspace load confirmation modal ───────────────────────────────────
+
+function _buildWorkspaceConfirmModal(){
+  if(document.getElementById('ws-confirm-modal')) return;
+  const el = document.createElement('div');
+  el.id = 'ws-confirm-modal';
+  el.className = 'ws-modal-backdrop';
+  el.innerHTML = `
+    <div class="ws-modal">
+      <div class="ws-modal-title">Load Workspace</div>
+      <div class="ws-modal-body">
+        <p class="ws-modal-msg">Replace current workspace with the loaded file?</p>
+        <p class="ws-modal-filename" id="wsModalFilename"></p>
+      </div>
+      <div class="ws-modal-footer">
+        <button class="cbtn ws-btn-cancel" id="wsModalCancel">Cancel</button>
+        <button class="cbtn ws-btn-confirm" id="wsModalConfirm">Replace</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  document.getElementById('wsModalCancel').addEventListener('click', _closeWorkspaceConfirm);
+  el.addEventListener('click', e=>{ if(e.target === el) _closeWorkspaceConfirm(); });
+  document.addEventListener('keydown', e=>{
+    if(e.key === 'Escape' && document.getElementById('ws-confirm-modal')?.classList.contains('open'))
+      _closeWorkspaceConfirm();
+  });
+}
+
+function _showWorkspaceConfirm(file){
+  _buildWorkspaceConfirmModal();
+  const filenameEl = document.getElementById('wsModalFilename');
+  if(filenameEl) filenameEl.textContent = file.name;
+  document.getElementById('ws-confirm-modal').classList.add('open');
+
+  // Re-assign onclick each time so it captures the correct file reference
+  document.getElementById('wsModalConfirm').onclick = ()=>{
+    _closeWorkspaceConfirm();
+    if(typeof loadWorkspace === 'function') loadWorkspace(file);
+  };
+}
+
+function _closeWorkspaceConfirm(){
+  document.getElementById('ws-confirm-modal')?.classList.remove('open');
 }
 
 function renderFilesList(){

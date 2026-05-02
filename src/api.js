@@ -37,36 +37,84 @@ const undoStack = [];
 const redoStack = [];
 const MAX_HISTORY = 60;
 
-function snapshotForUndo(){
-  const snap = JSON.stringify({
-    plots: plots.map(p=>({
-      ...p,
-      curves: p.curves.map(c=>({
-        ...c,
-        jsData: c.template ? null : (c.jsData ? { x:[...c.jsData.x], y:[...c.jsData.y], discrete: c.jsData.discrete } : null),
-      }))
+// Builds the full serialisable workspace state.
+// Used by both snapshotForUndo() and saveWorkspace() so the two always
+// produce identical structure.  Runtime-only and derived fields are
+// explicitly excluded here so they never appear in either output.
+function buildWorkspaceState(){
+  return {
+    version: 1,
+    plots: plots.map(p => ({
+      id:         p.id,
+      tabId:      p.tabId,
+      plotNumber: p.plotNumber,
+      name:       p.name,
+      labels:     { ...p.labels },
+      view:       { ...p.view },
+      curves: p.curves.map(c => ({
+        id:              c.id,
+        template:        c.template,
+        params:          { ...c.params },
+        equation:        c.equation,
+        // Template curves re-derive jsData on load; list/equation curves must keep it.
+        jsData: c.template
+          ? null
+          : (c.jsData ? { x:[...c.jsData.x], y:[...c.jsData.y], discrete: c.jsData.discrete } : null),
+        line_color:      c.line_color,
+        line_width:      c.line_width,
+        line_style:      c.line_style,
+        line_connection: c.line_connection,
+        marker:          c.marker,
+        marker_size:     c.marker_size,
+        fill_under:      c.fill_under,
+        fill_alpha:      c.fill_alpha,
+        name:            c.name,
+        mask_x_min:      c.mask_x_min,
+        mask_x_max:      c.mask_x_max,
+        mask_y_min:      c.mask_y_min,
+        mask_y_max:      c.mask_y_max,
+        varName:         c.varName   ?? null,
+        listXName:       c.listXName ?? null,
+        listYName:       c.listYName ?? null,
+      })),
+      // Excluded — runtime only: loading, converting, mplMode, mplImage
+      // Excluded — re-derived on render: textAnnotations, shapeAnnotations
     })),
-    variables: variables.map(v=>({
-      id: v.id, kind: v.kind,
-      name: v.name, nameLatex: v.nameLatex || '',
-      fullLatex: v.fullLatex || '', exprLatex: v.exprLatex || '',
-      value: v.value, paramMin: v.paramMin, paramMax: v.paramMax,
-      listLength: v.listLength, listItems: [...(v.listItems||[])],
-      fromTemplate: v.fromTemplate, templateKey: v.templateKey,
-      paramKey: v.paramKey, pickleSource: v.pickleSource,
-      _isNumeric: v._isNumeric || false,
-      scope: v.scope ?? 'global',
-      folder: v.folder ?? null,
+    variables: variables.map(v => ({
+      id:           v.id,
+      kind:         v.kind,
+      name:         v.name,
+      nameLatex:    v.nameLatex   || '',
+      fullLatex:    v.fullLatex   || '',
+      exprLatex:    v.exprLatex   || '',
+      value:        v.value,
+      paramMin:     v.paramMin,
+      paramMax:     v.paramMax,
+      listLength:   v.listLength,
+      listItems:    [...(v.listItems || [])],
+      fromTemplate: v.fromTemplate,
+      templateKey:  v.templateKey,
+      paramKey:     v.paramKey,
+      pickleSource: v.pickleSource,
+      scope:        v.scope  ?? 'global',
+      folder:       v.folder ?? null,
       datasetCols: v.kind === 'dataset' && v.datasetCols
         ? v.datasetCols.map(c => ({ name: c.name, values: [...c.values] }))
         : undefined,
+      // Excluded — derived/runtime: _isNumeric, _categorical, _labels, _warning
     })),
     varIdCtr,
-    tabs: tabs.map(t=>({ id:t.id, name:t.name })),
+    tabs:        tabs.map(t => ({ id: t.id, name: t.name })),
     activeTabId,
     tab_ctr,
     plot_num_ctr,
-  });
+    pid_ctr,
+    curve_ctr,
+  };
+}
+
+function snapshotForUndo(){
+  const snap = JSON.stringify(buildWorkspaceState());
   if(undoStack.length && undoStack[undoStack.length-1]===snap) return;
   undoStack.push(snap);
   if(undoStack.length > MAX_HISTORY) undoStack.shift();
@@ -103,8 +151,10 @@ function restoreSnapshot(snap){
     tabs.length = 0;
     for(const t of state.tabs) tabs.push({ id:t.id, name:t.name });
     activeTabId = state.activeTabId ?? tabs[0].id;
-    if(typeof state.tab_ctr === 'number')      tab_ctr      = state.tab_ctr;
+    if(typeof state.tab_ctr      === 'number') tab_ctr      = state.tab_ctr;
     if(typeof state.plot_num_ctr === 'number') plot_num_ctr = state.plot_num_ctr;
+    if(typeof state.pid_ctr      === 'number') pid_ctr      = state.pid_ctr;
+    if(typeof state.curve_ctr    === 'number') curve_ctr    = state.curve_ctr;
   } else if(!tabs.length){
     const t = mkTab('Tab 1');
     tabs.push(t);
@@ -155,6 +205,53 @@ function updateUndoRedoBtns(){
   const ub = document.getElementById('undoBtn'), rb = document.getElementById('redoBtn');
   if(ub) ub.disabled = undoStack.length < 2;
   if(rb) rb.disabled = redoStack.length === 0;
+}
+
+// ═══ WORKSPACE SAVE / LOAD ═══════════════════════════════════════════════
+
+// Download the current workspace as a .plotforge file.
+// Uses buildWorkspaceState() directly — does NOT touch the undo stack.
+function saveWorkspace(){
+  const json = JSON.stringify(buildWorkspaceState(), null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), {
+    href:     url,
+    download: 'workspace.plotforge',
+  });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Load a .plotforge file and restore the workspace it describes.
+// Clears the current undo/redo history and establishes the loaded
+// state as the new baseline so the user can undo from there.
+function loadWorkspace(file){
+  const reader = new FileReader();
+  reader.onload = e => {
+    let state;
+    try{
+      state = JSON.parse(e.target.result);
+    }catch(err){
+      alert('Could not load workspace: invalid JSON.');
+      return;
+    }
+    if(!state || typeof state.version !== 'number'){
+      alert('Could not load workspace: unrecognised file format.\nMake sure you are opening a .plotforge file.');
+      return;
+    }
+    // Restore the full workspace state
+    restoreSnapshot(JSON.stringify(state));
+    // Clear stale undo/redo history from the previous session and
+    // record the freshly loaded state as the new undo baseline.
+    undoStack.length = 0;
+    redoStack.length = 0;
+    snapshotForUndo();
+  };
+  reader.onerror = () => alert('Could not read file.');
+  reader.readAsText(file);
 }
 
 // ═══ STATE FACTORIES ═════════════════════════════════════════════════════

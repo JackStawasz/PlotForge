@@ -1389,4 +1389,64 @@ header{
   transition:border-color .12s;
   appearance:auto;
 }
+
+/* ── Gear panel divider + workspace button ──────────────────────────────── */
+.gear-divider{
+  height:1px;background:var(--border);margin:2px 0;
+}
+.gear-workspace-btn{
+  width:100%;padding:7px 10px;
+  background:transparent;border:1px solid var(--border2);border-radius:6px;
+  color:var(--muted);font-family:var(--mono);font-size:.72rem;
+  cursor:pointer;text-align:left;letter-spacing:.02em;
+  transition:color .12s,border-color .12s,background .12s;
+}
+.gear-workspace-btn:hover{
+  color:var(--acc2);border-color:var(--acc2);
+  background:color-mix(in srgb,var(--acc2) 7%,transparent);
+}
+
+/* ── Workspace load confirm modal ───────────────────────────────────────── */
+.ws-modal-backdrop{
+  position:fixed;inset:0;z-index:9000;
+  background:rgba(4,4,12,.72);backdrop-filter:blur(3px);
+  display:none;align-items:center;justify-content:center;padding:20px;
+}
+.ws-modal-backdrop.open{ display:flex; }
+.ws-modal{
+  background:var(--s1);border:1px solid var(--border2);border-radius:10px;
+  box-shadow:0 12px 48px rgba(0,0,0,.55);
+  min-width:300px;max-width:400px;width:100%;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.ws-modal-title{
+  padding:14px 16px 10px;border-bottom:1px solid var(--border);
+  font-family:var(--mono);font-size:.82rem;font-weight:600;color:var(--text);
+}
+.ws-modal-body{
+  padding:14px 16px;display:flex;flex-direction:column;gap:6px;
+}
+.ws-modal-msg{
+  font-family:var(--mono);font-size:.78rem;color:var(--text);margin:0;
+}
+.ws-modal-filename{
+  font-family:var(--mono);font-size:.7rem;color:var(--muted);
+  margin:0;word-break:break-all;
+}
+.ws-modal-footer{
+  padding:10px 16px 14px;display:flex;justify-content:flex-end;gap:8px;
+}
+.ws-btn-cancel{
+  border-color:var(--border2);color:var(--muted);font-size:.75rem;padding:5px 14px;
+}
+.ws-btn-cancel:hover{ border-color:var(--border2);color:var(--text);background:rgba(255,255,255,.05); }
+.ws-btn-confirm{
+  border-color:color-mix(in srgb,var(--acc2) 55%,transparent);
+  color:var(--acc2);font-size:.75rem;padding:5px 14px;
+}
+.ws-btn-confirm:hover{
+  border-color:var(--acc2);
+  background:color-mix(in srgb,var(--acc2) 10%,transparent);
+}
+[data-theme="light"] .ws-modal-backdrop{ background:rgba(200,210,230,.72); }
 .pkl-scope-select:focus{ border-color:var(--acc2); }
