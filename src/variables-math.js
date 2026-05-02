@@ -552,6 +552,32 @@ function evalLatexExpr(latex, ctx={}){
     }
   }
 
+  // Evaluate \binom{n}{r} using symmetry-reduced product: C(n,r) = C(n, min(r,n-r)).
+  // Must be computed before the generic { → ( rule turns \binom into multiplication.
+  expr = expr.replace(/\\binom\{([^}]*)\}\{([^}]*)\}/g, (match, nStr, rStr) => {
+    const n = evalLatexExpr(nStr, ctx);
+    const r = evalLatexExpr(rStr, ctx);
+    if(n === null || r === null || !isFinite(n) || !isFinite(r)) return match;
+    const ni = Math.round(n);
+    let ri = Math.min(Math.round(r), ni - Math.round(r)); // use smaller side
+    if(ri < 0 || ni < 0) return '(0)';
+    let c = 1;
+    for(let i = 0; i < ri; i++) c = c * (ni - i) / (i + 1);
+    return `(${c})`;
+  });
+
+  // Evaluate n! factorial. Matches a digit-sequence or parenthesised expression
+  // followed by !. After variable substitution, n! becomes (value)! so both forms
+  // are covered. Must run before the symbol-check strips letters.
+  expr = expr.replace(/(\([^()]*\)|\d+(?:\.\d+)?)!/g, (match, nStr) => {
+    const n = evalLatexExpr(nStr, ctx);
+    if(n === null || !isFinite(n) || n < 0) return match;
+    const ni = Math.round(n);
+    let f = 1;
+    for(let i = 2; i <= ni; i++) f *= i;
+    return `(${f})`;
+  });
+
   // Convert latex syntax to JS
   expr = expr
     .replace(/\\pi/g,        '(Math.PI)')
