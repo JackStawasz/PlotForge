@@ -169,6 +169,26 @@ function lanczosGamma(z){
   return Math.sqrt(2*Math.PI)*Math.pow(t,z+0.5)*Math.exp(-t)*x;
 }
 
+// Log of |Gamma(z)| computed in log-space via Lanczos — avoids overflow for large z.
+// Returns Infinity at poles (z = 0, -1, -2, …).
+function lnGamma(z){
+  if(z<=0 && z===Math.round(z)) return Infinity;
+  if(z<0.5) return Math.log(Math.PI/Math.abs(Math.sin(Math.PI*z)))-lnGamma(1-z);
+  z-=1;
+  const g=7,c=[0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,
+    -176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  let x=c[0]; for(let i=1;i<g+2;i++)x+=c[i]/(z+i);
+  const t=z+g+0.5;
+  return 0.5*Math.log(2*Math.PI)+(z+0.5)*Math.log(t)-t+Math.log(x);
+}
+
+// Sign of Gamma(z): +1 for z > 0, alternates for negative non-integers, 0 at poles.
+function gammaSign(z){
+  if(z>0) return 1;
+  if(z===Math.round(z)) return 0;
+  return Math.abs(Math.floor(z))%2===0 ? 1 : -1;
+}
+
 // ═══ SPECIAL FUNCTION HELPERS ════════════════════════════════════════════
 
 // Bessel J_n(x) — uses series for small |x|, Miller's downward recurrence for large n

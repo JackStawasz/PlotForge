@@ -39,10 +39,18 @@ function addVariable(kind='constant', opts={}){
   renderVariables();
   if(!opts.silent){
     if(typeof snapshotForUndo === 'function') snapshotForUndo();
-    // Focus the new MQ field after DOM settles
+    // Focus the new variable's input field after DOM settles
     setTimeout(()=>{
-      const mq = document.querySelector(`#vmq_${v.id} .mq-editable-field`);
-      if(mq) mq.click();
+      if(v.kind === 'list'){
+        const mq = document.querySelector(`#vnamemq_${v.id} .mq-editable-field`);
+        if(mq) mq.click();
+      } else if(v.kind === 'dataset'){
+        const inp = document.getElementById(`vdataname_${v.id}`);
+        if(inp){ inp.focus(); inp.select(); }
+      } else {
+        const mq = document.querySelector(`#vmq_${v.id} .mq-editable-field`);
+        if(mq) mq.click();
+      }
     }, 80);
   }
   return v;
@@ -163,6 +171,74 @@ function showVarTypePicker(forceScope){
 
 function hideVarTypePicker(){
   if(_varTypePicker){ _varTypePicker.remove(); _varTypePicker = null; }
+}
+
+// ═══ VAR TYPE CONVERT MENU ═══════════════════════════════════════════════
+// Triggered by clicking a variable's type badge — lets you swap to a different
+// kind while preserving scope and folder assignment.
+let _varConvertMenu = null;
+
+function hideVarConvertMenu(){
+  if(_varConvertMenu){ _varConvertMenu.remove(); _varConvertMenu = null; }
+}
+
+function showVarConvertMenu(anchorEl, v){
+  hideVarConvertMenu();
+  const menu = document.createElement('div');
+  menu.id = 'var-convert-menu';
+  menu.style.cssText = [
+    'position:fixed','z-index:99999',
+    'background:var(--s1)','border:1px solid var(--border2)','border-radius:8px',
+    'box-shadow:0 8px 28px rgba(0,0,0,.55)',
+    'font-family:var(--mono,monospace)','font-size:.8rem',
+    'min-width:178px','overflow:hidden','padding:4px 0',
+  ].join(';');
+  _varConvertMenu = menu;
+
+  const types = [
+    { key:'constant', icon:'α',   label:'Constant', desc:'Number or expression' },
+    { key:'equation', icon:'ƒ',   label:'Equation', desc:'Function of x'        },
+    { key:'list',     icon:'[ ]', label:'List',     desc:'Fixed-length sequence' },
+    { key:'dataset',  icon:'⊞',   label:'Dataset',  desc:'Rows & columns'       },
+  ];
+
+  types.forEach(t => {
+    const isCurrent = v.kind === t.key;
+    const row = document.createElement('button');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:none;padding:9px 14px;cursor:pointer;transition:background .08s;text-align:left;';
+    if(isCurrent) row.style.opacity = '0.4';
+    row.innerHTML = `<span style="font-size:1.05rem;width:22px;text-align:center;flex-shrink:0;color:var(--acc2);opacity:.85">${t.icon}</span>`
+      + `<span><span style="color:var(--text);font-size:.8rem;display:block">${t.label}</span>`
+      + `<span style="color:var(--muted);font-size:.68rem">${t.desc}</span></span>`;
+    if(!isCurrent){
+      row.addEventListener('mouseenter', ()=>{ row.style.background='rgba(90,255,206,.07)'; });
+      row.addEventListener('mouseleave', ()=>{ row.style.background='transparent'; });
+    }
+    row.addEventListener('mousedown', e=>{ e.preventDefault(); e.stopPropagation(); });
+    row.addEventListener('click', e=>{
+      e.stopPropagation();
+      hideVarConvertMenu();
+      if(isCurrent) return;
+      const scope  = v.scope;
+      const folder = v.folder;
+      removeVariable(v.id);
+      addVariable(t.key, { scope, folder });
+    });
+    menu.appendChild(row);
+  });
+
+  document.body.appendChild(menu);
+  const rect = anchorEl.getBoundingClientRect();
+  menu.style.top  = (rect.bottom + 4) + 'px';
+  menu.style.left = rect.left + 'px';
+  requestAnimationFrame(()=>{
+    const mH = menu.offsetHeight;
+    if(rect.bottom + 4 + mH > window.innerHeight - 8)
+      menu.style.top = (rect.top - mH - 4) + 'px';
+  });
+  setTimeout(()=>{
+    document.addEventListener('click', hideVarConvertMenu, { once: true });
+  }, 0);
 }
 
 // ═══ DRAG-TO-REORDER ═════════════════════════════════════════════════════
@@ -549,6 +625,8 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
       const badge = document.createElement('span');
       badge.className = `var-kind-badge var-kind-${v.kind}`;
       badge.textContent = 'List';
+      badge.style.cursor = 'pointer';
+      badge.addEventListener('click', e=>{ e.stopPropagation(); showVarConvertMenu(badge, v); });
       headerTop.appendChild(badge);
       if(v.pickleSource){
         const srcTag = document.createElement('span');
@@ -597,7 +675,7 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
           });
           const _nd = (v.name && v.name.length > 1) ? `\\text{${v.name}}` : (v.name || '');
           nameMf.latex(_nd);
-          wrapMathFieldWithAC(nameMqWrap, nameMf);
+          wrapMathFieldWithAC(nameMqWrap, nameMf, v);
         }catch(err){}
       });
 
@@ -609,12 +687,15 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
       const badge = document.createElement('span');
       badge.className = 'var-kind-badge var-kind-dataset';
       badge.textContent = 'Dataset';
+      badge.style.cursor = 'pointer';
+      badge.addEventListener('click', e=>{ e.stopPropagation(); showVarConvertMenu(badge, v); });
       headerTop.appendChild(badge);
       headerTop.appendChild(delBtn);
       inner.appendChild(headerTop);
 
       const nameInp = document.createElement('input');
       nameInp.type        = 'text';
+      nameInp.id          = `vdataname_${v.id}`;
       nameInp.className   = 'var-dataset-name-inp';
       nameInp.placeholder = 'dataset name';
       nameInp.value       = v.name || '';
@@ -637,6 +718,8 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
       badge.className = `var-kind-badge var-kind-${v.kind}`;
       badge.textContent = v.kind === 'constant'
         ? 'Const' : v.kind.charAt(0).toUpperCase() + v.kind.slice(1);
+      badge.style.cursor = 'pointer';
+      badge.addEventListener('click', e=>{ e.stopPropagation(); showVarConvertMenu(badge, v); });
       header.appendChild(badge);
       if(v.pickleSource){
         const srcTag = document.createElement('span');
@@ -759,8 +842,8 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
     });
     fHeader.appendChild(fDelBtn);
 
-    // Double-click label → rename folder inline
-    labelEl.addEventListener('dblclick', e=>{
+    // Click label → rename folder inline
+    labelEl.addEventListener('click', e=>{
       e.stopPropagation();
       _beginFolderRename(fHeader, labelEl, folderName, folderVars, collapseKey);
     });
@@ -779,6 +862,7 @@ function _renderVarSubset(listEl, varSubset, scopeId = 'global'){
       if(e.target.closest('.var-folder-del'))         return;
       if(e.target.closest('.var-folder-toggle'))      return;
       if(e.target.closest('.var-folder-drag-handle')) return;
+      if(e.target.closest('.var-folder-label'))       return;
       doToggle();
     });
 
@@ -1494,7 +1578,7 @@ function buildConstantBody(item, v){
     if(_mf){
       if(v.fullLatex) _mf.latex(v.fullLatex);
       updateMode(_mf);
-      wrapMathFieldWithAC(mqWrap, _mf);
+      wrapMathFieldWithAC(mqWrap, _mf, v);
     }
 
     // Slider moves value and updates the MathField display
@@ -1584,7 +1668,7 @@ function buildParameterBody(item, v){
     });
     if(_mf){
       _mf.latex(`${v.name || 'p'}=${formatParamVal(v.value)}`);
-      wrapMathFieldWithAC(mqWrap, _mf);
+      wrapMathFieldWithAC(mqWrap, _mf, v);
     }
 
     slider.addEventListener('input', ()=>{
@@ -1650,7 +1734,7 @@ function buildEquationBody(item, v){
       const initLatex = v.fullLatex || `${fname}\\left(x\\right)=${v.exprLatex || ''}`;
       mf.latex(initLatex);
       validateEquationLatex(mf.latex(), v);
-      wrapMathFieldWithAC(mqWrap, mf);
+      wrapMathFieldWithAC(mqWrap, mf, v);
     }
   });
 }

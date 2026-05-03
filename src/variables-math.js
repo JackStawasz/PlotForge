@@ -23,7 +23,7 @@ const LATEX_COMMANDS = [
   '\\sin','\\cos','\\tan','\\cot','\\sec','\\csc',
   '\\arcsin','\\arccos','\\arctan','\\arctanh',
   '\\sinh','\\cosh','\\tanh',
-  '\\log','\\ln','\\exp','\\sqrt','\\frac','\\cdot','\\times','\\div','\\otimes','\\oplus',
+  '\\log','\\ln','\\exp','\\sqrt','\\frac','\\binom','\\cdot','\\times','\\div','\\otimes','\\oplus',
   '\\pm','\\mp','\\leq','\\geq','\\neq','\\approx','\\equiv','\\sim',
   '\\infty','\\partial','\\nabla','\\sum','\\prod','\\int','\\oint',
   '\\lim','\\max','\\min','\\sup','\\inf',
@@ -248,7 +248,9 @@ function updateLatexDropdown(mf, anchorEl, mqEl){
 }
 
 // Attach keyboard navigation for the autocomplete dropdown to a MQ element.
-function wrapMathFieldWithAC(mqEl, mf){
+// varCtx: optional variable object { scope, folder } — when provided, Enter with
+// a closed dropdown creates a new blank constant in the same scope/folder.
+function wrapMathFieldWithAC(mqEl, mf, varCtx){
   mqEl.addEventListener('keydown', e=>{
     const dd   = _latexDropdown;
     const open = dd && dd.style.display !== 'none';
@@ -259,7 +261,7 @@ function wrapMathFieldWithAC(mqEl, mf){
       if(e.key === 'Enter' || e.key === 'Tab'){
         const items = dd.querySelectorAll('.latex-ac-item');
         const idx   = _latexDropdownIdx >= 0 ? _latexDropdownIdx : 0;
-        if(items[idx]){ e.preventDefault(); applyLatexCompletion(mf, mqEl, items[idx].textContent); return; }
+        if(items[idx]){ e.preventDefault(); e.stopPropagation(); applyLatexCompletion(mf, mqEl, items[idx].textContent); return; }
       }
       if(e.key === 'Escape'){
         e.preventDefault();
@@ -275,6 +277,12 @@ function wrapMathFieldWithAC(mqEl, mf){
         e.preventDefault();
         _cancelCommandEntry(mf, mqEl);
       }
+    }
+
+    // Enter with dropdown closed: create a new blank constant in same scope/folder
+    if(e.key === 'Enter' && !open && varCtx && typeof addVariable === 'function'){
+      e.preventDefault();
+      addVariable('constant', { scope: varCtx.scope, folder: varCtx.folder });
     }
   }, true);
 }
@@ -552,18 +560,33 @@ function evalLatexExpr(latex, ctx={}){
     }
   }
 
-  // Evaluate \binom{n}{r} using symmetry-reduced product: C(n,r) = C(n, min(r,n-r)).
-  // Must be computed before the generic { → ( rule turns \binom into multiplication.
+  // Evaluate \binom{n}{r} with dual-mode dispatch.
+  // Must run before the generic { → ( rule turns \binom into multiplication.
   expr = expr.replace(/\\binom\{([^}]*)\}\{([^}]*)\}/g, (match, nStr, rStr) => {
     const n = evalLatexExpr(nStr, ctx);
     const r = evalLatexExpr(rStr, ctx);
     if(n === null || r === null || !isFinite(n) || !isFinite(r)) return match;
-    const ni = Math.round(n);
-    let ri = Math.min(Math.round(r), ni - Math.round(r)); // use smaller side
-    if(ri < 0 || ni < 0) return '(0)';
-    let c = 1;
-    for(let i = 0; i < ri; i++) c = c * (ni - i) / (i + 1);
-    return `(${c})`;
+
+    // Integer mode — exact symmetry-reduced product; no full factorial expansion.
+    if(Number.isInteger(n) && Number.isInteger(r)){
+      const ni = Math.round(n);
+      let ri = Math.min(Math.round(r), ni - Math.round(r));
+      if(ri < 0 || ni < 0) return '(0)';
+      let c = 1;
+      for(let i = 0; i < ri; i++) c = c*(ni-i)/(i+1);
+      return `(${c})`;
+    }
+
+    // Continuous mode — analytic extension via Gamma function using log-space
+    // for numerical stability: C(n,r) = Γ(n+1) / [Γ(r+1)·Γ(n-r+1)].
+    const ln0 = lnGamma(n+1), ln1 = lnGamma(r+1), ln2 = lnGamma(n-r+1);
+    // A pole in the denominator (ln1 or ln2 = Infinity) means the limit is 0.
+    if(!isFinite(ln1) || !isFinite(ln2)) return '(0)';
+    if(!isFinite(ln0)) return '(0/0)'; // undefined numerator
+    const sign = gammaSign(n+1) * gammaSign(r+1) * gammaSign(n-r+1);
+    if(sign === 0) return '(0)';
+    const val = sign * Math.exp(ln0 - ln1 - ln2);
+    return isFinite(val) ? `(${val})` : '(0/0)';
   });
 
   // Evaluate n! factorial. Matches a digit-sequence or parenthesised expression
