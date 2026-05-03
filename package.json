@@ -1,0 +1,23 @@
+{
+  "name": "plotforge",
+  "version": "1.0.0",
+  "description": "Final project for GenAI class. PlotForge is a plotting interface for streamlining data analysis workflows.",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JackStawasz/PlotForge.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/JackStawasz/PlotForge/issues"
+  },
+  "homepage": "https://github.com/JackStawasz/PlotForge#readme"
+}

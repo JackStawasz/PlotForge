@@ -4,3 +4,5 @@ __pycache__/
 .claude/
 .Rhistory
 .DS_store
+test/node_modules/
+node_modules/
